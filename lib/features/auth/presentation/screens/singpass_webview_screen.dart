@@ -63,36 +63,50 @@ class _SingpassWebViewScreenState extends State<SingpassWebViewScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text(
-          'singpass',
-          style: TextStyle(
-            color: Colors.black87,
-            fontWeight: FontWeight.w900,
-            fontSize: 20,
-            letterSpacing: -0.5,
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) async {
+        if (didPop) return;
+        final canGoBack = await _controller.canGoBack();
+        if (canGoBack) {
+          await _controller.goBack();
+        } else {
+          if (context.mounted) {
+            Navigator.of(context).pop();
+          }
+        }
+      },
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text(
+            'singpass',
+            style: TextStyle(
+              color: Colors.black87,
+              fontWeight: FontWeight.w900,
+              fontSize: 20,
+              letterSpacing: -0.5,
+            ),
+          ),
+          centerTitle: true,
+          backgroundColor: Colors.white,
+          foregroundColor: Colors.black87,
+          elevation: 0.5,
+          leading: IconButton(
+            icon: const Icon(Icons.close),
+            onPressed: () => Navigator.of(context).pop(),
           ),
         ),
-        centerTitle: true,
-        backgroundColor: Colors.white,
-        foregroundColor: Colors.black87,
-        elevation: 0.5,
-        leading: IconButton(
-          icon: const Icon(Icons.close),
-          onPressed: () => Navigator.of(context).pop(),
-        ),
-      ),
-      body: Stack(
-        children: [
-          WebViewWidget(controller: _controller),
-          if (_isLoading)
-            const Center(
-              child: CircularProgressIndicator(
-                valueColor: AlwaysStoppedAnimation<Color>(Color(0xFFE31A22)),
+        body: Stack(
+          children: [
+            WebViewWidget(controller: _controller),
+            if (_isLoading)
+              const Center(
+                child: CircularProgressIndicator(
+                  valueColor: AlwaysStoppedAnimation<Color>(Color(0xFFE31A22)),
+                ),
               ),
-            ),
-        ],
+          ],
+        ),
       ),
     );
   }
