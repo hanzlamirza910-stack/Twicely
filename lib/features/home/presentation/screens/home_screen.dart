@@ -12,6 +12,7 @@ import 'wishlist_screen.dart';
 import 'payout_screen.dart';
 import 'add_package_screen.dart';
 import 'package_detail_screen.dart';
+import '../../../../core/services/api_service.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -1727,13 +1728,12 @@ class _HomeScreenState extends State<HomeScreen> {
 
           // Logout Action button
           OutlinedButton.icon(
-            onPressed: () {
-              SessionManager.logout();
-              setState(() {
-                _currentIndex = 0;
-              });
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Logged out successfully')),
+            onPressed: () async {
+              final navigator = Navigator.of(context);
+              await ApiService.logout();
+              navigator.pushAndRemoveUntil(
+                MaterialPageRoute(builder: (context) => const LoginScreen()),
+                (route) => false,
               );
             },
             icon: const Icon(Icons.logout, size: 16, color: AppColors.primary),

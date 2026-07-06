@@ -80,15 +80,27 @@ class _OtpScreenState extends State<OtpScreen> {
           MaterialPageRoute(builder: (context) => const ResetPasswordScreen()),
         );
       } else {
-        SessionManager.login(widget.email, name: widget.isMerchant ? 'Twicely Merchant' : 'Twicely Member');
-        Navigator.of(context).pushAndRemoveUntil(
-          MaterialPageRoute(
-            builder: (context) => widget.isMerchant
-                ? const MerchantDashboard()
-                : const HomeScreen(),
-          ),
-          (route) => false,
+        await SessionManager.saveSession(
+          accessToken: 'otp_mock_token',
+          refreshToken: 'otp_mock_refresh',
+          user: {
+            'id': 8888,
+            'email': widget.email,
+            'name': widget.isMerchant ? 'Twicely Merchant' : 'Twicely Member',
+            'is_merchant': widget.isMerchant,
+            'is_user': !widget.isMerchant,
+          },
         );
+        if (mounted && context.mounted) {
+          Navigator.of(context).pushAndRemoveUntil(
+            MaterialPageRoute(
+              builder: (context) => widget.isMerchant
+                  ? const MerchantDashboard()
+                  : const HomeScreen(),
+            ),
+            (route) => false,
+          );
+        }
       }
     }
   }

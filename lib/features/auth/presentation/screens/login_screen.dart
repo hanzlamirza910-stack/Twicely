@@ -7,6 +7,7 @@ import '../../../home/presentation/screens/home_screen.dart';
 import '../../../home/presentation/screens/merchant_dashboard.dart';
 import 'signup_screen.dart';
 import 'forgot_password_screen.dart';
+import '../../../../core/services/api_service.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -39,23 +40,62 @@ class _LoginScreenState extends State<LoginScreen> {
         _isLoading = true;
       });
 
-      // Simulate API verification call
-      await Future.delayed(const Duration(milliseconds: 1000));
+      final result = await ApiService.login(
+        _emailController.text.trim(),
+        _passwordController.text,
+      );
 
       if (mounted) {
         setState(() {
           _isLoading = false;
         });
 
-        SessionManager.login(_emailController.text, name: _isMerchant ? 'Twicely Merchant' : 'Twicely Member');
+        if (result['success'] == true) {
+          final user = result['user'] as Map<String, dynamic>;
+          final isUserMerchant = user['is_merchant'] as bool? ?? false;
+          final isUserC2C = user['is_user'] as bool? ?? false;
 
-        Navigator.of(context).pushReplacement(
-          MaterialPageRoute(
-            builder: (context) => _isMerchant
-                ? const MerchantDashboard()
-                : const HomeScreen(),
-          ),
-        );
+          if (_isMerchant && !isUserMerchant) {
+            await ApiService.logout();
+            if (mounted && context.mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('This account is not registered as a merchant.'),
+                  backgroundColor: Colors.redAccent,
+                ),
+              );
+            }
+            return;
+          }
+
+          if (!_isMerchant && !isUserC2C) {
+            await ApiService.logout();
+            if (mounted && context.mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('This account is not registered as a buyer/seller.'),
+                  backgroundColor: Colors.redAccent,
+                ),
+              );
+            }
+            return;
+          }
+
+          Navigator.of(context).pushReplacement(
+            MaterialPageRoute(
+              builder: (context) => _isMerchant
+                  ? const MerchantDashboard()
+                  : const HomeScreen(),
+            ),
+          );
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(result['message'] ?? 'Login failed. Please try again.'),
+              backgroundColor: Colors.redAccent,
+            ),
+          );
+        }
       }
     }
   }
@@ -86,7 +126,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
     await Future.delayed(const Duration(milliseconds: 650));
 
-    if (mounted) {
+    if (mounted && context.mounted) {
       setState(() {
         _isSingpassLoading = false;
       });
@@ -98,15 +138,27 @@ class _LoginScreenState extends State<LoginScreen> {
         ),
       );
 
-      SessionManager.login('singpass@user.sg', name: 'Singpass User');
-
-      Navigator.of(context).pushReplacement(
-        MaterialPageRoute(
-          builder: (context) => _isMerchant
-              ? const MerchantDashboard()
-              : const HomeScreen(),
-        ),
+      await SessionManager.saveSession(
+        accessToken: 'singpass_mock_token',
+        refreshToken: 'singpass_mock_refresh',
+        user: {
+          'id': 9999,
+          'email': 'singpass@user.sg',
+          'name': 'Singpass User',
+          'is_merchant': _isMerchant,
+          'is_user': !_isMerchant,
+        },
       );
+
+      if (mounted && context.mounted) {
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(
+            builder: (context) => _isMerchant
+                ? const MerchantDashboard()
+                : const HomeScreen(),
+          ),
+        );
+      }
     }
   }
 

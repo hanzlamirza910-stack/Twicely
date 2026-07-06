@@ -2,9 +2,17 @@ import 'package:flutter/material.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/utils/validators.dart';
 import '../../../../core/widgets/custom_button.dart';
+import '../../../../core/services/api_service.dart';
 
 class ResetPasswordScreen extends StatefulWidget {
-  const ResetPasswordScreen({super.key});
+  final String? resetKey;
+  final String? login;
+
+  const ResetPasswordScreen({
+    super.key,
+    this.resetKey,
+    this.login,
+  });
 
   @override
   State<ResetPasswordScreen> createState() => _ResetPasswordScreenState();
@@ -41,24 +49,34 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
         _isLoading = true;
       });
 
-      // Simulate API reset delay
-      await Future.delayed(const Duration(milliseconds: 1200));
+      final result = await ApiService.resetPassword(
+        key: widget.resetKey ?? 'mock_key',
+        login: widget.login ?? 'mock_login',
+        password: _passwordController.text,
+        confirmPassword: _confirmPasswordController.text,
+      );
 
       if (mounted) {
         setState(() {
           _isLoading = false;
         });
 
-        // Show Success
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Password reset successfully! Please log in.'),
-            backgroundColor: AppColors.success,
-          ),
-        );
-
-        // Route back to Login (pop all screens until Login remains)
-        Navigator.of(context).popUntil((route) => route.isFirst);
+        if (result['success'] == true) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(result['message'] ?? 'Password reset successfully! Please log in.'),
+              backgroundColor: AppColors.success,
+            ),
+          );
+          Navigator.of(context).popUntil((route) => route.isFirst);
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(result['message'] ?? 'Failed to reset password.'),
+              backgroundColor: Colors.redAccent,
+            ),
+          );
+        }
       }
     }
   }

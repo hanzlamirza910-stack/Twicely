@@ -2,6 +2,10 @@ import 'package:flutter/material.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../home/presentation/screens/home_screen.dart';
 
+import 'login_screen.dart';
+import '../../../../core/utils/session_manager.dart';
+import '../../../home/presentation/screens/merchant_dashboard.dart';
+
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
 
@@ -23,12 +27,23 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
     _animation = CurvedAnimation(parent: _controller, curve: Curves.easeIn);
     _controller.forward();
 
-    // Transition to Home Screen after 2.5 seconds
+    // Transition based on auth state after 2.5 seconds
     Future.delayed(const Duration(milliseconds: 2500), () {
       if (mounted) {
+        Widget nextScreen;
+        if (SessionManager.isLoggedIn) {
+          if (SessionManager.isMerchant) {
+            nextScreen = const MerchantDashboard();
+          } else {
+            nextScreen = const HomeScreen();
+          }
+        } else {
+          nextScreen = const LoginScreen();
+        }
+
         Navigator.of(context).pushReplacement(
           PageRouteBuilder(
-            pageBuilder: (context, animation, secondaryAnimation) => const HomeScreen(),
+            pageBuilder: (context, animation, secondaryAnimation) => nextScreen,
             transitionsBuilder: (context, animation, secondaryAnimation, child) {
               return FadeTransition(opacity: animation, child: child);
             },

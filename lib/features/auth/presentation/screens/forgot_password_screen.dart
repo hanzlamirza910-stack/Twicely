@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/utils/validators.dart';
 import '../../../../core/widgets/custom_button.dart';
-import 'otp_screen.dart';
+import '../../../../core/services/api_service.dart';
 
 class ForgotPasswordScreen extends StatefulWidget {
   const ForgotPasswordScreen({super.key});
@@ -28,31 +28,30 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
         _isLoading = true;
       });
 
-      // Simulate sending reset link API
-      await Future.delayed(const Duration(milliseconds: 1200));
+      final result = await ApiService.forgotPassword(_emailController.text.trim());
 
       if (mounted) {
         setState(() {
           _isLoading = false;
         });
 
-        // Show Success Toast
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Verification code sent to ${_emailController.text}'),
-            backgroundColor: AppColors.success,
-          ),
-        );
-
-        // Transition to OTP Verification screen to continue the MVP demo flow
-        Navigator.of(context).push(
-          MaterialPageRoute(
-            builder: (context) => OtpScreen(
-              email: _emailController.text,
-              isPasswordReset: true,
+        if (result['success'] == true) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(result['message'] ?? 'If that email is registered, you will receive a reset link shortly.'),
+              backgroundColor: AppColors.success,
+              duration: const Duration(seconds: 4),
             ),
-          ),
-        );
+          );
+          Navigator.of(context).pop();
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(result['message'] ?? 'Failed to send reset link.'),
+              backgroundColor: Colors.redAccent,
+            ),
+          );
+        }
       }
     }
   }

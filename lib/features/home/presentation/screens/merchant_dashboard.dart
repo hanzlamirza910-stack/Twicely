@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import '../../../../core/constants/app_colors.dart';
-import '../../../../core/utils/session_manager.dart';
 import '../../../auth/presentation/screens/login_screen.dart';
 import '../../../chat/presentation/screens/conversations_screen.dart';
 import 'add_package_screen.dart';
@@ -10,6 +9,7 @@ import 'my_sales_screen.dart';
 import 'my_orders_screen.dart';
 import 'wishlist_screen.dart';
 import 'payout_screen.dart';
+import '../../../../core/services/api_service.dart';
 
 class MerchantDashboard extends StatefulWidget {
   const MerchantDashboard({super.key});
@@ -960,9 +960,10 @@ class _MerchantDashboardState extends State<MerchantDashboard> {
 
           // Logout Action button
           OutlinedButton.icon(
-            onPressed: () {
-              SessionManager.logout();
-              Navigator.of(context).pushAndRemoveUntil(
+            onPressed: () async {
+              final navigator = Navigator.of(context);
+              await ApiService.logout();
+              navigator.pushAndRemoveUntil(
                 MaterialPageRoute(builder: (context) => const LoginScreen()),
                 (route) => false,
               );

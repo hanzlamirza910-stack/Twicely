@@ -4,7 +4,7 @@ import '../../../../core/utils/validators.dart';
 import '../../../../core/utils/session_manager.dart';
 import '../../../../core/widgets/custom_button.dart';
 import '../../../home/presentation/screens/home_screen.dart';
-import 'otp_screen.dart';
+import '../../../../core/services/api_service.dart';
 
 class SignupScreen extends StatefulWidget {
   const SignupScreen({super.key});
@@ -41,21 +41,35 @@ class _SignupScreenState extends State<SignupScreen> {
     if (_formKey.currentState?.validate() ?? false) {
       setState(() => _isLoading = true);
 
-      // Simulate API call
-      await Future.delayed(const Duration(milliseconds: 1200));
+      final result = await ApiService.registerUser(
+        name: _nameController.text.trim(),
+        email: _emailController.text.trim(),
+        password: _passwordController.text,
+      );
 
       if (mounted) {
         setState(() => _isLoading = false);
 
-        // Navigate to OTP verification
-        Navigator.of(context).push(
-          MaterialPageRoute(
-            builder: (context) => OtpScreen(
-              email: _emailController.text,
-              isMerchant: false,
+        if (result['success'] == true) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Registration successful!'),
+              backgroundColor: Color(0xFF4CAF50),
             ),
-          ),
-        );
+          );
+
+          Navigator.of(context).pushAndRemoveUntil(
+            MaterialPageRoute(builder: (context) => const HomeScreen()),
+            (route) => false,
+          );
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(result['message'] ?? 'Registration failed. Please try again.'),
+              backgroundColor: Colors.redAccent,
+            ),
+          );
+        }
       }
     }
   }
@@ -80,7 +94,7 @@ class _SignupScreenState extends State<SignupScreen> {
 
     await Future.delayed(const Duration(milliseconds: 650));
 
-    if (mounted) {
+    if (mounted && context.mounted) {
       setState(() => _isSingpassLoading = false);
 
       ScaffoldMessenger.of(context).showSnackBar(
@@ -90,12 +104,24 @@ class _SignupScreenState extends State<SignupScreen> {
         ),
       );
 
-      SessionManager.login('singpass@user.sg', name: 'Singpass User');
-
-      Navigator.of(context).pushAndRemoveUntil(
-        MaterialPageRoute(builder: (context) => const HomeScreen()),
-        (route) => false,
+      await SessionManager.saveSession(
+        accessToken: 'singpass_mock_token',
+        refreshToken: 'singpass_mock_refresh',
+        user: {
+          'id': 9999,
+          'email': 'singpass@user.sg',
+          'name': 'Singpass User',
+          'is_merchant': false,
+          'is_user': true,
+        },
       );
+
+      if (mounted && context.mounted) {
+        Navigator.of(context).pushAndRemoveUntil(
+          MaterialPageRoute(builder: (context) => const HomeScreen()),
+          (route) => false,
+        );
+      }
     }
   }
 
