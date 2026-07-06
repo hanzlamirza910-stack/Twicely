@@ -370,4 +370,57 @@ class ApiService {
       };
     }
   }
+
+  // --- Singpass Authentication Endpoints ---
+
+  // Init Singpass Flow
+  static Future<Map<String, dynamic>> initSingpass({
+    String userType = 'user',
+    String mode = 'login',
+  }) async {
+    final response = await post('/auth/singpass/init', {
+      'user_type': userType,
+      'mode': mode,
+    });
+
+    final decoded = jsonDecode(response.body);
+    if (response.statusCode == 200 && decoded['success'] == true) {
+      return {
+        'success': true,
+        'authorization_url': decoded['data']['authorization_url'] as String,
+      };
+    } else {
+      return {
+        'success': false,
+        'code': decoded['code'] ?? 'error',
+        'message': _getMessage(decoded, 'Failed to initialize Singpass login.'),
+      };
+    }
+  }
+
+  // Handle Singpass Callback
+  static Future<Map<String, dynamic>> callbackSingpass({
+    required String code,
+    required String state,
+  }) async {
+    final response = await post('/auth/singpass/callback?code=$code&state=$state', {});
+
+    final decoded = jsonDecode(response.body);
+    if (response.statusCode == 200 && decoded['success'] == true) {
+      final data = decoded['data'];
+      final user = data['user'] as Map<String, dynamic>;
+      await SessionManager.saveSession(
+        accessToken: data['access_token'] as String,
+        refreshToken: data['refresh_token'] as String,
+        user: user,
+      );
+      return {'success': true, 'user': user};
+    } else {
+      return {
+        'success': false,
+        'code': decoded['code'] ?? 'error',
+        'message': _getMessage(decoded, 'Singpass login failed.'),
+      };
+    }
+  }
 }

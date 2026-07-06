@@ -1,13 +1,13 @@
 import 'package:flutter/material.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/utils/validators.dart';
-import '../../../../core/utils/session_manager.dart';
 import '../../../../core/widgets/custom_button.dart';
 import '../../../home/presentation/screens/home_screen.dart';
 import '../../../home/presentation/screens/merchant_dashboard.dart';
 import 'signup_screen.dart';
 import 'forgot_password_screen.dart';
 import '../../../../core/services/api_service.dart';
+import 'singpass_login_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -23,9 +23,6 @@ class _LoginScreenState extends State<LoginScreen> {
   bool _isLoading = false;
   bool _obscurePassword = true;
   bool _isMerchant = false;
-
-  bool _isSingpassLoading = false;
-  String _singpassLoadingMessage = '';
 
   @override
   void dispose() {
@@ -100,66 +97,12 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
-  void _handleSingPassLogin() async {
-    setState(() {
-      _isSingpassLoading = true;
-      _singpassLoadingMessage = 'Connecting to Singpass...';
-    });
-
-    await Future.delayed(const Duration(milliseconds: 750));
-    if (!mounted) return;
-    setState(() {
-      _singpassLoadingMessage = 'Verifying digital identity...';
-    });
-
-    await Future.delayed(const Duration(milliseconds: 850));
-    if (!mounted) return;
-    setState(() {
-      _singpassLoadingMessage = 'Authorizing access to Twicely...';
-    });
-
-    await Future.delayed(const Duration(milliseconds: 750));
-    if (!mounted) return;
-    setState(() {
-      _singpassLoadingMessage = 'Signing in to your account...';
-    });
-
-    await Future.delayed(const Duration(milliseconds: 650));
-
-    if (mounted && context.mounted) {
-      setState(() {
-        _isSingpassLoading = false;
-      });
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Authenticated successfully via SingPass'),
-          backgroundColor: Color(0xFF4CAF50),
-        ),
-      );
-
-      await SessionManager.saveSession(
-        accessToken: 'singpass_mock_token',
-        refreshToken: 'singpass_mock_refresh',
-        user: {
-          'id': 9999,
-          'email': 'singpass@user.sg',
-          'name': 'Singpass User',
-          'is_merchant': _isMerchant,
-          'is_user': !_isMerchant,
-        },
-      );
-
-      if (mounted && context.mounted) {
-        Navigator.of(context).pushReplacement(
-          MaterialPageRoute(
-            builder: (context) => _isMerchant
-                ? const MerchantDashboard()
-                : const HomeScreen(),
-          ),
-        );
-      }
-    }
+  void _handleSingPassLogin() {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => const SingPassLoginScreen(),
+      ),
+    );
   }
 
   @override
@@ -463,60 +406,6 @@ class _LoginScreenState extends State<LoginScreen> {
                   ),
                 ),
               ),
-              if (_isSingpassLoading)
-                Container(
-                  color: Colors.black.withValues(alpha: 0.55),
-                  child: Center(
-                    child: Card(
-                      margin: const EdgeInsets.symmetric(horizontal: 40),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Container(
-                              width: 50,
-                              height: 50,
-                              decoration: const BoxDecoration(
-                                color: Color(0xFFE31A22), // SingPass red
-                                shape: BoxShape.circle,
-                              ),
-                              alignment: Alignment.center,
-                              child: const Text(
-                                'sp',
-                                style: TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 24,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                            ),
-                            const SizedBox(height: 24),
-                            const SizedBox(
-                              width: 32,
-                              height: 32,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 3,
-                                valueColor: AlwaysStoppedAnimation<Color>(Color(0xFFE31A22)),
-                              ),
-                            ),
-                            const SizedBox(height: 20),
-                            Text(
-                              _singpassLoadingMessage,
-                              textAlign: TextAlign.center,
-                              style: const TextStyle(
-                                fontSize: 14,
-                                fontWeight: FontWeight.w600,
-                                color: AppColors.primary,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
             ],
           ),
         ),

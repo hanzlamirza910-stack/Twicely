@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../home/presentation/screens/home_screen.dart';
+import '../../../../core/services/api_service.dart';
+import 'singpass_webview_screen.dart';
 
 class SingPassLoginScreen extends StatefulWidget {
   const SingPassLoginScreen({super.key});
@@ -30,44 +32,96 @@ class _SingPassLoginScreenState extends State<SingPassLoginScreen> {
       _loadingMessage = 'Connecting to Singpass...';
     });
 
-    await Future.delayed(const Duration(milliseconds: 700));
-    if (!mounted) return;
-    setState(() {
-      _loadingMessage = 'Verifying digital identity...';
-    });
+    try {
+      // 1. Initialize Singpass flow via API
+      final initRes = await ApiService.initSingpass(userType: 'user', mode: 'login');
+      if (!mounted) return;
 
-    await Future.delayed(const Duration(milliseconds: 800));
-    if (!mounted) return;
-    setState(() {
-      _loadingMessage = 'Authorizing access to Twicely...';
-    });
+      if (initRes['success'] != true) {
+        setState(() {
+          _isLoading = false;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(initRes['message'] ?? 'Singpass initialization failed'),
+            backgroundColor: AppColors.danger,
+          ),
+        );
+        return;
+      }
 
-    await Future.delayed(const Duration(milliseconds: 700));
-    if (!mounted) return;
-    setState(() {
-      _loadingMessage = 'Signing in to your account...';
-    });
+      final authUrl = initRes['authorization_url'] as String;
 
-    await Future.delayed(const Duration(milliseconds: 600));
+      // 2. Open WebView to allow user to log in on official Singpass
+      final result = await Navigator.of(context).push<Map<String, dynamic>>(
+        MaterialPageRoute(
+          builder: (context) => SingpassWebViewScreen(authorizationUrl: authUrl),
+        ),
+      );
 
-    if (mounted) {
+      if (!mounted) return;
+
+      if (result == null || result['code'] == null || result['state'] == null) {
+        setState(() {
+          _isLoading = false;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Singpass authentication cancelled'),
+            backgroundColor: Colors.orange,
+          ),
+        );
+        return;
+      }
+
+      setState(() {
+        _loadingMessage = 'Verifying digital identity...';
+      });
+
+      // 3. Callback to server to get JWT session
+      final callbackRes = await ApiService.callbackSingpass(
+        code: result['code'] as String,
+        state: result['state'] as String,
+      );
+
+      if (!mounted) return;
       setState(() {
         _isLoading = false;
       });
 
-      // Show mock success message
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Authenticated successfully via SingPass'),
-          backgroundColor: AppColors.success,
-        ),
-      );
+      if (callbackRes['success'] == true) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Authenticated successfully via Singpass'),
+            backgroundColor: AppColors.success,
+          ),
+        );
 
-      // Route to Home
-      Navigator.of(context).pushAndRemoveUntil(
-        MaterialPageRoute(builder: (context) => const HomeScreen()),
-        (route) => false,
-      );
+        // Route to Home
+        Navigator.of(context).pushAndRemoveUntil(
+          MaterialPageRoute(builder: (context) => const HomeScreen()),
+          (route) => false,
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(callbackRes['message'] ?? 'Singpass login failed'),
+            backgroundColor: AppColors.danger,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('An error occurred during Singpass login: $e'),
+            backgroundColor: AppColors.danger,
+          ),
+        );
+      }
     }
   }
 
