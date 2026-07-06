@@ -185,15 +185,20 @@ class _PackageDetailScreenState extends State<PackageDetailScreen> {
                   right: 14,
                   child: GestureDetector(
                     onTap: () {
-                      setState(() {
-                        _isFavorited = !_isFavorited;
-                      });
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text(_isFavorited ? 'Added to Wishlist' : 'Removed from Wishlist'),
-                          duration: const Duration(seconds: 1),
-                        ),
-                      );
+                      if (_checkAuthWithPrompt(
+                        title: 'Login Required',
+                        message: 'Please login to add packages to your wishlist.',
+                      )) {
+                        setState(() {
+                          _isFavorited = !_isFavorited;
+                        });
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(_isFavorited ? 'Added to Wishlist' : 'Removed from Wishlist'),
+                            duration: const Duration(seconds: 1),
+                          ),
+                        );
+                      }
                     },
                     child: Container(
                       padding: const EdgeInsets.all(8),

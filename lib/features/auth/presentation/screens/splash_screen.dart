@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../home/presentation/screens/home_screen.dart';
 
-import 'login_screen.dart';
 import '../../../../core/utils/session_manager.dart';
 import '../../../home/presentation/screens/merchant_dashboard.dart';
 
@@ -31,14 +30,10 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
     Future.delayed(const Duration(milliseconds: 2500), () {
       if (mounted) {
         Widget nextScreen;
-        if (SessionManager.isLoggedIn) {
-          if (SessionManager.isMerchant) {
-            nextScreen = const MerchantDashboard();
-          } else {
-            nextScreen = const HomeScreen();
-          }
+        if (SessionManager.isLoggedIn && SessionManager.isMerchant) {
+          nextScreen = const MerchantDashboard();
         } else {
-          nextScreen = const LoginScreen();
+          nextScreen = const HomeScreen();
         }
 
         Navigator.of(context).pushReplacement(

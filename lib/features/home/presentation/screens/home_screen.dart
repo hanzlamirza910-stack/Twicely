@@ -12,6 +12,7 @@ import 'wishlist_screen.dart';
 import 'payout_screen.dart';
 import 'add_package_screen.dart';
 import 'package_detail_screen.dart';
+import 'notifications_screen.dart';
 import '../../../../core/services/api_service.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -472,9 +473,16 @@ class _HomeScreenState extends State<HomeScreen> {
                 IconButton(
                   icon: const Icon(Icons.notifications_none_rounded, color: AppColors.primary, size: 26),
                   onPressed: () {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Notifications screen coming soon!')),
-                    );
+                    if (_checkAuthWithPrompt(
+                      title: 'Please Login',
+                      message: 'Please login to access notifications.',
+                    )) {
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (context) => const NotificationsScreen(),
+                        ),
+                      );
+                    }
                   },
                 ),
                 const SizedBox(width: 8),
@@ -1079,9 +1087,16 @@ class _HomeScreenState extends State<HomeScreen> {
                   IconButton(
                     icon: const Icon(Icons.notifications_none_rounded, color: AppColors.primary, size: 26),
                     onPressed: () {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Notifications screen coming soon!')),
-                      );
+                      if (_checkAuthWithPrompt(
+                        title: 'Please Login',
+                        message: 'Please login to access notifications.',
+                      )) {
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (context) => const NotificationsScreen(),
+                          ),
+                        );
+                      }
                     },
                   ),
                   const SizedBox(width: 8),
