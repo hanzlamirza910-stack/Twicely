@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class SessionManager {
@@ -10,6 +11,7 @@ class SessionManager {
   static int? _userId;
   static bool _isMerchant = false;
   static bool _isUser = false;
+  static Map<String, dynamic>? _userData;
 
   static Future<void> init() async {
     _prefs = await SharedPreferences.getInstance();
@@ -20,6 +22,12 @@ class SessionManager {
     _userId = _prefs?.getInt('user_id');
     _isMerchant = _prefs?.getBool('is_merchant') ?? false;
     _isUser = _prefs?.getBool('is_user') ?? false;
+    final userDataStr = _prefs?.getString('user_data');
+    if (userDataStr != null) {
+      try {
+        _userData = Map<String, dynamic>.from(jsonDecode(userDataStr));
+      } catch (_) {}
+    }
   }
 
   static bool get isLoggedIn => _accessToken != null;
@@ -30,6 +38,7 @@ class SessionManager {
   static int? get userId => _userId;
   static bool get isMerchant => _isMerchant;
   static bool get isUser => _isUser;
+  static Map<String, dynamic>? get userData => _userData;
 
   static Future<void> saveSession({
     required String accessToken,
@@ -46,6 +55,7 @@ class SessionManager {
     }
     _isMerchant = user['is_merchant'] as bool? ?? false;
     _isUser = user['is_user'] as bool? ?? false;
+    _userData = user;
 
     if (_prefs != null) {
       await _prefs!.setString('access_token', accessToken);
@@ -55,6 +65,7 @@ class SessionManager {
       if (_userName != null) await _prefs!.setString('user_name', _userName!);
       await _prefs!.setBool('is_merchant', _isMerchant);
       await _prefs!.setBool('is_user', _isUser);
+      await _prefs!.setString('user_data', jsonEncode(user));
     }
   }
 
@@ -79,6 +90,7 @@ class SessionManager {
     _userName = null;
     _isMerchant = false;
     _isUser = false;
+    _userData = null;
 
     if (_prefs != null) {
       await _prefs!.remove('access_token');
@@ -88,6 +100,7 @@ class SessionManager {
       await _prefs!.remove('user_email');
       await _prefs!.remove('is_merchant');
       await _prefs!.remove('is_user');
+      await _prefs!.remove('user_data');
     }
   }
 }

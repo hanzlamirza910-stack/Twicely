@@ -10,6 +10,7 @@ import 'my_orders_screen.dart';
 import 'wishlist_screen.dart';
 import 'payout_screen.dart';
 import '../../../../core/services/api_service.dart';
+import '../../../../core/utils/session_manager.dart';
 
 class MerchantDashboard extends StatefulWidget {
   const MerchantDashboard({super.key});
@@ -31,6 +32,32 @@ class _MerchantDashboardState extends State<MerchantDashboard> {
   String _merchantWebsite = "-";
   String _merchantEmail = "synvolv3@gmail.com";
   String _merchantPhone = "03030844726";
+
+  @override
+  void initState() {
+    super.initState();
+    _loadMerchantData();
+  }
+
+  void _loadMerchantData() {
+    if (SessionManager.isLoggedIn) {
+      final user = SessionManager.userData;
+      if (user != null) {
+        _merchantBusinessName = user['business_name'] as String? ?? 
+            user['name'] as String? ?? 
+            '${user['first_name'] ?? ''} ${user['last_name'] ?? ''}'.trim();
+        if (_merchantBusinessName.isEmpty) {
+          _merchantBusinessName = "Rolys";
+        }
+        _merchantEmail = user['email'] as String? ?? "synvolv3@gmail.com";
+        _merchantPhone = user['phone'] as String? ?? "03030844726";
+        _merchantBusinessType = user['business_type'] as String? ?? "Company";
+        _merchantRegNumber = user['business_registration'] as String? ?? "2324";
+        _merchantAddress = user['business_address'] as String? ?? "07 lahore";
+        _merchantWebsite = user['website_link'] as String? ?? "-";
+      }
+    }
+  }
 
   final List<Map<String, dynamic>> _merchantPackages = [
     {
