@@ -97,6 +97,14 @@ class ApiService {
     }
   }
 
+  static String _getMessage(Map<String, dynamic> decoded, String defaultMsg) {
+    if (decoded['message'] != null) return decoded['message'] as String;
+    if (decoded['data'] is Map && decoded['data']['message'] != null) {
+      return decoded['data']['message'] as String;
+    }
+    return defaultMsg;
+  }
+
   // --- API Authentication Endpoints ---
 
   // Login
@@ -120,7 +128,7 @@ class ApiService {
       return {
         'success': false,
         'code': decoded['code'] ?? 'error',
-        'message': decoded['message'] ?? 'Login failed. Please try again.',
+        'message': _getMessage(decoded, 'Login failed. Please try again.'),
       };
     }
   }
@@ -154,12 +162,12 @@ class ApiService {
         refreshToken: data['refresh_token'] as String,
         user: user,
       );
-      return {'success': true, 'message': decoded['message'] ?? 'Registration successful!'};
+      return {'success': true, 'message': _getMessage(decoded, 'Registration successful!')};
     } else {
       return {
         'success': false,
         'code': decoded['code'] ?? 'error',
-        'message': decoded['message'] ?? 'Registration failed.',
+        'message': _getMessage(decoded, 'Registration failed.'),
         'data': decoded['data'],
       };
     }
@@ -203,12 +211,12 @@ class ApiService {
         refreshToken: data['refresh_token'] as String,
         user: user,
       );
-      return {'success': true, 'message': decoded['message'] ?? 'Registration successful!'};
+      return {'success': true, 'message': _getMessage(decoded, 'Registration successful!')};
     } else {
       return {
         'success': false,
         'code': decoded['code'] ?? 'error',
-        'message': decoded['message'] ?? 'Merchant registration failed.',
+        'message': _getMessage(decoded, 'Merchant registration failed.'),
         'data': decoded['data'],
       };
     }
@@ -222,12 +230,12 @@ class ApiService {
 
     final decoded = jsonDecode(response.body);
     if (response.statusCode == 200 && decoded['success'] == true) {
-      return {'success': true, 'message': decoded['message'] ?? 'Reset link sent.'};
+      return {'success': true, 'message': _getMessage(decoded, 'Reset link sent.')};
     } else {
       return {
         'success': false,
         'code': decoded['code'] ?? 'error',
-        'message': decoded['message'] ?? 'Failed to send reset link.',
+        'message': _getMessage(decoded, 'Failed to send reset link.'),
       };
     }
   }
@@ -255,12 +263,12 @@ class ApiService {
         refreshToken: data['refresh_token'] as String,
         user: user,
       );
-      return {'success': true, 'message': decoded['message'] ?? 'Password reset successfully!'};
+      return {'success': true, 'message': _getMessage(decoded, 'Password reset successfully!')};
     } else {
       return {
         'success': false,
         'code': decoded['code'] ?? 'error',
-        'message': decoded['message'] ?? 'Failed to reset password.',
+        'message': _getMessage(decoded, 'Failed to reset password.'),
       };
     }
   }
@@ -281,12 +289,12 @@ class ApiService {
 
     final decoded = jsonDecode(response.body);
     if (response.statusCode == 200 && decoded['success'] == true) {
-      return {'success': true, 'message': decoded['message'] ?? 'OTP sent successfully.'};
+      return {'success': true, 'message': _getMessage(decoded, 'OTP sent successfully.')};
     } else {
       return {
         'success': false,
         'code': decoded['code'] ?? 'error',
-        'message': decoded['message'] ?? 'Failed to send OTP.',
+        'message': _getMessage(decoded, 'Failed to send OTP.'),
       };
     }
   }
@@ -307,12 +315,12 @@ class ApiService {
 
     final decoded = jsonDecode(response.body);
     if (response.statusCode == 200 && decoded['success'] == true) {
-      return {'success': true, 'message': decoded['message'] ?? 'OTP verified successfully.'};
+      return {'success': true, 'message': _getMessage(decoded, 'OTP verified successfully.')};
     } else {
       return {
         'success': false,
         'code': decoded['code'] ?? 'error',
-        'message': decoded['message'] ?? 'OTP verification failed.',
+        'message': _getMessage(decoded, 'OTP verification failed.'),
       };
     }
   }
