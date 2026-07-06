@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+import 'package:flutter/foundation.dart';
 import '../utils/session_manager.dart';
 
 class ApiService {
@@ -29,7 +30,29 @@ class ApiService {
     final headers = _getHeaders(authenticated: authenticated);
     final bodyStr = jsonEncode(body);
 
-    http.Response response = await http.post(url, headers: headers, body: bodyStr);
+    debugPrint('\n[API Request] ========================================');
+    debugPrint('METHOD: POST');
+    debugPrint('URL: $url');
+    debugPrint('Headers: $headers');
+    debugPrint('Body: $bodyStr');
+    debugPrint('======================================================');
+
+    http.Response response;
+    try {
+      response = await http.post(url, headers: headers, body: bodyStr);
+      debugPrint('\n[API Response] =======================================');
+      debugPrint('URL: $url');
+      debugPrint('Status Code: ${response.statusCode}');
+      debugPrint('Headers: ${response.headers}');
+      debugPrint('Body: ${response.body}');
+      debugPrint('======================================================\n');
+    } catch (e) {
+      debugPrint('\n[API Error] ==========================================');
+      debugPrint('URL: $url');
+      debugPrint('Exception: $e');
+      debugPrint('======================================================\n');
+      rethrow;
+    }
 
     if (response.statusCode == 401 && authenticated) {
       // Check if it is expired_token
@@ -42,7 +65,18 @@ class ApiService {
           if (refreshSuccess) {
             // Retry the original request with new token
             final newHeaders = _getHeaders(authenticated: true);
+            debugPrint('\n[API Retry Request] ==================================');
+            debugPrint('METHOD: POST');
+            debugPrint('URL: $url');
+            debugPrint('Headers: $newHeaders');
+            debugPrint('Body: $bodyStr');
+            debugPrint('======================================================');
             response = await http.post(url, headers: newHeaders, body: bodyStr);
+            debugPrint('\n[API Retry Response] =================================');
+            debugPrint('URL: $url');
+            debugPrint('Status Code: ${response.statusCode}');
+            debugPrint('Body: ${response.body}');
+            debugPrint('======================================================\n');
           } else {
             _handleForcedLogout();
           }
@@ -69,8 +103,20 @@ class ApiService {
     };
     final body = jsonEncode({'refresh_token': refreshToken});
 
+    debugPrint('\n[API Request (Token Refresh)] ========================');
+    debugPrint('METHOD: POST');
+    debugPrint('URL: $url');
+    debugPrint('Headers: $headers');
+    debugPrint('Body: $body');
+    debugPrint('======================================================');
+
     try {
       final response = await http.post(url, headers: headers, body: body);
+      debugPrint('\n[API Response (Token Refresh)] =======================');
+      debugPrint('URL: $url');
+      debugPrint('Status Code: ${response.statusCode}');
+      debugPrint('Body: ${response.body}');
+      debugPrint('======================================================\n');
       if (response.statusCode == 200) {
         final decoded = jsonDecode(response.body);
         if (decoded['success'] == true && decoded['data'] != null) {
