@@ -1,0 +1,1039 @@
+import 'package:flutter/material.dart';
+import '../../../../core/constants/app_colors.dart';
+
+class AddPackageScreen extends StatefulWidget {
+  final Function(Map<String, dynamic>)? onPackageAdded;
+
+  const AddPackageScreen({super.key, this.onPackageAdded});
+
+  @override
+  State<AddPackageScreen> createState() => _AddPackageScreenState();
+}
+
+class _AddPackageScreenState extends State<AddPackageScreen> {
+  int _currentStep = 1; // 1, 2, 3
+  final _formKey = GlobalKey<FormState>();
+
+  // Form Fields State
+  String _selectedMerchant = '';
+  final List<String> _galleryImages = [];
+  String _receiptFileName = '';
+  
+  final TextEditingController _titleController = TextEditingController();
+  final TextEditingController _descriptionController = TextEditingController();
+  final List<String> _keyPoints = [];
+  String _primaryCategory = '';
+  String _secondaryCategory = '';
+
+  final TextEditingController _originalPriceController = TextEditingController();
+  final TextEditingController _sellingPriceController = TextEditingController();
+  final TextEditingController _sessionsToSellController = TextEditingController();
+  final TextEditingController _totalSessionsController = TextEditingController();
+
+  final TextEditingController _validityDaysController = TextEditingController(text: '365');
+  final TextEditingController _remainingDaysController = TextEditingController(text: '180');
+  DateTime _expiryDate = DateTime.now().add(const Duration(days: 365));
+
+  // Options Lists
+  final List<String> _merchants = ['Raiyu', 'Spa Haven', 'Yoga Zen Collective', 'Active Fitness Center'];
+  final List<String> _categories = ['Wellness', 'Dining', 'Lifestyle', 'Fitness', 'Classes'];
+
+  @override
+  void dispose() {
+    _titleController.dispose();
+    _descriptionController.dispose();
+    _originalPriceController.dispose();
+    _sellingPriceController.dispose();
+    _sessionsToSellController.dispose();
+    _totalSessionsController.dispose();
+    _validityDaysController.dispose();
+    _remainingDaysController.dispose();
+    super.dispose();
+  }
+
+  // Dynamic calculations for summary card
+  double get _calculatedTotalSellingPrice {
+    final sellingPrice = double.tryParse(_sellingPriceController.text) ?? 0.0;
+    final sessions = double.tryParse(_sessionsToSellController.text) ?? 1.0;
+    return sellingPrice * (sessions > 0 ? sessions : 1.0);
+  }
+
+  void _nextStep() {
+    if (_currentStep == 1) {
+      if (_selectedMerchant.isEmpty) {
+        _showToast('Please select a merchant');
+        return;
+      }
+      setState(() => _currentStep = 2);
+    } else if (_currentStep == 2) {
+      if (_titleController.text.trim().isEmpty) {
+        _showToast('Package title is required');
+        return;
+      }
+      if (_descriptionController.text.trim().isEmpty) {
+        _showToast('Package description is required');
+        return;
+      }
+      if (_primaryCategory.isEmpty) {
+        _showToast('Please select a primary category');
+        return;
+      }
+      setState(() => _currentStep = 3);
+    }
+  }
+
+  void _prevStep() {
+    if (_currentStep > 1) {
+      setState(() => _currentStep--);
+    } else {
+      Navigator.of(context).pop();
+    }
+  }
+
+  void _showToast(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message), duration: const Duration(seconds: 2)),
+    );
+  }
+
+  void _submitForm() {
+    final originalPriceStr = _originalPriceController.text;
+    final sellingPriceStr = _sellingPriceController.text;
+
+    if (originalPriceStr.isEmpty || sellingPriceStr.isEmpty) {
+      _showToast('Please fill out the pricing details');
+      return;
+    }
+
+    final newPackage = {
+      'id': DateTime.now().millisecondsSinceEpoch.toString(),
+      'title': _titleController.text,
+      'category': _primaryCategory,
+      'price': double.tryParse(sellingPriceStr)?.toStringAsFixed(2) ?? '0.00',
+      'status': 'PENDING',
+      'badge': 'NEW',
+      'image': _galleryImages.isNotEmpty ? _galleryImages.first : 'assets/images/package_spa.jpg',
+      'isSold': false,
+    };
+
+    // Callback to append it
+    if (widget.onPackageAdded != null) {
+      widget.onPackageAdded!(newPackage);
+    }
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const Center(
+        child: CircularProgressIndicator(valueColor: AlwaysStoppedAnimation<Color>(AppColors.primary)),
+      ),
+    );
+
+    Future.delayed(const Duration(milliseconds: 1200), () {
+      if (!mounted) return;
+      Navigator.of(context).pop(); // pop spinner
+
+      // Show success bottom sheet
+      showModalBottomSheet(
+        context: context,
+        isDismissible: false,
+        enableDrag: false,
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(30)),
+        ),
+        backgroundColor: Colors.white,
+        builder: (context) => SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.all(28.0),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: const BoxDecoration(
+                    color: Color(0xFFE8F5E9),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(Icons.check_circle_rounded, color: Colors.green, size: 48),
+                ),
+                const SizedBox(height: 20),
+                const Text(
+                  'Package Submitted!',
+                  style: TextStyle(
+                    fontFamily: 'Recoleta Alt',
+                    fontSize: 22,
+                    fontWeight: FontWeight.bold,
+                    color: AppColors.primary,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Your package is currently pending admin verification. You can track its status under My Packages.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: AppColors.primary.withValues(alpha: 0.6),
+                    height: 1.4,
+                  ),
+                ),
+                const SizedBox(height: 28),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    onPressed: () {
+                      Navigator.of(context).pop(); // close bottom sheet
+                      Navigator.of(context).pop(true); // return true to refresh
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF1F2E4E),
+                      padding: const EdgeInsets.symmetric(vertical: 15),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
+                    ),
+                    child: const Text(
+                      'Back to Dashboard',
+                      style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: AppColors.bgLight,
+      appBar: _buildAppBar(),
+      body: _buildBody(),
+      bottomNavigationBar: _buildBottomActionBar(),
+    );
+  }
+
+  PreferredSizeWidget _buildAppBar() {
+    return AppBar(
+      backgroundColor: Colors.transparent,
+      elevation: 0,
+      leading: IconButton(
+        icon: const Icon(Icons.arrow_back_rounded, color: AppColors.primary),
+        onPressed: _prevStep,
+      ),
+      title: const Text(
+        'Add New Package',
+        style: TextStyle(
+          color: AppColors.primary,
+          fontFamily: 'Recoleta Alt',
+          fontWeight: FontWeight.bold,
+          fontSize: 18,
+        ),
+      ),
+      centerTitle: true,
+    );
+  }
+
+  Widget _buildBody() {
+    return SingleChildScrollView(
+      physics: const BouncingScrollPhysics(),
+      padding: const EdgeInsets.all(20.0),
+      child: Form(
+        key: _formKey,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            _buildStepIndicator(),
+            const SizedBox(height: 24),
+            _buildStepContent(),
+            const SizedBox(height: 20),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildStepIndicator() {
+    String stepTitle = '';
+    double progress = 0.33;
+
+    if (_currentStep == 1) {
+      stepTitle = 'Media & Merchant';
+      progress = 0.33;
+    } else if (_currentStep == 2) {
+      stepTitle = 'Package Information';
+      progress = 0.66;
+    } else {
+      stepTitle = 'Finalizing Details';
+      progress = 1.0;
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(
+              'STEP $_currentStep OF 3',
+              style: const TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.bold,
+                letterSpacing: 0.5,
+                color: Color(0xFF1F2E4E),
+              ),
+            ),
+            Text(
+              stepTitle,
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+                color: AppColors.primary.withValues(alpha: 0.5),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        ClipRRect(
+          borderRadius: BorderRadius.circular(4),
+          child: LinearProgressIndicator(
+            value: progress,
+            backgroundColor: AppColors.primary.withValues(alpha: 0.08),
+            valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFF1F2E4E)),
+            minHeight: 4,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildStepContent() {
+    switch (_currentStep) {
+      case 1:
+        return _buildStep1();
+      case 2:
+        return _buildStep2();
+      case 3:
+        return _buildStep3();
+      default:
+        return Container();
+    }
+  }
+
+  // --- STEP 1: MEDIA & MERCHANT ---
+  Widget _buildStep1() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        // Merchant Card
+        _buildSectionHeader('Merchant'),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: AppColors.primary.withValues(alpha: 0.1)),
+          ),
+          child: DropdownButtonHideUnderline(
+            child: DropdownButtonFormField<String>(
+              initialValue: _selectedMerchant.isEmpty ? null : _selectedMerchant,
+              hint: Text(
+                'Select a merchant...',
+                style: TextStyle(color: AppColors.primary.withValues(alpha: 0.4), fontSize: 14),
+              ),
+              decoration: const InputDecoration(
+                border: InputBorder.none,
+                enabledBorder: InputBorder.none,
+                focusedBorder: InputBorder.none,
+                errorBorder: InputBorder.none,
+                disabledBorder: InputBorder.none,
+                contentPadding: EdgeInsets.zero,
+              ),
+              items: _merchants.map((merchant) {
+                return DropdownMenuItem(
+                  value: merchant,
+                  child: Text(merchant, style: const TextStyle(fontSize: 14, color: AppColors.primary)),
+                );
+              }).toList(),
+              onChanged: (val) {
+                setState(() => _selectedMerchant = val ?? '');
+              },
+            ),
+          ),
+        ),
+        const SizedBox(height: 24),
+
+        // Gallery Images Card
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            _buildSectionHeader('Gallery Images (${_galleryImages.length}/5)'),
+            Text(
+              'Upload up to 5 images (max 5MB each)',
+              style: TextStyle(fontSize: 9, color: AppColors.primary.withValues(alpha: 0.4)),
+            ),
+          ],
+        ),
+        const SizedBox(height: 10),
+        _buildUploadDottedBox(
+          icon: Icons.add_photo_alternate_outlined,
+          label: 'Add Image',
+          onTap: () {
+            if (_galleryImages.length >= 5) {
+              _showToast('Maximum 5 images allowed');
+              return;
+            }
+            // Simulate adding a mock image path
+            setState(() {
+              _galleryImages.add('assets/images/package_spa.jpg');
+            });
+            _showToast('Mock image added to gallery');
+          },
+        ),
+        if (_galleryImages.isNotEmpty) ...[
+          const SizedBox(height: 12),
+          SizedBox(
+            height: 64,
+            child: ListView.builder(
+              scrollDirection: Axis.horizontal,
+              itemCount: _galleryImages.length,
+              itemBuilder: (context, index) => Container(
+                margin: const EdgeInsets.only(right: 10),
+                width: 64,
+                height: 64,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(10),
+                  image: DecorationImage(
+                    image: AssetImage(_galleryImages[index]),
+                    fit: BoxFit.cover,
+                  ),
+                ),
+                child: Align(
+                  alignment: Alignment.topRight,
+                  child: GestureDetector(
+                    onTap: () {
+                      setState(() => _galleryImages.removeAt(index));
+                    },
+                    child: Container(
+                      margin: const EdgeInsets.all(2),
+                      decoration: const BoxDecoration(color: Colors.black54, shape: BoxShape.circle),
+                      child: const Icon(Icons.close, color: Colors.white, size: 14),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+        const SizedBox(height: 24),
+
+        // Submission Receipt Card
+        _buildSectionHeader('Submission Receipt*'),
+        const Text(
+          'Upload a receipt or proof of purchase for admin verification.',
+          style: TextStyle(fontSize: 11, color: Colors.black45),
+        ),
+        const SizedBox(height: 12),
+
+        // Alert bar
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          decoration: BoxDecoration(
+            color: const Color(0xFFF3E5F5), // Light purple alert
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Row(
+            children: const [
+              Icon(Icons.warning_amber_rounded, size: 16, color: Colors.purple),
+              SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Receipt is required to complete your package submission.',
+                  style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.purple),
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 14),
+
+        _buildUploadDottedBox(
+          icon: Icons.receipt_long_outlined,
+          label: _receiptFileName.isEmpty ? 'Click to browse PDF, JPG or PNG' : _receiptFileName,
+          onTap: () {
+            setState(() {
+              _receiptFileName = 'receipt_invoice_591.pdf';
+            });
+            _showToast('Mock receipt uploaded successfully');
+          },
+        ),
+      ],
+    );
+  }
+
+  // --- STEP 2: PACKAGE INFORMATION ---
+  Widget _buildStep2() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        // Title Input
+        _buildSectionHeader('Package Title *'),
+        _buildInputField(
+          controller: _titleController,
+          hintText: 'e.g., Luxury Wellness Weekend Retreat',
+          maxLines: 1,
+        ),
+        const SizedBox(height: 20),
+
+        // Description Input
+        _buildSectionHeader('Package Description *'),
+        _buildInputField(
+          controller: _descriptionController,
+          hintText: 'Describe the experience, value proposition, and unique features...',
+          maxLines: 5,
+        ),
+        const SizedBox(height: 24),
+
+        // Key Points (0/5)
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            _buildSectionHeader('Key Points (${_keyPoints.length}/5)'),
+            Text(
+              'Highlight what\'s included',
+              style: TextStyle(fontSize: 10, color: AppColors.primary.withValues(alpha: 0.4)),
+            ),
+          ],
+        ),
+        const SizedBox(height: 10),
+        _keyPoints.isEmpty
+            ? Container(
+                padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 16),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: AppColors.primary.withValues(alpha: 0.08)),
+                ),
+                child: Row(
+                  children: const [
+                    Icon(Icons.info_outline_rounded, size: 16, color: Colors.orange),
+                    SizedBox(width: 8),
+                    Text(
+                      'No key points added yet.',
+                      style: TextStyle(fontSize: 12, color: Colors.orange, fontWeight: FontWeight.bold),
+                    ),
+                  ],
+                ),
+              )
+            : Column(
+                children: _keyPoints.asMap().entries.map((entry) {
+                  final idx = entry.key;
+                  final pt = entry.value;
+                  return Container(
+                    margin: const EdgeInsets.only(bottom: 8),
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: AppColors.primary.withValues(alpha: 0.06)),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.check_circle, color: Color(0xFF1F2E4E), size: 14),
+                        const SizedBox(width: 8),
+                        Expanded(child: Text(pt, style: const TextStyle(fontSize: 12))),
+                        GestureDetector(
+                          onTap: () => setState(() => _keyPoints.removeAt(idx)),
+                          child: const Icon(Icons.delete_outline, size: 16, color: Colors.red),
+                        ),
+                      ],
+                    ),
+                  );
+                }).toList(),
+              ),
+        const SizedBox(height: 10),
+        OutlinedButton.icon(
+          onPressed: _showAddKeyPointDialog,
+          icon: const Icon(Icons.add, size: 16, color: Color(0xFF1F2E4E)),
+          label: const Text('Add Key Point', style: TextStyle(color: Color(0xFF1F2E4E), fontWeight: FontWeight.bold)),
+          style: OutlinedButton.styleFrom(
+            padding: const EdgeInsets.symmetric(vertical: 12),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+            side: const BorderSide(color: Color(0xFF1F2E4E)),
+          ),
+        ),
+        const SizedBox(height: 24),
+
+        // Categories
+        _buildSectionHeader('Categories'),
+        // Primary
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: AppColors.primary.withValues(alpha: 0.1)),
+          ),
+          child: DropdownButtonHideUnderline(
+            child: DropdownButtonFormField<String>(
+              initialValue: _primaryCategory.isEmpty ? null : _primaryCategory,
+              hint: const Text('Primary Category', style: TextStyle(fontSize: 13, color: Colors.black38)),
+              decoration: const InputDecoration(
+                border: InputBorder.none,
+                enabledBorder: InputBorder.none,
+                focusedBorder: InputBorder.none,
+                errorBorder: InputBorder.none,
+                disabledBorder: InputBorder.none,
+                contentPadding: EdgeInsets.zero,
+              ),
+              items: _categories.map((c) {
+                return DropdownMenuItem(value: c, child: Text(c, style: const TextStyle(fontSize: 13)));
+              }).toList(),
+              onChanged: (val) => setState(() => _primaryCategory = val ?? ''),
+            ),
+          ),
+        ),
+        const SizedBox(height: 12),
+        // Secondary
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: AppColors.primary.withValues(alpha: 0.1)),
+          ),
+          child: DropdownButtonHideUnderline(
+            child: DropdownButtonFormField<String>(
+              initialValue: _secondaryCategory.isEmpty ? null : _secondaryCategory,
+              hint: const Text('Secondary Category (Optional)', style: TextStyle(fontSize: 13, color: Colors.black38)),
+              decoration: const InputDecoration(
+                border: InputBorder.none,
+                enabledBorder: InputBorder.none,
+                focusedBorder: InputBorder.none,
+                errorBorder: InputBorder.none,
+                disabledBorder: InputBorder.none,
+                contentPadding: EdgeInsets.zero,
+              ),
+              items: _categories.map((c) {
+                return DropdownMenuItem(value: c, child: Text(c, style: const TextStyle(fontSize: 13)));
+              }).toList(),
+              onChanged: (val) => setState(() => _secondaryCategory = val ?? ''),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  void _showAddKeyPointDialog() {
+    final controller = TextEditingController();
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Add Key Point', style: TextStyle(fontFamily: 'Recoleta Alt', fontWeight: FontWeight.bold)),
+        content: TextField(
+          controller: controller,
+          decoration: const InputDecoration(hintText: 'e.g. 1-Hour massage session included'),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Cancel', style: TextStyle(color: Colors.black45)),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              if (controller.text.trim().isNotEmpty) {
+                setState(() {
+                  _keyPoints.add(controller.text.trim());
+                });
+              }
+              Navigator.of(context).pop();
+            },
+            style: ElevatedButton.styleFrom(backgroundColor: AppColors.primary),
+            child: const Text('Add', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // --- STEP 3: FINALIZING DETAILS ---
+  Widget _buildStep3() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        // Pricing Card
+        _buildSectionHeader('Pricing Card'),
+        Container(
+          padding: const EdgeInsets.all(18),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: AppColors.primary.withValues(alpha: 0.08)),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _buildLabel('Original Purchase Price *'),
+              _buildPriceInputField(controller: _originalPriceController),
+              const SizedBox(height: 16),
+              _buildLabel('Selling Price Per Session *'),
+              _buildPriceInputField(
+                controller: _sellingPriceController,
+                onChanged: (val) => setState(() {}),
+              ),
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _buildLabel('Sessions To Sell'),
+                        _buildPriceInputField(
+                          controller: _sessionsToSellController,
+                          isCurrency: false,
+                          hint: 'Optional',
+                          onChanged: (val) => setState(() {}),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _buildLabel('Total Sessions'),
+                        _buildPriceInputField(
+                          controller: _totalSessionsController,
+                          isCurrency: false,
+                          hint: 'Optional',
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 24),
+
+        // Summary Card (Dark Grey)
+        Container(
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            color: const Color(0xFF1E293B), // Dark slate/grey card
+            borderRadius: BorderRadius.circular(20),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    'SUMMARY SECTION',
+                    style: TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.bold,
+                      letterSpacing: 0.5,
+                      color: Colors.white.withValues(alpha: 0.6),
+                    ),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(color: Colors.white12, borderRadius: BorderRadius.circular(4)),
+                    child: Row(
+                      children: const [
+                        Text('300', style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold)),
+                        Icon(Icons.arrow_drop_down, color: Colors.white, size: 14),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 4),
+              Text(
+                'Auto-calculated value',
+                style: TextStyle(fontSize: 10, color: Colors.white.withValues(alpha: 0.4)),
+              ),
+              const SizedBox(height: 20),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text(
+                    'Total Selling Price',
+                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.white),
+                  ),
+                  Text(
+                    '\$ ${_calculatedTotalSellingPrice.toStringAsFixed(2)}',
+                    style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: Color(0xFFFBBD03)),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 24),
+
+        // Validity Card
+        _buildSectionHeader('Validity'),
+        Container(
+          padding: const EdgeInsets.all(18),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: AppColors.primary.withValues(alpha: 0.08)),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _buildLabel('Total Validity Days'),
+                        _buildPriceInputField(controller: _validityDaysController, isCurrency: false),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _buildLabel('Remaining Days'),
+                        _buildPriceInputField(controller: _remainingDaysController, isCurrency: false),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              _buildLabel('Expiry Date'),
+              GestureDetector(
+                onTap: _showDatePicker,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                  decoration: BoxDecoration(
+                    color: AppColors.bgLight,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: AppColors.primary.withValues(alpha: 0.1)),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        '${_expiryDate.month.toString().padLeft(2, '0')}/${_expiryDate.day.toString().padLeft(2, '0')}/${_expiryDate.year}',
+                        style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
+                      ),
+                      const Icon(Icons.calendar_today_outlined, size: 16, color: AppColors.primary),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  void _showDatePicker() async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _expiryDate,
+      firstDate: DateTime.now(),
+      lastDate: DateTime.now().add(const Duration(days: 3650)),
+    );
+    if (picked != null) {
+      setState(() => _expiryDate = picked);
+    }
+  }
+
+  // --- GENERAL WIDGET BUILDERS ---
+  Widget _buildSectionHeader(String title) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10.0),
+      child: Text(
+        title,
+        style: const TextStyle(
+          fontSize: 13,
+          fontWeight: FontWeight.bold,
+          color: AppColors.primary,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildLabel(String text) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6.0),
+      child: Text(
+        text,
+        style: TextStyle(
+          fontSize: 11,
+          fontWeight: FontWeight.bold,
+          color: AppColors.primary.withValues(alpha: 0.8),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildInputField({
+    required TextEditingController controller,
+    required String hintText,
+    required int maxLines,
+  }) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppColors.primary.withValues(alpha: 0.12)),
+      ),
+      child: TextFormField(
+        controller: controller,
+        maxLines: maxLines,
+        style: const TextStyle(fontSize: 13, color: AppColors.primary, fontWeight: FontWeight.w500),
+        decoration: InputDecoration(
+          hintText: hintText,
+          hintStyle: TextStyle(color: AppColors.primary.withValues(alpha: 0.35), fontSize: 13),
+          border: InputBorder.none,
+          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPriceInputField({
+    required TextEditingController controller,
+    bool isCurrency = true,
+    String hint = '0.00',
+    Function(String)? onChanged,
+  }) {
+    return Container(
+      decoration: BoxDecoration(
+        color: AppColors.bgLight,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.primary.withValues(alpha: 0.1)),
+      ),
+      child: TextFormField(
+        controller: controller,
+        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+        style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: AppColors.primary),
+        onChanged: onChanged,
+        decoration: InputDecoration(
+          prefixIcon: isCurrency
+              ? const Padding(
+                  padding: EdgeInsets.only(left: 12.0, right: 6.0, top: 12.0),
+                  child: Text('\$', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                )
+              : null,
+          hintText: hint,
+          hintStyle: TextStyle(color: AppColors.primary.withValues(alpha: 0.35), fontSize: 13),
+          border: InputBorder.none,
+          contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildUploadDottedBox({
+    required IconData icon,
+    required String label,
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 16),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: AppColors.primary.withValues(alpha: 0.12),
+            style: BorderStyle.solid, // Note: Flutter standard border doesn't support dash easily, but solid matches beautifully
+          ),
+        ),
+        child: Column(
+          children: [
+            Icon(icon, size: 28, color: const Color(0xFF1F2E4E)),
+            const SizedBox(height: 8),
+            Text(
+              label,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+                color: AppColors.primary.withValues(alpha: 0.5),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildBottomActionBar() {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        border: Border(
+          top: BorderSide(color: AppColors.primary.withValues(alpha: 0.08), width: 1.2),
+        ),
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+      child: SafeArea(
+        child: Row(
+          children: [
+            // Save Draft button
+            OutlinedButton.icon(
+              onPressed: () {
+                _showToast('Draft Saved!');
+              },
+              icon: const Icon(Icons.lock_outline_rounded, size: 14, color: AppColors.primary),
+              label: const Text(
+                'Save Draft',
+                style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: AppColors.primary),
+              ),
+              style: OutlinedButton.styleFrom(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                side: BorderSide(color: AppColors.primary.withValues(alpha: 0.2)),
+              ),
+            ),
+            const SizedBox(width: 14),
+
+            // Next Step/Submit button
+            Expanded(
+              child: ElevatedButton(
+                onPressed: _currentStep == 3 ? _submitForm : _nextStep,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF1F2E4E),
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+                  minimumSize: const Size(0, 48), // override theme minimumSize
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text(
+                      _currentStep == 3 ? 'Submit Package' : 'Next Step',
+                      style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.white),
+                    ),
+                    const SizedBox(width: 6),
+                    const Icon(Icons.arrow_forward, size: 14, color: Colors.white),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
