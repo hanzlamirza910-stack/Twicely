@@ -37,62 +37,57 @@ class _LoginScreenState extends State<LoginScreen> {
         _isLoading = true;
       });
 
+      final email = _emailController.text.trim();
+      debugPrint('[Login] Attempting login for: $email, merchant toggle: $_isMerchant');
+
       final result = await ApiService.login(
-        _emailController.text.trim(),
+        email,
         _passwordController.text,
       );
 
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-        });
+      debugPrint('[Login] Login result: $result');
 
-        if (result['success'] == true) {
-          final user = result['user'] as Map<String, dynamic>;
-          final isUserMerchant = user['is_merchant'] as bool? ?? false;
-          final isUserC2C = user['is_user'] as bool? ?? false;
+      if (!mounted) return;
+      setState(() {
+        _isLoading = false;
+      });
 
-          if (_isMerchant && !isUserMerchant) {
-            await ApiService.logout();
-            if (mounted && context.mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('This account is not registered as a merchant.'),
-                  backgroundColor: Colors.redAccent,
-                ),
-              );
-            }
-            return;
-          }
+      if (result['success'] == true) {
+        final user = result['user'] as Map<String, dynamic>;
+        final isUserMerchant = user['is_merchant'] as bool? ?? false;
+        final isUserC2C = user['is_user'] as bool? ?? false;
 
-          if (!_isMerchant && !isUserC2C) {
-            await ApiService.logout();
-            if (mounted && context.mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('This account is not registered as a buyer/seller.'),
-                  backgroundColor: Colors.redAccent,
-                ),
-              );
-            }
-            return;
-          }
+        debugPrint('[Login] User roles: is_merchant=$isUserMerchant, is_user=$isUserC2C');
+        debugPrint('[Login] User name: ${user['name']}, email: ${user['email']}');
 
-          Navigator.of(context).pushReplacement(
-            MaterialPageRoute(
-              builder: (context) => _isMerchant
-                  ? const MerchantDashboard()
-                  : const HomeScreen(),
-            ),
-          );
-        } else {
+        // If user selected Merchant tab but account has no merchant role — warn
+        if (_isMerchant && !isUserMerchant) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(result['message'] ?? 'Login failed. Please try again.'),
-              backgroundColor: Colors.redAccent,
+            const SnackBar(
+              content: Text('This account does not have merchant access. Logging in as Buyer.'),
+              backgroundColor: Colors.orange,
+              duration: Duration(seconds: 3),
             ),
           );
         }
+
+        // Route by actual server role — merchant wins if account has both
+        final goToMerchant = _isMerchant && isUserMerchant;
+
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(
+            builder: (context) => goToMerchant
+                ? const MerchantDashboard()
+                : const HomeScreen(),
+          ),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(result['message'] ?? 'Login failed. Please try again.'),
+            backgroundColor: Colors.redAccent,
+          ),
+        );
       }
     }
   }

@@ -30,11 +30,16 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
     Future.delayed(const Duration(milliseconds: 2500), () {
       if (mounted) {
         Widget nextScreen;
-        if (SessionManager.isLoggedIn && SessionManager.isMerchant) {
+        if (!SessionManager.isLoggedIn) {
+          // Not logged in — go to HomeScreen (browse without account)
+          nextScreen = const HomeScreen();
+        } else if (SessionManager.isMerchant) {
           nextScreen = const MerchantDashboard();
         } else {
           nextScreen = const HomeScreen();
         }
+
+        debugPrint('[Splash] isLoggedIn=${SessionManager.isLoggedIn}, isMerchant=${SessionManager.isMerchant}, userName=${SessionManager.userName}');
 
         Navigator.of(context).pushReplacement(
           PageRouteBuilder(
