@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/utils/session_manager.dart';
+import '../../../../core/services/api_service.dart';
 import '../../../../core/widgets/custom_button.dart';
 import '../../../home/presentation/screens/home_screen.dart';
 import '../../../home/presentation/screens/merchant_dashboard.dart';
@@ -23,9 +24,11 @@ class OtpScreen extends StatefulWidget {
 }
 
 class _OtpScreenState extends State<OtpScreen> {
-  final List<FocusNode> _focusNodes = List.generate(4, (_) => FocusNode());
-  final List<TextEditingController> _controllers = List.generate(4, (_) => TextEditingController());
+  final List<FocusNode> _focusNodes = List.generate(6, (_) => FocusNode());
+  final List<TextEditingController> _controllers =
+      List.generate(6, (_) => TextEditingController());
   bool _isLoading = false;
+  bool _isResending = false;
 
   @override
   void dispose() {
@@ -38,71 +41,119 @@ class _OtpScreenState extends State<OtpScreen> {
     super.dispose();
   }
 
+  String get _otpPurpose =>
+      widget.isPasswordReset ? 'password_reset' : 'registration';
+
   void _verifyOtp() async {
     final code = _controllers.map((c) => c.text).join();
-    if (code.length < 4) {
+    if (code.length < 6) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Please enter the full 4-digit code'),
+          content: Text('Please enter the full 6-digit code'),
           backgroundColor: AppColors.danger,
         ),
       );
       return;
     }
 
-    setState(() {
-      _isLoading = true;
-    });
+    setState(() => _isLoading = true);
+    debugPrint('[OTP Screen] Verifying OTP: $code for email: ${widget.email}, purpose: $_otpPurpose');
 
-    // Simulate OTP server check
-    await Future.delayed(const Duration(milliseconds: 1500));
+    final result = await ApiService.verifyOtp(
+      otpCode: code,
+      email: widget.email,
+      purpose: _otpPurpose,
+    );
 
-    if (mounted) {
-      setState(() {
-        _isLoading = false;
-      });
+    debugPrint('[OTP Screen] Verify response: $result');
 
-      // Show success
+    if (!mounted) return;
+    setState(() => _isLoading = false);
+
+    if (result['success'] == true) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(widget.isPasswordReset
-              ? 'OTP Verified successfully!'
+              ? 'OTP verified! Set your new password.'
               : widget.isMerchant
-                  ? 'Merchant Account activated successfully!'
+                  ? 'Merchant account activated!'
                   : 'Account verified successfully!'),
           backgroundColor: AppColors.success,
         ),
       );
 
-      // Route based on destination
       if (widget.isPasswordReset) {
+        // Get reset key/login from response to pass to reset-password screen
+        final resetKey = result['reset_key'] as String?;
+        final resetLogin = result['reset_login'] as String?;
+        debugPrint('[OTP Screen] Password reset - key: $resetKey, login: $resetLogin');
+
         Navigator.of(context).pushReplacement(
-          MaterialPageRoute(builder: (context) => const ResetPasswordScreen()),
+          MaterialPageRoute(
+            builder: (context) => ResetPasswordScreen(
+              resetKey: resetKey,
+              login: resetLogin ?? widget.email,
+            ),
+          ),
         );
       } else {
-        await SessionManager.saveSession(
-          accessToken: 'otp_mock_token',
-          refreshToken: 'otp_mock_refresh',
-          user: {
-            'id': 8888,
-            'email': widget.email,
-            'name': widget.isMerchant ? 'Twicely Merchant' : 'Twicely Member',
-            'is_merchant': widget.isMerchant,
-            'is_user': !widget.isMerchant,
-          },
-        );
-        if (mounted && context.mounted) {
+        // Registration verification — try to save session from response data
+        final data = result['data'] as Map<String, dynamic>?;
+        if (data != null && data['access_token'] != null) {
+          await SessionManager.saveSession(
+            accessToken: data['access_token'] as String,
+            refreshToken: data['refresh_token'] as String? ?? '',
+            user: data['user'] as Map<String, dynamic>? ?? {'email': widget.email},
+          );
+        } else {
+          // No tokens in verify response — session already set during registration
+          debugPrint('[OTP Screen] No tokens in verify response — using existing session');
+        }
+
+        if (mounted) {
           Navigator.of(context).pushAndRemoveUntil(
             MaterialPageRoute(
-              builder: (context) => widget.isMerchant
-                  ? const MerchantDashboard()
-                  : const HomeScreen(),
+              builder: (context) =>
+                  widget.isMerchant ? const MerchantDashboard() : const HomeScreen(),
             ),
             (route) => false,
           );
         }
       }
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(result['message'] ?? 'Invalid OTP code. Please try again.'),
+          backgroundColor: AppColors.danger,
+        ),
+      );
     }
+  }
+
+  void _resendOtp() async {
+    setState(() => _isResending = true);
+    debugPrint('[OTP Screen] Resending OTP to: ${widget.email}, purpose: $_otpPurpose');
+
+    final result = await ApiService.sendOtp(
+      type: 'email',
+      email: widget.email,
+      purpose: _otpPurpose,
+    );
+
+    debugPrint('[OTP Screen] Resend response: $result');
+
+    if (!mounted) return;
+    setState(() => _isResending = false);
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(result['success'] == true
+            ? (result['message'] ?? 'New code sent to ${widget.email}')
+            : (result['message'] ?? 'Failed to resend OTP. Try again.')),
+        backgroundColor:
+            result['success'] == true ? AppColors.success : AppColors.danger,
+      ),
+    );
   }
 
   @override
@@ -122,7 +173,8 @@ class _OtpScreenState extends State<OtpScreen> {
                     width: 48,
                     child: IconButton(
                       padding: EdgeInsets.zero,
-                      icon: const Icon(Icons.arrow_back, color: AppColors.primary, size: 24),
+                      icon: const Icon(Icons.arrow_back,
+                          color: AppColors.primary, size: 24),
                       onPressed: () => Navigator.of(context).pop(),
                     ),
                   ),
@@ -132,6 +184,14 @@ class _OtpScreenState extends State<OtpScreen> {
                         'assets/images/logo.webp',
                         width: 110,
                         fit: BoxFit.contain,
+                        errorBuilder: (_, __, ___) => const Text(
+                          'twicely',
+                          style: TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.bold,
+                            color: AppColors.primary,
+                          ),
+                        ),
                       ),
                     ),
                   ),
@@ -159,10 +219,10 @@ class _OtpScreenState extends State<OtpScreen> {
               const SizedBox(height: 32),
 
               // Title
-              const Text(
-                'Verify Your Email',
+              Text(
+                widget.isPasswordReset ? 'Reset Code Sent' : 'Verify Your Email',
                 textAlign: TextAlign.center,
-                style: TextStyle(
+                style: const TextStyle(
                   fontSize: 26,
                   fontWeight: FontWeight.bold,
                   color: AppColors.primary,
@@ -172,7 +232,7 @@ class _OtpScreenState extends State<OtpScreen> {
 
               // Subtitle
               Text(
-                'We have sent a verification code to\n${widget.email}.\nPlease enter the 4-digit code below.',
+                'We\'ve sent a 6-digit verification code to\n${widget.email}\nPlease enter it below.',
                 textAlign: TextAlign.center,
                 style: const TextStyle(
                   color: AppColors.textSecondaryLight,
@@ -182,13 +242,13 @@ class _OtpScreenState extends State<OtpScreen> {
               ),
               const SizedBox(height: 40),
 
-              // OTP Digits Inputs Row
+              // OTP 6-digit Inputs Row
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                children: List.generate(4, (index) {
+                children: List.generate(6, (index) {
                   return SizedBox(
-                    width: 60,
-                    height: 60,
+                    width: 46,
+                    height: 56,
                     child: TextFormField(
                       controller: _controllers[index],
                       focusNode: _focusNodes[index],
@@ -196,7 +256,7 @@ class _OtpScreenState extends State<OtpScreen> {
                       textAlign: TextAlign.center,
                       maxLength: 1,
                       style: const TextStyle(
-                        fontSize: 24,
+                        fontSize: 22,
                         fontWeight: FontWeight.bold,
                         color: AppColors.primary,
                       ),
@@ -204,21 +264,25 @@ class _OtpScreenState extends State<OtpScreen> {
                         counterText: '',
                         contentPadding: EdgeInsets.zero,
                         enabledBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(16),
-                          borderSide: BorderSide(color: AppColors.primary.withValues(alpha: 0.4)),
+                          borderRadius: BorderRadius.circular(14),
+                          borderSide: BorderSide(
+                              color: AppColors.primary.withValues(alpha: 0.4)),
                         ),
                         focusedBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(16),
-                          borderSide: const BorderSide(color: AppColors.primary, width: 2),
+                          borderRadius: BorderRadius.circular(14),
+                          borderSide:
+                              const BorderSide(color: AppColors.primary, width: 2),
                         ),
+                        filled: true,
+                        fillColor: Colors.white,
                       ),
                       onChanged: (value) {
-                        if (value.isNotEmpty && index < 3) {
+                        if (value.isNotEmpty && index < 5) {
                           _focusNodes[index + 1].requestFocus();
                         } else if (value.isEmpty && index > 0) {
                           _focusNodes[index - 1].requestFocus();
                         }
-                        if (codeEnteredFully()) {
+                        if (_codeEnteredFully()) {
                           FocusScope.of(context).unfocus();
                         }
                       },
@@ -236,22 +300,29 @@ class _OtpScreenState extends State<OtpScreen> {
               ),
               const SizedBox(height: 32),
 
-              // Resend code timer mock
-              TextButton(
-                onPressed: () {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('New verification code sent!')),
-                  );
-                },
-                child: const Text(
-                  'Resend Code',
-                  style: TextStyle(
-                    color: AppColors.primary,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 14,
-                  ),
-                ),
-              ),
+              // Resend Button
+              _isResending
+                  ? const Center(
+                      child: SizedBox(
+                        width: 24,
+                        height: 24,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: AppColors.primary,
+                        ),
+                      ),
+                    )
+                  : TextButton(
+                      onPressed: _resendOtp,
+                      child: const Text(
+                        'Resend Code',
+                        style: TextStyle(
+                          color: AppColors.primary,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 14,
+                        ),
+                      ),
+                    ),
             ],
           ),
         ),
@@ -259,7 +330,7 @@ class _OtpScreenState extends State<OtpScreen> {
     );
   }
 
-  bool codeEnteredFully() {
+  bool _codeEnteredFully() {
     return _controllers.every((c) => c.text.isNotEmpty);
   }
 }

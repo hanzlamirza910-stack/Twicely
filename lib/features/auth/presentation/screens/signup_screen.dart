@@ -2,9 +2,9 @@ import 'package:flutter/material.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/utils/validators.dart';
 import '../../../../core/widgets/custom_button.dart';
-import '../../../home/presentation/screens/home_screen.dart';
 import '../../../../core/services/api_service.dart';
 import 'singpass_login_screen.dart';
+import 'otp_screen.dart';
 
 class SignupScreen extends StatefulWidget {
   const SignupScreen({super.key});
@@ -38,35 +38,48 @@ class _SignupScreenState extends State<SignupScreen> {
     if (_formKey.currentState?.validate() ?? false) {
       setState(() => _isLoading = true);
 
+      final email = _emailController.text.trim();
+      debugPrint('[Signup] Registering user: $email');
+
       final result = await ApiService.registerUser(
         name: _nameController.text.trim(),
-        email: _emailController.text.trim(),
+        email: email,
         password: _passwordController.text,
       );
 
-      if (mounted) {
-        setState(() => _isLoading = false);
+      debugPrint('[Signup] Registration response: $result');
 
-        if (result['success'] == true) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Registration successful!'),
-              backgroundColor: Color(0xFF4CAF50),
-            ),
-          );
+      if (!mounted) return;
+      setState(() => _isLoading = false);
 
-          Navigator.of(context).pushAndRemoveUntil(
-            MaterialPageRoute(builder: (context) => const HomeScreen()),
-            (route) => false,
-          );
-        } else {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(result['message'] ?? 'Registration failed. Please try again.'),
-              backgroundColor: Colors.redAccent,
+      if (result['success'] == true) {
+        // Send OTP for email verification
+        debugPrint('[Signup] Registration success. Sending OTP for registration to: $email');
+        final otpResult = await ApiService.sendOtp(
+          type: 'email',
+          email: email,
+          purpose: 'registration',
+        );
+        debugPrint('[Signup] OTP send response: $otpResult');
+
+        if (!mounted) return;
+
+        // Navigate to OTP verification screen
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (context) => OtpScreen(
+              email: email,
+              isPasswordReset: false,
             ),
-          );
-        }
+          ),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(result['message'] ?? 'Registration failed. Please try again.'),
+            backgroundColor: AppColors.danger,
+          ),
+        );
       }
     }
   }

@@ -49,12 +49,19 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
         _isLoading = true;
       });
 
+      final key = widget.resetKey ?? '';
+      final login = widget.login ?? '';
+
+      debugPrint('[ResetPassword] Calling reset-password: key=$key, login=$login');
+
       final result = await ApiService.resetPassword(
-        key: widget.resetKey ?? 'mock_key',
-        login: widget.login ?? 'mock_login',
+        key: key,
+        login: login,
         password: _passwordController.text,
         confirmPassword: _confirmPasswordController.text,
       );
+
+      debugPrint('[ResetPassword] Response: $result');
 
       if (mounted) {
         setState(() {
@@ -73,7 +80,7 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text(result['message'] ?? 'Failed to reset password.'),
-              backgroundColor: Colors.redAccent,
+              backgroundColor: AppColors.danger,
             ),
           );
         }

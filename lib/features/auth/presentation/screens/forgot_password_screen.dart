@@ -3,6 +3,7 @@ import '../../../../core/constants/app_colors.dart';
 import '../../../../core/utils/validators.dart';
 import '../../../../core/widgets/custom_button.dart';
 import '../../../../core/services/api_service.dart';
+import 'otp_screen.dart';
 
 class ForgotPasswordScreen extends StatefulWidget {
   const ForgotPasswordScreen({super.key});
@@ -28,30 +29,55 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
         _isLoading = true;
       });
 
-      final result = await ApiService.forgotPassword(_emailController.text.trim());
+      final email = _emailController.text.trim();
+      debugPrint('[ForgotPassword] Calling forgotPassword for: $email');
 
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-        });
+      final result = await ApiService.forgotPassword(email);
+      debugPrint('[ForgotPassword] forgotPassword response: $result');
 
-        if (result['success'] == true) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(result['message'] ?? 'If that email is registered, you will receive a reset link shortly.'),
-              backgroundColor: AppColors.success,
-              duration: const Duration(seconds: 4),
+      if (!mounted) return;
+
+      if (result['success'] == true) {
+        // Now send OTP for password_reset purpose
+        debugPrint('[ForgotPassword] Sending OTP for password_reset to: $email');
+        final otpResult = await ApiService.sendOtp(
+          type: 'email',
+          email: email,
+          purpose: 'password_reset',
+        );
+        debugPrint('[ForgotPassword] OTP send response: $otpResult');
+
+        if (!mounted) return;
+        setState(() => _isLoading = false);
+
+        // Navigate to OTP screen regardless of sendOtp result
+        // (forgotPassword already sent an email; OTP is the app-side verification)
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (context) => OtpScreen(
+              email: email,
+              isPasswordReset: true,
             ),
-          );
-          Navigator.of(context).pop();
-        } else {
+          ),
+        );
+
+        if (otpResult['success'] != true) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text(result['message'] ?? 'Failed to send reset link.'),
-              backgroundColor: Colors.redAccent,
+              content: Text(otpResult['message'] ??
+                  'Please check your email for the verification code.'),
+              backgroundColor: AppColors.warning,
             ),
           );
         }
+      } else {
+        setState(() => _isLoading = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(result['message'] ?? 'Failed to send reset link.'),
+            backgroundColor: AppColors.danger,
+          ),
+        );
       }
     }
   }

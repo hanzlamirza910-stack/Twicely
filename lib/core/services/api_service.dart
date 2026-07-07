@@ -361,7 +361,15 @@ class ApiService {
 
     final decoded = jsonDecode(response.body);
     if (response.statusCode == 200 && decoded['success'] == true) {
-      return {'success': true, 'message': _getMessage(decoded, 'OTP verified successfully.')};
+      final data = decoded['data'] as Map<String, dynamic>?;
+      return {
+        'success': true,
+        'message': _getMessage(decoded, 'OTP verified successfully.'),
+        // For password_reset: backend may return reset_key + login for use in reset-password call
+        if (data != null) 'reset_key': data['reset_key'],
+        if (data != null) 'reset_login': data['login'] ?? data['reset_login'],
+        if (data != null) 'data': data,
+      };
     } else {
       return {
         'success': false,
