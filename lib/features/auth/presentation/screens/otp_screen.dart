@@ -252,9 +252,19 @@ class _OtpScreenState extends State<OtpScreen> {
                     child: TextFormField(
                       controller: _controllers[index],
                       focusNode: _focusNodes[index],
-                      keyboardType: TextInputType.number,
+                      // Use number keyboard but restrict to digits via formatter
+                      keyboardType: const TextInputType.numberWithOptions(
+                        signed: false,
+                        decimal: false,
+                      ),
+                      textInputAction: index < 5
+                          ? TextInputAction.next
+                          : TextInputAction.done,
                       textAlign: TextAlign.center,
                       maxLength: 1,
+                      // Prevent cursor blinking loop by disabling selection toolbar
+                      enableInteractiveSelection: false,
+                      showCursor: false,
                       style: const TextStyle(
                         fontSize: 22,
                         fontWeight: FontWeight.bold,
@@ -277,12 +287,19 @@ class _OtpScreenState extends State<OtpScreen> {
                         fillColor: Colors.white,
                       ),
                       onChanged: (value) {
-                        if (value.isNotEmpty && index < 5) {
-                          _focusNodes[index + 1].requestFocus();
-                        } else if (value.isEmpty && index > 0) {
-                          _focusNodes[index - 1].requestFocus();
+                        // Only process single character changes to avoid loops
+                        if (value.length > 1) {
+                          _controllers[index].text = value[0];
+                          _controllers[index].selection =
+                              const TextSelection.collapsed(offset: 1);
                         }
-                        if (_codeEnteredFully()) {
+                        if (value.isNotEmpty && index < 5) {
+                          // Move focus using FocusScope — avoids requestFocus IME loop
+                          FocusScope.of(context).requestFocus(_focusNodes[index + 1]);
+                        } else if (value.isEmpty && index > 0) {
+                          FocusScope.of(context).requestFocus(_focusNodes[index - 1]);
+                        } else if (value.isNotEmpty && index == 5) {
+                          // Last box filled — dismiss keyboard cleanly
                           FocusScope.of(context).unfocus();
                         }
                       },
@@ -328,9 +345,5 @@ class _OtpScreenState extends State<OtpScreen> {
         ),
       ),
     );
-  }
-
-  bool _codeEnteredFully() {
-    return _controllers.every((c) => c.text.isNotEmpty);
   }
 }
