@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'dart:async';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/utils/session_manager.dart';
 import '../../../../core/services/api_service.dart';
@@ -30,8 +31,35 @@ class _OtpScreenState extends State<OtpScreen> {
   bool _isLoading = false;
   bool _isResending = false;
 
+  // Countdown timer for Resend OTP (60 seconds)
+  int _secondsRemaining = 60;
+  Timer? _timer;
+
+  @override
+  void initState() {
+    super.initState();
+    _startTimer();
+  }
+
+  void _startTimer() {
+    setState(() {
+      _secondsRemaining = 60;
+    });
+    _timer?.cancel();
+    _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (_secondsRemaining > 0) {
+        setState(() {
+          _secondsRemaining--;
+        });
+      } else {
+        _timer?.cancel();
+      }
+    });
+  }
+
   @override
   void dispose() {
+    _timer?.cancel();
     for (var node in _focusNodes) {
       node.dispose();
     }
@@ -59,11 +87,19 @@ class _OtpScreenState extends State<OtpScreen> {
     setState(() => _isLoading = true);
     debugPrint('[OTP Screen] Verifying OTP: $code for email: ${widget.email}, purpose: $_otpPurpose');
 
-    final result = await ApiService.verifyOtp(
-      otpCode: code,
-      email: widget.email,
-      purpose: _otpPurpose,
-    );
+    final Map<String, dynamic> result;
+    if (widget.isPasswordReset) {
+      result = await ApiService.verifyResetOtp(
+        email: widget.email,
+        otpCode: code,
+      );
+    } else {
+      result = await ApiService.verifyOtp(
+        otpCode: code,
+        email: widget.email,
+        purpose: _otpPurpose,
+      );
+    }
 
     debugPrint('[OTP Screen] Verify response: $result');
 
@@ -83,16 +119,14 @@ class _OtpScreenState extends State<OtpScreen> {
       );
 
       if (widget.isPasswordReset) {
-        // Get reset key/login from response to pass to reset-password screen
-        final resetKey = result['reset_key'] as String?;
-        final resetLogin = result['reset_login'] as String?;
-        debugPrint('[OTP Screen] Password reset - key: $resetKey, login: $resetLogin');
+        // Get reset token from response to pass to reset-password screen
+        final resetToken = result['reset_token'] as String?;
+        debugPrint('[OTP Screen] Password reset - token: $resetToken');
 
         Navigator.of(context).pushReplacement(
           MaterialPageRoute(
             builder: (context) => ResetPasswordScreen(
-              resetKey: resetKey,
-              login: resetLogin ?? widget.email,
+              resetToken: resetToken,
             ),
           ),
         );
@@ -131,24 +165,36 @@ class _OtpScreenState extends State<OtpScreen> {
   }
 
   void _resendOtp() async {
+    if (_secondsRemaining > 0) return;
     setState(() => _isResending = true);
     debugPrint('[OTP Screen] Resending OTP to: ${widget.email}, purpose: $_otpPurpose');
 
-    final result = await ApiService.sendOtp(
-      type: 'email',
-      email: widget.email,
-      purpose: _otpPurpose,
-    );
+    final Map<String, dynamic> result;
+    if (widget.isPasswordReset) {
+      result = await ApiService.forgotPassword(widget.email);
+    } else {
+      result = await ApiService.sendOtp(
+        type: 'email',
+        email: widget.email,
+        purpose: _otpPurpose,
+      );
+    }
 
     debugPrint('[OTP Screen] Resend response: $result');
 
     if (!mounted) return;
     setState(() => _isResending = false);
 
+    if (result['success'] == true) {
+      _startTimer(); // Restart the 60s countdown timer on successful resend
+    }
+
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(result['success'] == true
-            ? (result['message'] ?? 'New code sent to ${widget.email}')
+            ? (widget.isPasswordReset
+                ? 'Verification code resent to your email.'
+                : (result['message'] ?? 'New code sent to ${widget.email}'))
             : (result['message'] ?? 'Failed to resend OTP. Try again.')),
         backgroundColor:
             result['success'] == true ? AppColors.success : AppColors.danger,
@@ -317,7 +363,7 @@ class _OtpScreenState extends State<OtpScreen> {
               ),
               const SizedBox(height: 32),
 
-              // Resend Button
+              // Resend Timer / Link
               _isResending
                   ? const Center(
                       child: SizedBox(
@@ -329,15 +375,40 @@ class _OtpScreenState extends State<OtpScreen> {
                         ),
                       ),
                     )
-                  : TextButton(
-                      onPressed: _resendOtp,
-                      child: const Text(
-                        'Resend Code',
-                        style: TextStyle(
-                          color: AppColors.primary,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 14,
-                        ),
+                  : Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 8.0),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          const Text(
+                            "Didn't get a code? ",
+                            style: TextStyle(
+                              color: AppColors.textSecondaryLight,
+                              fontSize: 14,
+                            ),
+                          ),
+                          _secondsRemaining > 0
+                              ? Text(
+                                  "Resend in ${_secondsRemaining}s",
+                                  style: const TextStyle(
+                                    color: AppColors.textSecondaryLight,
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 14,
+                                  ),
+                                )
+                              : GestureDetector(
+                                  onTap: _resendOtp,
+                                  child: const Text(
+                                    "Resend",
+                                    style: TextStyle(
+                                      color: AppColors.primary,
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 14,
+                                      decoration: TextDecoration.underline,
+                                    ),
+                                  ),
+                                ),
+                        ],
                       ),
                     ),
             ],

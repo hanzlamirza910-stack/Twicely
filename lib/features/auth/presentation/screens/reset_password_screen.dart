@@ -5,13 +5,11 @@ import '../../../../core/widgets/custom_button.dart';
 import '../../../../core/services/api_service.dart';
 
 class ResetPasswordScreen extends StatefulWidget {
-  final String? resetKey;
-  final String? login;
+  final String? resetToken;
 
   const ResetPasswordScreen({
     super.key,
-    this.resetKey,
-    this.login,
+    this.resetToken,
   });
 
   @override
@@ -49,14 +47,12 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
         _isLoading = true;
       });
 
-      final key = widget.resetKey ?? '';
-      final login = widget.login ?? '';
+      final resetToken = widget.resetToken ?? '';
 
-      debugPrint('[ResetPassword] Calling reset-password: key=$key, login=$login');
+      debugPrint('[ResetPassword] Calling reset-password: token=$resetToken');
 
       final result = await ApiService.resetPassword(
-        key: key,
-        login: login,
+        resetToken: resetToken,
         password: _passwordController.text,
         confirmPassword: _confirmPasswordController.text,
       );

@@ -3,8 +3,10 @@ import '../../../../core/constants/app_colors.dart';
 import '../../../../core/utils/validators.dart';
 import '../../../../core/widgets/custom_button.dart';
 import '../../../../core/services/api_service.dart';
-import 'singpass_login_screen.dart';
+import '../../../home/presentation/screens/home_screen.dart';
+import '../../../home/presentation/screens/merchant_dashboard.dart';
 import 'otp_screen.dart';
+import 'singpass_webview_screen.dart';
 
 class SignupScreen extends StatefulWidget {
   const SignupScreen({super.key});
@@ -30,6 +32,7 @@ class _SignupScreenState extends State<SignupScreen> {
   bool _obscurePassword = true;
   bool _obscureConfirmPassword = true;
   bool _isMerchantSignup = false; // toggle between Buyer and Merchant signup
+  bool _isSingPassLoading = false;
 
   @override
   void dispose() {
@@ -139,12 +142,107 @@ class _SignupScreenState extends State<SignupScreen> {
     }
   }
 
-  void _handleSingPassSignup() {
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (context) => const SingPassLoginScreen(),
-      ),
-    );
+  void _handleSingPassSignup() async {
+    if (_isSingPassLoading || _isLoading) return;
+    setState(() {
+      _isSingPassLoading = true;
+    });
+
+    try {
+      // 1. Initialize Singpass flow via API (for registration)
+      final initRes = await ApiService.initSingpass(userType: 'user', mode: 'register');
+      if (!mounted) return;
+
+      if (initRes['success'] != true) {
+        setState(() {
+          _isSingPassLoading = false;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(initRes['message'] ?? 'Singpass initialization failed'),
+            backgroundColor: AppColors.danger,
+          ),
+        );
+        return;
+      }
+
+      final authUrl = initRes['authorization_url'] as String;
+
+      // 2. Open WebView to allow user to register on official Singpass
+      final result = await Navigator.of(context).push<Map<String, dynamic>>(
+        MaterialPageRoute(
+          builder: (context) => SingpassWebViewScreen(authorizationUrl: authUrl),
+        ),
+      );
+
+      if (!mounted) return;
+
+      if (result == null || result['code'] == null || result['state'] == null) {
+        setState(() {
+          _isSingPassLoading = false;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Singpass registration cancelled'),
+            backgroundColor: Colors.orange,
+          ),
+        );
+        return;
+      }
+
+      // 3. Callback to server to complete registration & get session
+      final callbackRes = await ApiService.callbackSingpass(
+        code: result['code'] as String,
+        state: result['state'] as String,
+      );
+
+      if (!mounted) return;
+      setState(() {
+        _isSingPassLoading = false;
+      });
+
+      if (callbackRes['success'] == true) {
+        final user = callbackRes['user'] as Map<String, dynamic>? ?? {};
+        final isUserMerchant = user['is_merchant'] as bool? ?? false;
+        final goToMerchant = _isMerchantSignup && isUserMerchant;
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Registered & Logged in successfully via Singpass'),
+            backgroundColor: AppColors.success,
+          ),
+        );
+
+        // Route to Home or Merchant Dashboard
+        Navigator.of(context).pushAndRemoveUntil(
+          MaterialPageRoute(
+            builder: (context) => goToMerchant
+                ? const MerchantDashboard()
+                : const HomeScreen(),
+          ),
+          (route) => false,
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(callbackRes['message'] ?? 'Singpass registration failed'),
+            backgroundColor: AppColors.danger,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isSingPassLoading = false;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('An error occurred during Singpass registration: $e'),
+            backgroundColor: AppColors.danger,
+          ),
+        );
+      }
+    }
   }
 
   @override
@@ -377,43 +475,43 @@ class _SignupScreenState extends State<SignupScreen> {
                 ),
                 const SizedBox(height: 24),
 
-                // ── Sign Up with SingPass ──
                 GestureDetector(
-                  onTap: _handleSingPassSignup,
+                  onTap: _isSingPassLoading ? null : _handleSingPassSignup,
                   child: Container(
-                    height: 54,
+                    height: 50,
                     decoration: BoxDecoration(
                       color: Colors.white,
-                      border: Border.all(color: AppColors.primary.withValues(alpha: 0.25), width: 1.2),
+                      border: Border.all(color: const Color(0xFFE5E7EB), width: 1.2),
                       borderRadius: BorderRadius.circular(30),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.04),
+                          blurRadius: 4,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
                     ),
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.center,
+                      crossAxisAlignment: CrossAxisAlignment.center,
                       children: [
-                        Container(
-                          width: 20,
-                          height: 20,
-                          decoration: const BoxDecoration(
-                            color: Color(0xFFE31A22),
-                            shape: BoxShape.circle,
-                          ),
-                          alignment: Alignment.center,
-                          child: const Text(
-                            'sp',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 9,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
+                        Image.asset(
+                          'assets/images/singpass_logo.png',
+                          height: 18,
+                          fit: BoxFit.contain,
                         ),
-                        const SizedBox(width: 10),
-                        const Text(
-                          'Sign Up with SingPass',
-                          style: TextStyle(
-                            fontSize: 15,
-                            fontWeight: FontWeight.bold,
-                            color: AppColors.primary,
+                        const SizedBox(width: 12),
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 4.0),
+                          child: Text(
+                            _isSingPassLoading
+                                ? 'Connecting to SingPass...'
+                                : 'Sign Up with SingPass',
+                            style: const TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.bold,
+                              color: Color(0xFF1F2937),
+                            ),
                           ),
                         ),
                       ],

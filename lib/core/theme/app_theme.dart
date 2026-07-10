@@ -33,6 +33,7 @@ class AppTheme {
           color: AppColors.textPrimaryLight,
           fontSize: 20,
           fontWeight: FontWeight.bold,
+          fontFamily: 'Recoleta Alt',
         ),
       ),
       inputDecorationTheme: InputDecorationTheme(
@@ -55,8 +56,8 @@ class AppTheme {
           borderRadius: BorderRadius.circular(12),
           borderSide: const BorderSide(color: AppColors.danger),
         ),
-        labelStyle: const TextStyle(color: AppColors.textSecondaryLight),
-        hintStyle: const TextStyle(color: AppColors.textMuted),
+        labelStyle: const TextStyle(color: AppColors.textSecondaryLight, fontFamily: 'Recoleta Alt'),
+        hintStyle: const TextStyle(color: AppColors.textMuted, fontFamily: 'Recoleta Alt'),
       ),
       elevatedButtonTheme: ElevatedButtonThemeData(
         style: ElevatedButton.styleFrom(
@@ -69,15 +70,16 @@ class AppTheme {
           textStyle: const TextStyle(
             fontSize: 16,
             fontWeight: FontWeight.bold,
+            fontFamily: 'Recoleta Alt',
           ),
         ),
       ),
       textTheme: const TextTheme(
-        headlineLarge: TextStyle(color: AppColors.textPrimaryLight, fontSize: 32, fontWeight: FontWeight.bold),
-        headlineMedium: TextStyle(color: AppColors.textPrimaryLight, fontSize: 24, fontWeight: FontWeight.bold),
-        titleLarge: TextStyle(color: AppColors.textPrimaryLight, fontSize: 18, fontWeight: FontWeight.w600),
-        bodyLarge: TextStyle(color: AppColors.textPrimaryLight, fontSize: 16),
-        bodyMedium: TextStyle(color: AppColors.textSecondaryLight, fontSize: 14),
+        headlineLarge: TextStyle(color: AppColors.textPrimaryLight, fontSize: 32, fontWeight: FontWeight.bold, fontFamily: 'Recoleta Alt'),
+        headlineMedium: TextStyle(color: AppColors.textPrimaryLight, fontSize: 24, fontWeight: FontWeight.bold, fontFamily: 'Recoleta Alt'),
+        titleLarge: TextStyle(color: AppColors.textPrimaryLight, fontSize: 18, fontWeight: FontWeight.w600, fontFamily: 'Recoleta Alt'),
+        bodyLarge: TextStyle(color: AppColors.textPrimaryLight, fontSize: 16, fontFamily: 'Recoleta Alt'),
+        bodyMedium: TextStyle(color: AppColors.textSecondaryLight, fontSize: 14, fontFamily: 'Recoleta Alt'),
       ),
     );
   }
@@ -113,6 +115,7 @@ class AppTheme {
           color: AppColors.textPrimaryDark,
           fontSize: 20,
           fontWeight: FontWeight.bold,
+          fontFamily: 'Recoleta Alt',
         ),
       ),
       inputDecorationTheme: InputDecorationTheme(
@@ -135,8 +138,8 @@ class AppTheme {
           borderRadius: BorderRadius.circular(12),
           borderSide: const BorderSide(color: AppColors.danger),
         ),
-        labelStyle: const TextStyle(color: AppColors.textSecondaryDark),
-        hintStyle: const TextStyle(color: AppColors.textMuted),
+        labelStyle: const TextStyle(color: AppColors.textSecondaryDark, fontFamily: 'Recoleta Alt'),
+        hintStyle: const TextStyle(color: AppColors.textMuted, fontFamily: 'Recoleta Alt'),
       ),
       elevatedButtonTheme: ElevatedButtonThemeData(
         style: ElevatedButton.styleFrom(
@@ -149,15 +152,16 @@ class AppTheme {
           textStyle: const TextStyle(
             fontSize: 16,
             fontWeight: FontWeight.bold,
+            fontFamily: 'Recoleta Alt',
           ),
         ),
       ),
       textTheme: const TextTheme(
-        headlineLarge: TextStyle(color: AppColors.textPrimaryDark, fontSize: 32, fontWeight: FontWeight.bold),
-        headlineMedium: TextStyle(color: AppColors.textPrimaryDark, fontSize: 24, fontWeight: FontWeight.bold),
-        titleLarge: TextStyle(color: AppColors.textPrimaryDark, fontSize: 18, fontWeight: FontWeight.w600),
-        bodyLarge: TextStyle(color: AppColors.textPrimaryDark, fontSize: 16),
-        bodyMedium: TextStyle(color: AppColors.textSecondaryDark, fontSize: 14),
+        headlineLarge: TextStyle(color: AppColors.textPrimaryDark, fontSize: 32, fontWeight: FontWeight.bold, fontFamily: 'Recoleta Alt'),
+        headlineMedium: TextStyle(color: AppColors.textPrimaryDark, fontSize: 24, fontWeight: FontWeight.bold, fontFamily: 'Recoleta Alt'),
+        titleLarge: TextStyle(color: AppColors.textPrimaryDark, fontSize: 18, fontWeight: FontWeight.w600, fontFamily: 'Recoleta Alt'),
+        bodyLarge: TextStyle(color: AppColors.textPrimaryDark, fontSize: 16, fontFamily: 'Recoleta Alt'),
+        bodyMedium: TextStyle(color: AppColors.textSecondaryDark, fontSize: 14, fontFamily: 'Recoleta Alt'),
       ),
     );
   }

@@ -74,4 +74,17 @@ flutter:
           weight: 500
         - asset: assets/fonts/Recoleta-Alt-SemiBold.otf
           weight: 600
+        - asset: assets/fonts/Recoleta-Alt-SemiBold.otf
+          weight: 700
+        - asset: assets/fonts/Recoleta-Alt-SemiBold.otf
+          weight: 800
+
+    - family: Recoleta
+      fonts:
+        - asset: assets/fonts/Recoleta Regular.otf
+          weight: 400
+        - asset: assets/fonts/Recoleta SemiBold.otf
+          weight: 600
+        - asset: assets/fonts/Recoleta SemiBold.otf
+          weight: 700
 

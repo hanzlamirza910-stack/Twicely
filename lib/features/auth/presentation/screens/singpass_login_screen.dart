@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../home/presentation/screens/home_screen.dart';
 import '../../../../core/services/api_service.dart';
+import '../../../../core/utils/session_manager.dart';
 import 'singpass_webview_screen.dart';
 
 class SingPassLoginScreen extends StatefulWidget {
@@ -125,6 +127,71 @@ class _SingPassLoginScreenState extends State<SingPassLoginScreen> {
     }
   }
 
+  void _handleMockSingPassLogin() async {
+    // Security check: Disable mock login in production release builds
+    if (kReleaseMode && !ApiService.baseUrl.contains('staging')) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Manual Singpass ID login is disabled in production.'),
+          backgroundColor: AppColors.danger,
+        ),
+      );
+      return;
+    }
+
+    final nric = _singpassIdController.text.trim();
+
+    if (nric.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please enter Singpass ID (NRIC or FIN)'),
+          backgroundColor: AppColors.danger,
+        ),
+      );
+      return;
+    }
+
+    setState(() {
+      _isLoading = true;
+      _loadingMessage = 'Authenticating Demo Account...';
+    });
+
+    // Simulate network delay
+    await Future.delayed(const Duration(seconds: 2));
+
+    if (!mounted) return;
+    setState(() {
+      _isLoading = false;
+    });
+
+    // Save a valid-looking mock session
+    await SessionManager.saveSession(
+      accessToken: 'mock_singpass_access_token_${DateTime.now().millisecondsSinceEpoch}',
+      refreshToken: 'mock_singpass_refresh_token',
+      user: {
+        'id': 12345,
+        'name': 'Singpass Demo User',
+        'email': '${nric.toLowerCase()}@singpass.demo',
+        'role': 'customer',
+        'nric': nric,
+      },
+    );
+
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Logged in successfully (Demo Mode)'),
+        backgroundColor: AppColors.success,
+      ),
+    );
+
+    // Route to Home
+    Navigator.of(context).pushAndRemoveUntil(
+      MaterialPageRoute(builder: (context) => const HomeScreen()),
+      (route) => false,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -225,31 +292,43 @@ class _SingPassLoginScreenState extends State<SingPassLoginScreen> {
                   ),
                   const SizedBox(height: 40),
 
-                  // Official Singpass App Login CTA Button
-                  ElevatedButton(
-                    onPressed: _handleSingPassLogin,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFFE31A22), // SingPass Red
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 16),
-                      shape: RoundedRectangleBorder(
+                  GestureDetector(
+                    onTap: _handleSingPassLogin,
+                    child: Container(
+                      height: 50,
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        border: Border.all(color: const Color(0xFFE5E7EB), width: 1.2),
                         borderRadius: BorderRadius.circular(30),
-                      ),
-                      elevation: 1,
-                    ),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: const [
-                        Icon(Icons.phone_iphone_rounded, size: 20),
-                        SizedBox(width: 8),
-                        Text(
-                          'Log in with Singpass App',
-                          style: TextStyle(
-                            fontSize: 15,
-                            fontWeight: FontWeight.bold,
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.04),
+                            blurRadius: 4,
+                            offset: const Offset(0, 2),
                           ),
-                        ),
-                      ],
+                        ],
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        crossAxisAlignment: CrossAxisAlignment.center,
+                        children: [
+                          Image.asset(
+                            'assets/images/singpass_logo.png',
+                            height: 20,
+                            fit: BoxFit.contain,
+                          ),
+                          const SizedBox(width: 12),
+                          const Text(
+                            'Login with SingPass',
+                            style: TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.bold,
+                              color: Color(0xFF1F2937),
+                              height: 1.0,
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                   const SizedBox(height: 24),
@@ -353,7 +432,7 @@ class _SingPassLoginScreenState extends State<SingPassLoginScreen> {
                     ),
                     const SizedBox(height: 24),
                     ElevatedButton(
-                      onPressed: _handleSingPassLogin,
+                      onPressed: _handleMockSingPassLogin,
                       style: ElevatedButton.styleFrom(
                         backgroundColor: const Color(0xFFE31A22),
                         foregroundColor: Colors.white,

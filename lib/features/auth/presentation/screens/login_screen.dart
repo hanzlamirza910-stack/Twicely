@@ -7,7 +7,7 @@ import '../../../home/presentation/screens/merchant_dashboard.dart';
 import 'signup_screen.dart';
 import 'forgot_password_screen.dart';
 import '../../../../core/services/api_service.dart';
-import 'singpass_login_screen.dart';
+import 'singpass_webview_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -23,6 +23,7 @@ class _LoginScreenState extends State<LoginScreen> {
   bool _isLoading = false;
   bool _obscurePassword = true;
   bool _isMerchant = false;
+  bool _isSingPassLoading = false;
 
   @override
   void dispose() {
@@ -92,12 +93,107 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
-  void _handleSingPassLogin() {
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (context) => const SingPassLoginScreen(),
-      ),
-    );
+  void _handleSingPassLogin() async {
+    if (_isSingPassLoading || _isLoading) return;
+    setState(() {
+      _isSingPassLoading = true;
+    });
+
+    try {
+      // 1. Initialize Singpass flow via API
+      final initRes = await ApiService.initSingpass(userType: 'user', mode: 'login');
+      if (!mounted) return;
+
+      if (initRes['success'] != true) {
+        setState(() {
+          _isSingPassLoading = false;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(initRes['message'] ?? 'Singpass initialization failed'),
+            backgroundColor: AppColors.danger,
+          ),
+        );
+        return;
+      }
+
+      final authUrl = initRes['authorization_url'] as String;
+
+      // 2. Open WebView to allow user to log in on official Singpass
+      final result = await Navigator.of(context).push<Map<String, dynamic>>(
+        MaterialPageRoute(
+          builder: (context) => SingpassWebViewScreen(authorizationUrl: authUrl),
+        ),
+      );
+
+      if (!mounted) return;
+
+      if (result == null || result['code'] == null || result['state'] == null) {
+        setState(() {
+          _isSingPassLoading = false;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Singpass authentication cancelled'),
+            backgroundColor: Colors.orange,
+          ),
+        );
+        return;
+      }
+
+      // 3. Callback to server to get JWT session
+      final callbackRes = await ApiService.callbackSingpass(
+        code: result['code'] as String,
+        state: result['state'] as String,
+      );
+
+      if (!mounted) return;
+      setState(() {
+        _isSingPassLoading = false;
+      });
+
+      if (callbackRes['success'] == true) {
+        final user = callbackRes['user'] as Map<String, dynamic>? ?? {};
+        final isUserMerchant = user['is_merchant'] as bool? ?? false;
+        final goToMerchant = _isMerchant && isUserMerchant;
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Authenticated successfully via Singpass'),
+            backgroundColor: AppColors.success,
+          ),
+        );
+
+        // Route to Home or Merchant Dashboard
+        Navigator.of(context).pushAndRemoveUntil(
+          MaterialPageRoute(
+            builder: (context) => goToMerchant
+                ? const MerchantDashboard()
+                : const HomeScreen(),
+          ),
+          (route) => false,
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(callbackRes['message'] ?? 'Singpass login failed'),
+            backgroundColor: AppColors.danger,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isSingPassLoading = false;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('An error occurred during Singpass login: $e'),
+            backgroundColor: AppColors.danger,
+          ),
+        );
+      }
+    }
   }
 
   @override
@@ -324,52 +420,50 @@ class _LoginScreenState extends State<LoginScreen> {
                       ),
                       const SizedBox(height: 24),
 
-                      // Sign In with SingPass Button
-                      OutlinedButton(
-                        onPressed: _handleSingPassLogin,
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: AppColors.primary,
-                          side: const BorderSide(color: AppColors.primary, width: 1.2),
-                          backgroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(vertical: 16),
-                          shape: RoundedRectangleBorder(
+                      GestureDetector(
+                        onTap: _isSingPassLoading ? null : _handleSingPassLogin,
+                        child: Container(
+                          height: 50,
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            border: Border.all(color: const Color(0xFFE5E7EB), width: 1.2),
                             borderRadius: BorderRadius.circular(30),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withValues(alpha: 0.04),
+                                blurRadius: 4,
+                                offset: const Offset(0, 2),
+                              ),
+                            ],
                           ),
-                        ),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            // Red SingPass identity logo circle
-                            Container(
-                              width: 18,
-                              height: 18,
-                              decoration: const BoxDecoration(
-                                color: Color(0xFFE31A22), // SingPass red
-                                shape: BoxShape.circle,
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            crossAxisAlignment: CrossAxisAlignment.center,
+                            children: [
+                              Image.asset(
+                                'assets/images/singpass_logo.png',
+                                height: 18,
+                                fit: BoxFit.contain,
                               ),
-                              alignment: Alignment.center,
-                              child: const Text(
-                                'sp',
-                                style: TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 9,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: 10),
-                            const Text(
-                              'Sign In with SingPass',
-                              style: TextStyle(
-                                  fontSize: 15,
-                                  fontWeight: FontWeight.bold,
-                                  color: AppColors.primary,
+                              const SizedBox(width: 12),
+                              Padding(
+                                padding: const EdgeInsets.only(bottom: 4.0),
+                                child: Text(
+                                  _isSingPassLoading
+                                      ? 'Connecting to SingPass...'
+                                      : 'Login with SingPass',
+                                  style: const TextStyle(
+                                    fontSize: 15,
+                                    fontWeight: FontWeight.bold,
+                                    color: Color(0xFF1F2937),
+                                  ),
                                 ),
                               ),
                             ],
                           ),
                         ),
-                        const SizedBox(height: 36),
+                      ),
+                      const SizedBox(height: 36),
 
                         // Toggle Navigation to Sign Up
                         Row(

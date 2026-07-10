@@ -71,7 +71,7 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
               child: FadeTransition(
                 opacity: _animation,
                 child: FractionallySizedBox(
-                  widthFactor: 0.55,
+                  widthFactor: 0.42,
                   child: Image.asset(
                     'assets/images/logo.webp',
                     fit: BoxFit.contain,

@@ -91,6 +91,134 @@ class ApiService {
     return response;
   }
 
+  // Generic GET Request helper
+  static Future<http.Response> get(
+    String path, {
+    bool authenticated = true,
+  }) async {
+    final url = Uri.parse('$baseUrl$path');
+    final headers = _getHeaders(authenticated: authenticated);
+
+    debugPrint('\n[API Request] ========================================');
+    debugPrint('METHOD: GET');
+    debugPrint('URL: $url');
+    debugPrint('Headers: $headers');
+    debugPrint('======================================================');
+
+    http.Response response;
+    try {
+      response = await http.get(url, headers: headers);
+      debugPrint('\n[API Response] =======================================');
+      debugPrint('URL: $url');
+      debugPrint('Status Code: ${response.statusCode}');
+      debugPrint('Headers: ${response.headers}');
+      debugPrint('Body: ${response.body}');
+      debugPrint('======================================================\n');
+    } catch (e) {
+      debugPrint('\n[API Error] ==========================================');
+      debugPrint('URL: $url');
+      debugPrint('Exception: $e');
+      debugPrint('======================================================\n');
+      rethrow;
+    }
+
+    if (response.statusCode == 401 && authenticated) {
+      try {
+        final decoded = jsonDecode(response.body);
+        final code = decoded['code'];
+        if (code == 'expired_token') {
+          final refreshSuccess = await _refreshTokens();
+          if (refreshSuccess) {
+            final newHeaders = _getHeaders(authenticated: true);
+            debugPrint('\n[API Retry Request] ==================================');
+            debugPrint('METHOD: GET');
+            debugPrint('URL: $url');
+            debugPrint('Headers: $newHeaders');
+            debugPrint('======================================================');
+            response = await http.get(url, headers: newHeaders);
+            debugPrint('\n[API Retry Response] =================================');
+            debugPrint('URL: $url');
+            debugPrint('Status Code: ${response.statusCode}');
+            debugPrint('Body: ${response.body}');
+            debugPrint('======================================================\n');
+          } else {
+            _handleForcedLogout();
+          }
+        } else if (code == 'invalid_token' || code == 'invalid_refresh_token') {
+          _handleForcedLogout();
+        }
+      } catch (_) {
+        _handleForcedLogout();
+      }
+    }
+
+    return response;
+  }
+
+  // Generic DELETE Request helper
+  static Future<http.Response> delete(
+    String path, {
+    bool authenticated = true,
+  }) async {
+    final url = Uri.parse('$baseUrl$path');
+    final headers = _getHeaders(authenticated: authenticated);
+
+    debugPrint('\n[API Request] ========================================');
+    debugPrint('METHOD: DELETE');
+    debugPrint('URL: $url');
+    debugPrint('Headers: $headers');
+    debugPrint('======================================================');
+
+    http.Response response;
+    try {
+      response = await http.delete(url, headers: headers);
+      debugPrint('\n[API Response] =======================================');
+      debugPrint('URL: $url');
+      debugPrint('Status Code: ${response.statusCode}');
+      debugPrint('Headers: ${response.headers}');
+      debugPrint('Body: ${response.body}');
+      debugPrint('======================================================\n');
+    } catch (e) {
+      debugPrint('\n[API Error] ==========================================');
+      debugPrint('URL: $url');
+      debugPrint('Exception: $e');
+      debugPrint('======================================================\n');
+      rethrow;
+    }
+
+    if (response.statusCode == 401 && authenticated) {
+      try {
+        final decoded = jsonDecode(response.body);
+        final code = decoded['code'];
+        if (code == 'expired_token') {
+          final refreshSuccess = await _refreshTokens();
+          if (refreshSuccess) {
+            final newHeaders = _getHeaders(authenticated: true);
+            debugPrint('\n[API Retry Request] ==================================');
+            debugPrint('METHOD: DELETE');
+            debugPrint('URL: $url');
+            debugPrint('Headers: $newHeaders');
+            debugPrint('======================================================');
+            response = await http.delete(url, headers: newHeaders);
+            debugPrint('\n[API Retry Response] =================================');
+            debugPrint('URL: $url');
+            debugPrint('Status Code: ${response.statusCode}');
+            debugPrint('Body: ${response.body}');
+            debugPrint('======================================================\n');
+          } else {
+            _handleForcedLogout();
+          }
+        } else if (code == 'invalid_token' || code == 'invalid_refresh_token') {
+          _handleForcedLogout();
+        }
+      } catch (_) {
+        _handleForcedLogout();
+      }
+    }
+
+    return response;
+  }
+
   // Token refresh logic
   static Future<bool> _refreshTokens() async {
     final refreshToken = SessionManager.refreshToken;
@@ -151,6 +279,65 @@ class ApiService {
     return defaultMsg;
   }
 
+  static Map<String, dynamic> _safeDecode(http.Response response, String defaultErrorMsg) {
+    final bodyClean = response.body.trim();
+    
+    // Check if there is a WordPress database error embedded
+    if (bodyClean.contains('wpdberror')) {
+      final reg = RegExp(r'WordPress database error:<\/strong>\s*\[(.*?)\]');
+      final match = reg.firstMatch(bodyClean);
+      String dbErrorMsg = 'Server Database Error: The backend database encountered an execution issue.';
+      if (match != null && match.groupCount >= 1) {
+        dbErrorMsg = 'Database Error: ${match.group(1)!.replaceAll('&#039;', "'") }';
+      }
+      
+      // Let's check if the JSON part exists after the database error block
+      final jsonIndex = bodyClean.indexOf('{"success":');
+      if (jsonIndex != -1) {
+        try {
+          final jsonPart = bodyClean.substring(jsonIndex);
+          final decoded = jsonDecode(jsonPart);
+          if (decoded is Map<String, dynamic>) {
+            // Include database error message in metadata but return decoded body
+            decoded['db_error'] = dbErrorMsg;
+            return decoded;
+          }
+        } catch (_) {}
+      }
+      
+      return {
+        'success': false,
+        'code': 'database_error',
+        'message': dbErrorMsg,
+      };
+    }
+
+    try {
+      final decoded = jsonDecode(bodyClean);
+      if (decoded is Map<String, dynamic>) {
+        return decoded;
+      }
+      return {
+        'success': false,
+        'code': 'invalid_response',
+        'message': defaultErrorMsg,
+      };
+    } catch (e) {
+      debugPrint('[API Error] JSON Decode failed: $e. Body was: ${response.body}');
+      String msg = defaultErrorMsg;
+      if (bodyClean.startsWith('<') || bodyClean.contains('<!DOCTYPE html>') || bodyClean.contains('</html>')) {
+        msg = 'Server Error (${response.statusCode}): The backend returned an invalid response page. Please check server logs.';
+      } else {
+        msg = '$defaultErrorMsg ($e)';
+      }
+      return {
+        'success': false,
+        'code': 'format_exception',
+        'message': msg,
+      };
+    }
+  }
+
   // --- API Authentication Endpoints ---
 
   // Login
@@ -160,8 +347,8 @@ class ApiService {
       'password': password,
     });
 
-    final decoded = jsonDecode(response.body);
-    if (response.statusCode == 200 && decoded['success'] == true) {
+    final decoded = _safeDecode(response, 'Login failed. Please try again.');
+    if (response.statusCode >= 200 && response.statusCode < 300 && decoded['success'] == true) {
       final data = decoded['data'];
       final user = data['user'] as Map<String, dynamic>;
       await SessionManager.saveSession(
@@ -199,8 +386,8 @@ class ApiService {
       'password': password,
     });
 
-    final decoded = jsonDecode(response.body);
-    if (response.statusCode == 200 && decoded['success'] == true) {
+    final decoded = _safeDecode(response, 'Registration failed.');
+    if (response.statusCode >= 200 && response.statusCode < 300 && decoded['success'] == true) {
       final data = decoded['data'];
       final user = data['user'] as Map<String, dynamic>;
       await SessionManager.saveSession(
@@ -213,7 +400,7 @@ class ApiService {
       return {
         'success': false,
         'code': decoded['code'] ?? 'error',
-        'message': _getMessage(decoded, 'Registration failed.'),
+        'message': decoded['db_error'] ?? _getMessage(decoded, 'Registration failed.'),
         'data': decoded['data'],
       };
     }
@@ -248,8 +435,8 @@ class ApiService {
       'merchant_onboarding_type': 'biz_plus', // default
     });
 
-    final decoded = jsonDecode(response.body);
-    if (response.statusCode == 200 && decoded['success'] == true) {
+    final decoded = _safeDecode(response, 'Merchant registration failed.');
+    if (response.statusCode >= 200 && response.statusCode < 300 && decoded['success'] == true) {
       final data = decoded['data'];
       final user = data['user'] as Map<String, dynamic>;
       await SessionManager.saveSession(
@@ -262,7 +449,7 @@ class ApiService {
       return {
         'success': false,
         'code': decoded['code'] ?? 'error',
-        'message': _getMessage(decoded, 'Merchant registration failed.'),
+        'message': decoded['db_error'] ?? _getMessage(decoded, 'Merchant registration failed.'),
         'data': decoded['data'],
       };
     }
@@ -274,8 +461,8 @@ class ApiService {
       'email': email,
     });
 
-    final decoded = jsonDecode(response.body);
-    if (response.statusCode == 200 && decoded['success'] == true) {
+    final decoded = _safeDecode(response, 'Failed to send reset link.');
+    if (response.statusCode >= 200 && response.statusCode < 300 && decoded['success'] == true) {
       return {'success': true, 'message': _getMessage(decoded, 'Reset link sent.')};
     } else {
       return {
@@ -286,22 +473,47 @@ class ApiService {
     }
   }
 
+  // Verify Reset OTP
+  static Future<Map<String, dynamic>> verifyResetOtp({
+    required String email,
+    required String otpCode,
+  }) async {
+    final response = await post('/auth/verify-reset-otp', {
+      'email': email,
+      'otp_code': otpCode,
+    });
+
+    final decoded = _safeDecode(response, 'OTP verification failed.');
+    if (response.statusCode >= 200 && response.statusCode < 300 && decoded['success'] == true) {
+      final data = decoded['data'] as Map<String, dynamic>;
+      return {
+        'success': true,
+        'message': _getMessage(decoded, 'OTP verified successfully.'),
+        'reset_token': data['reset_token'] as String,
+      };
+    } else {
+      return {
+        'success': false,
+        'code': decoded['code'] ?? 'error',
+        'message': _getMessage(decoded, 'OTP verification failed.'),
+      };
+    }
+  }
+
   // Reset Password
   static Future<Map<String, dynamic>> resetPassword({
-    required String key,
-    required String login,
+    required String resetToken,
     required String password,
     required String confirmPassword,
   }) async {
     final response = await post('/auth/reset-password', {
-      'key': key,
-      'login': login,
+      'reset_token': resetToken,
       'password': password,
       'confirm_password': confirmPassword,
     });
 
-    final decoded = jsonDecode(response.body);
-    if (response.statusCode == 200 && decoded['success'] == true) {
+    final decoded = _safeDecode(response, 'Failed to reset password.');
+    if (response.statusCode >= 200 && response.statusCode < 300 && decoded['success'] == true) {
       final data = decoded['data'];
       final user = data['user'] as Map<String, dynamic>;
       await SessionManager.saveSession(
@@ -333,8 +545,8 @@ class ApiService {
       'purpose': purpose,
     });
 
-    final decoded = jsonDecode(response.body);
-    if (response.statusCode == 200 && decoded['success'] == true) {
+    final decoded = _safeDecode(response, 'Failed to send OTP.');
+    if (response.statusCode >= 200 && response.statusCode < 300 && decoded['success'] == true) {
       return {'success': true, 'message': _getMessage(decoded, 'OTP sent successfully.')};
     } else {
       return {
@@ -359,13 +571,12 @@ class ApiService {
       'purpose': purpose,
     });
 
-    final decoded = jsonDecode(response.body);
-    if (response.statusCode == 200 && decoded['success'] == true) {
+    final decoded = _safeDecode(response, 'OTP verification failed.');
+    if (response.statusCode >= 200 && response.statusCode < 300 && decoded['success'] == true) {
       final data = decoded['data'] as Map<String, dynamic>?;
       return {
         'success': true,
         'message': _getMessage(decoded, 'OTP verified successfully.'),
-        // For password_reset: backend may return reset_key + login for use in reset-password call
         if (data != null) 'reset_key': data['reset_key'],
         if (data != null) 'reset_login': data['login'] ?? data['reset_login'],
         if (data != null) 'data': data,
@@ -391,8 +602,8 @@ class ApiService {
       'mode': mode,
     });
 
-    final decoded = jsonDecode(response.body);
-    if (response.statusCode == 200 && decoded['success'] == true) {
+    final decoded = _safeDecode(response, 'Failed to initialize Singpass login.');
+    if (response.statusCode >= 200 && response.statusCode < 300 && decoded['success'] == true) {
       return {
         'success': true,
         'authorization_url': decoded['data']['authorization_url'] as String,
@@ -401,7 +612,7 @@ class ApiService {
       return {
         'success': false,
         'code': decoded['code'] ?? 'error',
-        'message': _getMessage(decoded, 'Failed to initialize Singpass login.'),
+        'message': decoded['message'] ?? _getMessage(decoded, 'Failed to initialize Singpass login.'),
       };
     }
   }
@@ -413,8 +624,8 @@ class ApiService {
   }) async {
     final response = await post('/auth/singpass/callback?code=$code&state=$state', {});
 
-    final decoded = jsonDecode(response.body);
-    if (response.statusCode == 200 && decoded['success'] == true) {
+    final decoded = _safeDecode(response, 'Singpass login failed.');
+    if (response.statusCode >= 200 && response.statusCode < 300 && decoded['success'] == true) {
       final data = decoded['data'];
       final user = data['user'] as Map<String, dynamic>;
       await SessionManager.saveSession(
@@ -427,8 +638,38 @@ class ApiService {
       return {
         'success': false,
         'code': decoded['code'] ?? 'error',
-        'message': _getMessage(decoded, 'Singpass login failed.'),
+        'message': decoded['message'] ?? _getMessage(decoded, 'Singpass login failed.'),
       };
+    }
+  }
+
+  // Fetch all active sessions for the authenticated user
+  static Future<Map<String, dynamic>> getSessions() async {
+    try {
+      final response = await get('/users/me/sessions', authenticated: true);
+      return _safeDecode(response, 'Failed to fetch sessions.');
+    } catch (e) {
+      return {'success': false, 'message': 'Failed to fetch sessions: $e'};
+    }
+  }
+
+  // Revoke a single session by its token ID
+  static Future<Map<String, dynamic>> revokeSession(String tokenId) async {
+    try {
+      final response = await delete('/users/me/sessions/$tokenId', authenticated: true);
+      return _safeDecode(response, 'Failed to revoke session.');
+    } catch (e) {
+      return {'success': false, 'message': 'Failed to revoke session: $e'};
+    }
+  }
+
+  // Revoke all sessions (logout everywhere)
+  static Future<Map<String, dynamic>> revokeAllSessions() async {
+    try {
+      final response = await delete('/users/me/sessions', authenticated: true);
+      return _safeDecode(response, 'Failed to revoke all sessions.');
+    } catch (e) {
+      return {'success': false, 'message': 'Failed to revoke all sessions: $e'};
     }
   }
 }

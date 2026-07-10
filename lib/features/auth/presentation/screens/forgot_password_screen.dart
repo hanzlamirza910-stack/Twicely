@@ -38,20 +38,8 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
       if (!mounted) return;
 
       if (result['success'] == true) {
-        // Now send OTP for password_reset purpose
-        debugPrint('[ForgotPassword] Sending OTP for password_reset to: $email');
-        final otpResult = await ApiService.sendOtp(
-          type: 'email',
-          email: email,
-          purpose: 'password_reset',
-        );
-        debugPrint('[ForgotPassword] OTP send response: $otpResult');
-
-        if (!mounted) return;
         setState(() => _isLoading = false);
 
-        // Navigate to OTP screen regardless of sendOtp result
-        // (forgotPassword already sent an email; OTP is the app-side verification)
         Navigator.of(context).push(
           MaterialPageRoute(
             builder: (context) => OtpScreen(
@@ -60,16 +48,6 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
             ),
           ),
         );
-
-        if (otpResult['success'] != true) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(otpResult['message'] ??
-                  'Please check your email for the verification code.'),
-              backgroundColor: AppColors.warning,
-            ),
-          );
-        }
       } else {
         setState(() => _isLoading = false);
         ScaffoldMessenger.of(context).showSnackBar(
