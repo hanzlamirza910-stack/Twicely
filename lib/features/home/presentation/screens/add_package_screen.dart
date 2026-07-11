@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../../../core/constants/app_colors.dart';
+import '../../../../core/services/api_service.dart';
 
 class AddPackageScreen extends StatefulWidget {
   final Function(Map<String, dynamic>)? onPackageAdded;
@@ -34,9 +35,227 @@ class _AddPackageScreenState extends State<AddPackageScreen> {
   final TextEditingController _remainingDaysController = TextEditingController(text: '180');
   DateTime _expiryDate = DateTime.now().add(const Duration(days: 365));
 
-  // Options Lists
-  final List<String> _merchants = ['Raiyu', 'Spa Haven', 'Yoga Zen Collective', 'Active Fitness Center'];
-  final List<String> _categories = ['Wellness', 'Dining', 'Lifestyle', 'Fitness', 'Classes'];
+  // Dynamic Data Loading State
+  List<Map<String, dynamic>> _apiMerchants = [];
+  List<Map<String, dynamic>> _apiCategories = [];
+  List<Map<String, dynamic>> _primaryCategories = [];
+  List<Map<String, dynamic>> _secondaryCategories = [];
+  bool _isLoadingData = false;
+
+  static const Map<int, String> _merchantLogoOverrides = {
+    3: 'https://staging.twicely.sg/wp-content/uploads/2025/11/sysnvolv-1-150x150.png',
+    13: 'https://staging.twicely.sg/wp-content/uploads/2026/03/cropped-favicon-removebg-preview-150x150.webp',
+    14: 'https://staging.twicely.sg/wp-content/uploads/2026/03/images-150x150.jpeg',
+  };
+
+  static const List<Map<String, String>> _primaryFallback = [
+    {'name': 'For Her', 'slug': 'for-her'},
+    {'name': 'For Him', 'slug': 'for-him'},
+    {'name': 'General', 'slug': 'general'},
+    {'name': 'Biz+', 'slug': 'biz'},
+  ];
+
+  static const List<Map<String, String>> _secondaryFallback = [
+    {'name': 'Yoga & Pilates', 'slug': 'yoga-pilates'},
+    {'name': 'Spa & Massage', 'slug': 'spa-massage'},
+    {'name': 'Beauty & Nails', 'slug': 'beauty-nails'},
+    {'name': 'Gym & Fitness', 'slug': 'gym-fitness'},
+    {'name': 'Lifestyle Classes', 'slug': 'lifestyle-classes'},
+  ];
+
+  final List<String> _fallbackMerchants = ['Synvolv', 'Tagpools', 'test test dfrnt'];
+
+  @override
+  void initState() {
+    super.initState();
+    _loadMerchantsAndCategories();
+  }
+
+  Future<void> _loadMerchantsAndCategories() async {
+    if (!mounted) return;
+    setState(() => _isLoadingData = true);
+    try {
+      final merchantRes = await ApiService.getMerchants();
+      final categoryRes = await ApiService.getPackageCategories();
+
+      if (!mounted) return;
+
+      List<Map<String, dynamic>> loadedMerchants = [];
+      if (merchantRes['success'] == true && merchantRes['data'] != null) {
+        final List<dynamic> list = merchantRes['data'];
+        loadedMerchants = list
+            .map((item) => Map<String, dynamic>.from(item))
+            .where((m) => m['merchant_tier'] != 'biz_plus')
+            .toList();
+      }
+
+      List<Map<String, dynamic>> loadedCategories = [];
+      if (categoryRes['success'] == true && categoryRes['data'] != null) {
+        final List<dynamic> list = categoryRes['data'];
+        loadedCategories = list.map((item) => Map<String, dynamic>.from(item)).toList();
+      }
+
+      setState(() {
+        _apiMerchants = loadedMerchants;
+        _apiCategories = loadedCategories;
+        _isLoadingData = false;
+        
+        // Populate primary/secondary lists based on slugs
+        _primaryCategories = _apiCategories.where((cat) {
+          final slug = cat['slug']?.toString() ?? '';
+          return slug == 'for-her' || slug == 'for-him' || slug == 'general' || slug == 'biz';
+        }).toList();
+
+        _secondaryCategories = _apiCategories.where((cat) {
+          final slug = cat['slug']?.toString() ?? '';
+          return slug == 'yoga-pilates' || slug == 'spa-massage' || slug == 'beauty-nails' || slug == 'gym-fitness' || slug == 'lifestyle-classes';
+        }).toList();
+      });
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isLoadingData = false);
+      }
+    }
+  }
+
+  void _showCustomMerchantDialog() {
+    final controller = TextEditingController();
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text(
+          'Custom Merchant',
+          style: TextStyle(fontFamily: 'Recoleta Alt', fontWeight: FontWeight.bold, color: AppColors.primary),
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'If your merchant is not in our partner list, type their name below to add them.',
+              style: TextStyle(fontSize: 12, color: Colors.black54),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: controller,
+              decoration: InputDecoration(
+                hintText: 'e.g. Active Fitness Center',
+                hintStyle: TextStyle(color: AppColors.primary.withValues(alpha: 0.35)),
+                focusedBorder: const UnderlineInputBorder(borderSide: BorderSide(color: AppColors.primary)),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Cancel', style: TextStyle(color: Colors.black54)),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              final name = controller.text.trim();
+              if (name.isNotEmpty) {
+                setState(() {
+                  final customMerchant = {
+                    'id': -1,
+                    'business_name': name,
+                    'logo_url': '',
+                  };
+                  _apiMerchants.add(customMerchant);
+                  _selectedMerchant = name;
+                });
+              }
+              Navigator.of(context).pop();
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF1F2E4E),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+            ),
+            child: const Text('Add & Select', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMerchantDropdownItem(Map<String, dynamic> merchant) {
+    final name = merchant['business_name']?.toString() ?? merchant['name']?.toString() ?? '';
+    final id = merchant['id'] as int?;
+    
+    String? logoUrl = merchant['logo_url']?.toString();
+    if (logoUrl == null || logoUrl.isEmpty) {
+      if (id != null && _merchantLogoOverrides.containsKey(id)) {
+        logoUrl = _merchantLogoOverrides[id];
+      }
+    }
+
+    final initials = name.isNotEmpty ? name.substring(0, 1).toUpperCase() : '?';
+
+    final colorsHash = name.hashCode.abs();
+    final List<Color> avatarColors = [
+      const Color(0xFF6366F1), // Indigo
+      const Color(0xFF8B5CF6), // Purple
+      const Color(0xFFEC4899), // Pink
+      const Color(0xFF10B981), // Emerald/Teal
+      const Color(0xFFF59E0B), // Amber
+      const Color(0xFF3B82F6), // Blue
+    ];
+    final avatarColor = avatarColors[colorsHash % avatarColors.length];
+
+    return Row(
+      children: [
+        Container(
+          width: 32,
+          height: 32,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: logoUrl == null || logoUrl.isEmpty ? avatarColor : Colors.white,
+            border: Border.all(color: Colors.black.withValues(alpha: 0.05)),
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(16),
+            child: logoUrl != null && logoUrl.isNotEmpty
+                ? Image.network(
+                    logoUrl,
+                    fit: BoxFit.cover,
+                    errorBuilder: (context, error, stackTrace) {
+                      return Center(
+                        child: Text(
+                          initials,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 14,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      );
+                    },
+                  )
+                : Center(
+                    child: Text(
+                      initials,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 14,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+          ),
+        ),
+        const SizedBox(width: 12),
+        Text(
+          name,
+          style: const TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.w600,
+            color: AppColors.primary,
+          ),
+        ),
+      ],
+    );
+  }
 
   @override
   void dispose() {
@@ -96,29 +315,13 @@ class _AddPackageScreenState extends State<AddPackageScreen> {
     );
   }
 
-  void _submitForm() {
+  void _submitForm() async {
     final originalPriceStr = _originalPriceController.text;
     final sellingPriceStr = _sellingPriceController.text;
 
     if (originalPriceStr.isEmpty || sellingPriceStr.isEmpty) {
       _showToast('Please fill out the pricing details');
       return;
-    }
-
-    final newPackage = {
-      'id': DateTime.now().millisecondsSinceEpoch.toString(),
-      'title': _titleController.text,
-      'category': _primaryCategory,
-      'price': double.tryParse(sellingPriceStr)?.toStringAsFixed(2) ?? '0.00',
-      'status': 'PENDING',
-      'badge': 'NEW',
-      'image': _galleryImages.isNotEmpty ? _galleryImages.first : 'assets/images/package_spa.jpg',
-      'isSold': false,
-    };
-
-    // Callback to append it
-    if (widget.onPackageAdded != null) {
-      widget.onPackageAdded!(newPackage);
     }
 
     showDialog(
@@ -129,11 +332,45 @@ class _AddPackageScreenState extends State<AddPackageScreen> {
       ),
     );
 
-    Future.delayed(const Duration(milliseconds: 1200), () {
-      if (!mounted) return;
-      Navigator.of(context).pop(); // pop spinner
+    final payload = {
+      'title': _titleController.text.trim(),
+      'description': _descriptionController.text.trim(),
+      'original_price': double.tryParse(originalPriceStr) ?? 0.0,
+      'resale_price': double.tryParse(sellingPriceStr) ?? 0.0,
+      'price': double.tryParse(sellingPriceStr) ?? 0.0,
+      'sessions_to_sell': int.tryParse(_sessionsToSellController.text) ?? 1,
+      'total_sessions': int.tryParse(_totalSessionsController.text) ?? 1,
+      'validity_days': int.tryParse(_validityDaysController.text) ?? 365,
+      'remaining_days': int.tryParse(_remainingDaysController.text) ?? 180,
+      'expiry_date': _expiryDate.toIso8601String(),
+      'category': _primaryCategory,
+      'secondary_category': _secondaryCategory.isNotEmpty ? _secondaryCategory : null,
+      'merchant_name': _selectedMerchant,
+      'key_points': _keyPoints,
+    };
 
-      // Show success bottom sheet
+    final res = await ApiService.createPackage(payload);
+
+    if (!mounted) return;
+    Navigator.of(context).pop(); // pop spinner
+
+    if (res['success'] == true) {
+      final createdPkg = res['data'] ?? {};
+      final localPkg = {
+        'id': createdPkg['id']?.toString() ?? DateTime.now().millisecondsSinceEpoch.toString(),
+        'title': createdPkg['title'] ?? _titleController.text,
+        'category': _primaryCategory,
+        'price': double.tryParse(sellingPriceStr)?.toStringAsFixed(2) ?? '0.00',
+        'status': 'PENDING',
+        'badge': 'NEW',
+        'image': _galleryImages.isNotEmpty ? _galleryImages.first : 'assets/images/package_spa.jpg',
+        'isSold': false,
+      };
+
+      if (widget.onPackageAdded != null) {
+        widget.onPackageAdded!(localPkg);
+      }
+
       showModalBottomSheet(
         context: context,
         isDismissible: false,
@@ -200,7 +437,9 @@ class _AddPackageScreenState extends State<AddPackageScreen> {
           ),
         ),
       );
-    });
+    } else {
+      _showToast('Failed to submit package: ${res['message']}');
+    }
   }
 
   @override
@@ -235,21 +474,33 @@ class _AddPackageScreenState extends State<AddPackageScreen> {
   }
 
   Widget _buildBody() {
-    return SingleChildScrollView(
-      physics: const BouncingScrollPhysics(),
-      padding: const EdgeInsets.all(20.0),
-      child: Form(
-        key: _formKey,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            _buildStepIndicator(),
-            const SizedBox(height: 24),
-            _buildStepContent(),
-            const SizedBox(height: 20),
-          ],
+    return Column(
+      children: [
+        if (_isLoadingData)
+          const LinearProgressIndicator(
+            minHeight: 2,
+            valueColor: AlwaysStoppedAnimation<Color>(AppColors.primary),
+            backgroundColor: Colors.transparent,
+          ),
+        Expanded(
+          child: SingleChildScrollView(
+            physics: const BouncingScrollPhysics(),
+            padding: const EdgeInsets.all(20.0),
+            child: Form(
+              key: _formKey,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  _buildStepIndicator(),
+                  const SizedBox(height: 24),
+                  _buildStepContent(),
+                  const SizedBox(height: 20),
+                ],
+              ),
+            ),
+          ),
         ),
-      ),
+      ],
     );
   }
 
@@ -325,8 +576,25 @@ class _AddPackageScreenState extends State<AddPackageScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        // Merchant Card
-        _buildSectionHeader('Merchant'),
+        // Merchant Label and "Not in the list"
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            _buildSectionHeader('Select Merchant *'),
+            GestureDetector(
+              onTap: _showCustomMerchantDialog,
+              child: const Text(
+                'Not in the list',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.bold,
+                  color: Color(0xFFFBBD03),
+                  decoration: TextDecoration.underline,
+                ),
+              ),
+            ),
+          ],
+        ),
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 16),
           decoration: BoxDecoration(
@@ -336,9 +604,11 @@ class _AddPackageScreenState extends State<AddPackageScreen> {
           ),
           child: DropdownButtonHideUnderline(
             child: DropdownButtonFormField<String>(
+              isExpanded: true,
+              key: ValueKey(_selectedMerchant),
               initialValue: _selectedMerchant.isEmpty ? null : _selectedMerchant,
               hint: Text(
-                'Select a merchant...',
+                _isLoadingData ? 'Loading merchants...' : 'Select a merchant...',
                 style: TextStyle(color: AppColors.primary.withValues(alpha: 0.4), fontSize: 14),
               ),
               decoration: const InputDecoration(
@@ -349,12 +619,39 @@ class _AddPackageScreenState extends State<AddPackageScreen> {
                 disabledBorder: InputBorder.none,
                 contentPadding: EdgeInsets.zero,
               ),
-              items: _merchants.map((merchant) {
-                return DropdownMenuItem(
-                  value: merchant,
-                  child: Text(merchant, style: const TextStyle(fontSize: 14, color: AppColors.primary)),
-                );
-              }).toList(),
+              items: _apiMerchants.isNotEmpty
+                  ? _apiMerchants.map((merchant) {
+                      final name = merchant['business_name']?.toString() ?? merchant['name']?.toString() ?? '';
+                      return DropdownMenuItem<String>(
+                        value: name,
+                        child: _buildMerchantDropdownItem(merchant),
+                      );
+                    }).toList()
+                  : _fallbackMerchants.map((name) {
+                      return DropdownMenuItem<String>(
+                        value: name,
+                        child: Row(
+                          children: [
+                            Container(
+                              width: 32,
+                              height: 32,
+                              decoration: const BoxDecoration(
+                                shape: BoxShape.circle,
+                                color: Color(0xFF8B5CF6),
+                              ),
+                              child: Center(
+                                child: Text(
+                                  name.substring(0, 1).toUpperCase(),
+                                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Text(name, style: const TextStyle(fontSize: 14, color: AppColors.primary)),
+                          ],
+                        ),
+                      );
+                    }).toList(),
               onChanged: (val) {
                 setState(() => _selectedMerchant = val ?? '');
               },
@@ -576,6 +873,7 @@ class _AddPackageScreenState extends State<AddPackageScreen> {
           ),
           child: DropdownButtonHideUnderline(
             child: DropdownButtonFormField<String>(
+              key: ValueKey(_primaryCategory),
               initialValue: _primaryCategory.isEmpty ? null : _primaryCategory,
               hint: const Text('Primary Category', style: TextStyle(fontSize: 13, color: Colors.black38)),
               decoration: const InputDecoration(
@@ -586,9 +884,19 @@ class _AddPackageScreenState extends State<AddPackageScreen> {
                 disabledBorder: InputBorder.none,
                 contentPadding: EdgeInsets.zero,
               ),
-              items: _categories.map((c) {
-                return DropdownMenuItem(value: c, child: Text(c, style: const TextStyle(fontSize: 13)));
-              }).toList(),
+              items: _primaryCategories.isNotEmpty
+                  ? _primaryCategories.map((c) {
+                      return DropdownMenuItem(
+                        value: c['slug']?.toString(),
+                        child: Text(c['name']?.toString() ?? '', style: const TextStyle(fontSize: 13)),
+                      );
+                    }).toList()
+                  : _primaryFallback.map((c) {
+                      return DropdownMenuItem(
+                        value: c['slug'],
+                        child: Text(c['name']!, style: const TextStyle(fontSize: 13)),
+                      );
+                    }).toList(),
               onChanged: (val) => setState(() => _primaryCategory = val ?? ''),
             ),
           ),
@@ -604,6 +912,7 @@ class _AddPackageScreenState extends State<AddPackageScreen> {
           ),
           child: DropdownButtonHideUnderline(
             child: DropdownButtonFormField<String>(
+              key: ValueKey(_secondaryCategory),
               initialValue: _secondaryCategory.isEmpty ? null : _secondaryCategory,
               hint: const Text('Secondary Category (Optional)', style: TextStyle(fontSize: 13, color: Colors.black38)),
               decoration: const InputDecoration(
@@ -614,9 +923,19 @@ class _AddPackageScreenState extends State<AddPackageScreen> {
                 disabledBorder: InputBorder.none,
                 contentPadding: EdgeInsets.zero,
               ),
-              items: _categories.map((c) {
-                return DropdownMenuItem(value: c, child: Text(c, style: const TextStyle(fontSize: 13)));
-              }).toList(),
+              items: _secondaryCategories.isNotEmpty
+                  ? _secondaryCategories.map((c) {
+                      return DropdownMenuItem(
+                        value: c['slug']?.toString(),
+                        child: Text(c['name']?.toString() ?? '', style: const TextStyle(fontSize: 13)),
+                      );
+                    }).toList()
+                  : _secondaryFallback.map((c) {
+                      return DropdownMenuItem(
+                        value: c['slug'],
+                        child: Text(c['name']!, style: const TextStyle(fontSize: 13)),
+                      );
+                    }).toList(),
               onChanged: (val) => setState(() => _secondaryCategory = val ?? ''),
             ),
           ),

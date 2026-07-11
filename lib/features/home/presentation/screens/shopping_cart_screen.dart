@@ -13,14 +13,31 @@ class ShoppingCartScreen extends StatefulWidget {
 class _ShoppingCartScreenState extends State<ShoppingCartScreen> {
   final CartManager _cartManager = CartManager();
   bool _isRefreshing = false;
-  final TextEditingController _promoController = TextEditingController();
+  bool _isLoading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchCart();
+  }
+
+  Future<void> _fetchCart() async {
+    setState(() {
+      _isLoading = true;
+    });
+    await _cartManager.syncWithBackend();
+    if (mounted) {
+      setState(() {
+        _isLoading = false;
+      });
+    }
+  }
 
   void _handleRefresh() async {
     setState(() {
       _isRefreshing = true;
     });
-    // Simulate refresh delay
-    await Future.delayed(const Duration(milliseconds: 800));
+    await _cartManager.syncWithBackend();
     if (mounted) {
       setState(() {
         _isRefreshing = false;
@@ -32,17 +49,6 @@ class _ShoppingCartScreenState extends State<ShoppingCartScreen> {
         ),
       );
     }
-  }
-
-  void _applyPromo() {
-    final code = _promoController.text.trim();
-    if (code.isEmpty) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('Promo code "$code" is invalid or expired.'),
-        backgroundColor: AppColors.danger,
-      ),
-    );
   }
 
   @override
@@ -81,8 +87,14 @@ class _ShoppingCartScreenState extends State<ShoppingCartScreen> {
           const SizedBox(width: 8),
         ],
       ),
-      body: cartItems.isEmpty
-          ? Center(
+      body: _isLoading
+          ? const Center(
+              child: CircularProgressIndicator(
+                valueColor: AlwaysStoppedAnimation<Color>(AppColors.primary),
+              ),
+            )
+          : cartItems.isEmpty
+              ? Center(
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
@@ -204,13 +216,21 @@ class _ShoppingCartScreenState extends State<ShoppingCartScreen> {
                                 width: 64,
                                 height: 64,
                                 color: AppColors.bgLight,
-                                child: Image.asset(
-                                  item['imageUrl'] as String,
-                                  fit: BoxFit.cover,
-                                  errorBuilder: (context, error, stackTrace) {
-                                    return const Icon(Icons.image, color: AppColors.primary);
-                                  },
-                                ),
+                                child: (item['imageUrl'] as String).startsWith('http')
+                                    ? Image.network(
+                                        item['imageUrl'] as String,
+                                        fit: BoxFit.cover,
+                                        errorBuilder: (context, error, stackTrace) {
+                                          return const Icon(Icons.image, color: AppColors.primary);
+                                        },
+                                      )
+                                    : Image.asset(
+                                        item['imageUrl'] as String,
+                                        fit: BoxFit.cover,
+                                        errorBuilder: (context, error, stackTrace) {
+                                          return const Icon(Icons.image, color: AppColors.primary);
+                                        },
+                                      ),
                               ),
                             ),
                             const SizedBox(width: 14),
@@ -344,59 +364,7 @@ class _ShoppingCartScreenState extends State<ShoppingCartScreen> {
                       ],
                     ),
                   ),
-                  const SizedBox(height: 20),
-
-                  // Promo Code Box
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Container(
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(30),
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.black.withValues(alpha: 0.02),
-                                blurRadius: 8,
-                                offset: const Offset(0, 4),
-                              ),
-                            ],
-                          ),
-                          child: TextField(
-                            controller: _promoController,
-                            style: const TextStyle(fontSize: 13, color: AppColors.primary),
-                            decoration: InputDecoration(
-                              hintText: 'Promo Code',
-                              hintStyle: TextStyle(color: AppColors.primary.withValues(alpha: 0.4), fontSize: 13),
-                              border: InputBorder.none,
-                              contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 15),
-                            ),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      GestureDetector(
-                        onTap: _applyPromo,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(30),
-                            border: Border.all(color: AppColors.primary, width: 1.5),
-                          ),
-                          child: const Text(
-                            'Apply',
-                            style: TextStyle(
-                              fontSize: 13,
-                              fontWeight: FontWeight.bold,
-                              color: AppColors.primary,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 32),
+                  const SizedBox(height: 12),
 
                   // Checkout Action Buttons
                   GestureDetector(

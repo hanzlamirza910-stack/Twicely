@@ -33,10 +33,21 @@ class _MerchantDashboardState extends State<MerchantDashboard> {
   String _merchantEmail = "synvolv3@gmail.com";
   String _merchantPhone = "03030844726";
 
+  List<Map<String, dynamic>> _merchantPackages = [];
+  bool _isLoadingPackages = false;
+
+  // Dynamic Merchant statistics, wallet balance, and wishlist count
+  double _walletBalance = 0.0;
+  int _wishlistCount = 0;
+  Map<String, dynamic> _merchantStats = {};
+  List<Map<String, dynamic>> _merchantOrders = [];
+
   @override
   void initState() {
     super.initState();
     _loadMerchantData();
+    _fetchMerchantPackages();
+    _fetchDynamicData();
   }
 
   void _loadMerchantData() {
@@ -59,26 +70,115 @@ class _MerchantDashboardState extends State<MerchantDashboard> {
     }
   }
 
-  final List<Map<String, dynamic>> _merchantPackages = [
-    {
-      'id': 1,
-      'title': 'rejuran salmon injection',
-      'category': 'Biz, For Her, Spa & Massage',
-      'price': '800',
-      'status': 'PUBLISHED',
-      'badge': 'SOLD',
-      'image': 'assets/images/package_spa.jpg',
-    },
-    {
-      'id': 2,
-      'title': 'Guided "Anger Yoga" + Cold Towel Reset (1 Session)',
-      'category': 'Biz, For Her, For Him, General ...',
-      'price': '5,000',
-      'status': 'PUBLISHED',
-      'badge': 'ACTIVE',
-      'image': 'assets/images/package_yoga.jpg',
-    },
-  ];
+  Map<String, dynamic> _mapApiPackage(Map<String, dynamic> apiPkg) {
+    String imageUrl = 'assets/images/package_spa.jpg';
+    if (apiPkg['cover_url'] != null && apiPkg['cover_url'].toString().isNotEmpty) {
+      imageUrl = apiPkg['cover_url'];
+    } else if (apiPkg['images'] != null && (apiPkg['images'] as List).isNotEmpty) {
+      imageUrl = apiPkg['images'][0]['url'] ?? 'assets/images/package_spa.jpg';
+    }
+
+    final double priceVal = double.tryParse(apiPkg['price']?.toString() ?? '') ?? 0.0;
+
+    String category = 'General';
+    if (apiPkg['category'] != null) {
+      if (apiPkg['category'] is Map) {
+        category = apiPkg['category']['name']?.toString() ?? 'General';
+      } else {
+        category = apiPkg['category'].toString();
+      }
+    }
+
+    return {
+      'id': apiPkg['id'],
+      'title': apiPkg['title'] ?? 'Package Listing',
+      'category': category,
+      'price': priceVal.toStringAsFixed(2),
+      'status': (apiPkg['status']?.toString().toUpperCase() ?? 'PUBLISHED'),
+      'badge': (apiPkg['status']?.toString().toUpperCase() ?? 'ACTIVE'),
+      'image': imageUrl,
+      'imageUrl': imageUrl,
+    };
+  }
+
+  Future<void> _fetchMerchantPackages() async {
+    if (mounted) {
+      setState(() {
+        _isLoadingPackages = true;
+      });
+    }
+    final res = await ApiService.getMerchantPackages();
+    if (!mounted) return;
+    if (res['success'] == true && res['data'] != null) {
+      final List<dynamic> pkgs = res['data'];
+      setState(() {
+        _merchantPackages = pkgs.map((p) => _mapApiPackage(p as Map<String, dynamic>)).toList();
+        _isLoadingPackages = false;
+      });
+    } else {
+      setState(() {
+        _isLoadingPackages = false;
+      });
+    }
+  }
+
+  Future<void> _fetchDynamicData() async {
+    if (!mounted) return;
+
+    try {
+      // 1. Fetch Merchant profile details
+      final profileRes = await ApiService.getMerchantMe();
+      if (profileRes['success'] == true && profileRes['data'] != null) {
+        final mData = profileRes['data'] as Map<String, dynamic>;
+        setState(() {
+          _merchantBusinessName = mData['business_name']?.toString() ?? _merchantBusinessName;
+          _merchantBusinessType = mData['business_type']?.toString() ?? _merchantBusinessType;
+          _merchantRegNumber = mData['business_registration']?.toString() ?? _merchantRegNumber;
+          _merchantAddress = mData['business_address']?.toString() ?? _merchantAddress;
+          _merchantWebsite = mData['website_link']?.toString() ?? _merchantWebsite;
+          _merchantEmail = mData['email']?.toString() ?? _merchantEmail;
+          _merchantPhone = mData['phone']?.toString() ?? _merchantPhone;
+        });
+      }
+
+      // 2. Fetch wallet balance
+      final walletRes = await ApiService.getMerchantWallet();
+      if (walletRes['success'] == true && walletRes['data'] != null) {
+        final wData = walletRes['data'] as Map;
+        setState(() {
+          _walletBalance = double.tryParse(wData['balance']?.toString() ?? '0.0') ?? 0.0;
+        });
+      }
+
+      // 3. Fetch stats
+      final statsRes = await ApiService.getMerchantStats();
+      if (statsRes['success'] == true && statsRes['data'] != null) {
+        setState(() {
+          _merchantStats = Map<String, dynamic>.from(statsRes['data'] as Map);
+        });
+      }
+
+      // 4. Fetch Wishlist Count
+      final wishlistRes = await ApiService.getUserWishlist();
+      if (wishlistRes['success'] == true && wishlistRes['data'] != null) {
+        final List<dynamic> list = wishlistRes['data'] as List<dynamic>? ?? [];
+        setState(() {
+          _wishlistCount = list.length;
+        });
+      }
+
+      // 5. Fetch Merchant Orders
+      final ordersRes = await ApiService.getMerchantOrders();
+      if (ordersRes['success'] == true && ordersRes['data'] != null) {
+        final List<dynamic> oList = ordersRes['data'] as List<dynamic>? ?? [];
+        setState(() {
+          _merchantOrders = oList.map((o) => Map<String, dynamic>.from(o as Map)).toList();
+        });
+      }
+    } catch (e) {
+      debugPrint('[MerchantDashboard] Error fetching dynamic data: $e');
+    }
+  }
 
   List<Map<String, dynamic>> get _filteredPackages {
     return _merchantPackages.where((pkg) {
@@ -134,7 +234,23 @@ class _MerchantDashboardState extends State<MerchantDashboard> {
     }
   }
 
+  String _getCurrentFormattedDate() {
+    final now = DateTime.now();
+    final weekdays = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+    final months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    return '${weekdays[now.weekday - 1]}, ${months[now.month - 1]} ${now.day}, ${now.year}';
+  }
+
   Widget _buildHomeTab() {
+    final totalPkgs = _merchantPackages.length.toString();
+    final num revNum = _merchantStats['revenue_this_week'] ?? 0;
+    final String revenueThisWeek = 'S\$${(revNum / 100.0).toStringAsFixed(2)}';
+    
+    final totalSold = _merchantStats['total_sold_packages'] ?? _merchantStats['sold_listings'] ?? _merchantOrders.length;
+    final String totalSellPackages = totalSold.toString();
+    
+    final String walletBalance = 'S\$${(_walletBalance / 100.0).toStringAsFixed(2)}';
+
     return SingleChildScrollView(
       physics: const BouncingScrollPhysics(),
       padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 16.0),
@@ -185,9 +301,9 @@ class _MerchantDashboardState extends State<MerchantDashboard> {
           const SizedBox(height: 24),
 
           // Greeting section
-          const Text(
-            'Good Evening, Rolys!',
-            style: TextStyle(
+          Text(
+            'Good Evening, $_merchantBusinessName!',
+            style: const TextStyle(
               fontFamily: 'Recoleta Alt',
               fontSize: 26,
               fontWeight: FontWeight.bold,
@@ -195,9 +311,9 @@ class _MerchantDashboardState extends State<MerchantDashboard> {
             ),
           ),
           const SizedBox(height: 4),
-          const Text(
-            'Sunday, Jun 7, 2026',
-            style: TextStyle(
+          Text(
+            _getCurrentFormattedDate(),
+            style: const TextStyle(
               fontSize: 13,
               color: Colors.black54,
               fontWeight: FontWeight.w500,
@@ -292,7 +408,7 @@ class _MerchantDashboardState extends State<MerchantDashboard> {
               Expanded(
                 child: _buildMetricCard(
                   title: 'Total Packages',
-                  value: '2',
+                  value: totalPkgs,
                   icon: Icons.inventory_2_outlined,
                   isNavy: true,
                 ),
@@ -302,7 +418,7 @@ class _MerchantDashboardState extends State<MerchantDashboard> {
               Expanded(
                 child: _buildMetricCard(
                   title: 'Revenue This Week',
-                  value: '\$0',
+                  value: revenueThisWeek,
                   icon: Icons.attach_money_rounded,
                   iconColor: Colors.green,
                   isNavy: false,
@@ -317,7 +433,7 @@ class _MerchantDashboardState extends State<MerchantDashboard> {
               Expanded(
                 child: _buildMetricCard(
                   title: 'Total Sell Packages',
-                  value: '0',
+                  value: totalSellPackages,
                   icon: Icons.shopping_bag_outlined,
                   iconColor: Colors.blueAccent,
                   isNavy: false,
@@ -328,7 +444,7 @@ class _MerchantDashboardState extends State<MerchantDashboard> {
               Expanded(
                 child: _buildMetricCard(
                   title: 'Wallet Balance',
-                  value: '\$525',
+                  value: walletBalance,
                   icon: Icons.account_balance_wallet_outlined,
                   iconColor: Colors.purple,
                   isNavy: false,
@@ -358,17 +474,31 @@ class _MerchantDashboardState extends State<MerchantDashboard> {
             ],
           ),
           const SizedBox(height: 8),
-          _buildRecentPackageItem(
-            title: 'rejuran salmon injection',
-            date: 'Mar 05, 2026',
-            status: 'PUBLISHED',
-          ),
-          const SizedBox(height: 12),
-          _buildRecentPackageItem(
-            title: 'Guided "Anger Yoga" + Cold Towel Reset (1 Session)',
-            date: 'Mar 05, 2026',
-            status: 'PUBLISHED',
-          ),
+          if (_isLoadingPackages)
+            const Center(
+              child: Padding(
+                padding: EdgeInsets.all(16.0),
+                child: CircularProgressIndicator(valueColor: AlwaysStoppedAnimation<Color>(AppColors.primary)),
+              ),
+            )
+          else if (_merchantPackages.isEmpty)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 12.0),
+              child: Text(
+                'No packages listed yet.',
+                style: TextStyle(color: Colors.black38, fontSize: 13, fontStyle: FontStyle.italic),
+                textAlign: TextAlign.center,
+              ),
+            )
+          else
+            ..._merchantPackages.take(2).map((pkg) => Padding(
+                  padding: const EdgeInsets.only(bottom: 12.0),
+                  child: _buildRecentPackageItem(
+                    title: pkg['title'] ?? '',
+                    date: 'Listed package',
+                    status: pkg['status'] ?? 'PUBLISHED',
+                  ),
+                )),
           const SizedBox(height: 24),
 
           // Recent Sales Section
@@ -385,23 +515,50 @@ class _MerchantDashboardState extends State<MerchantDashboard> {
                 ),
               ),
               TextButton(
-                onPressed: () {},
+                onPressed: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute(builder: (context) => const MySalesScreen()),
+                  );
+                },
                 child: const Text('View all', style: TextStyle(color: Colors.black45, fontSize: 12, fontWeight: FontWeight.bold)),
               ),
             ],
           ),
           const SizedBox(height: 8),
-          _buildRecentSaleItem(
-            title: 'rejuran salmon injection',
-            date: 'Mar 05, 2026',
-            amount: 'S\$750.00',
-          ),
-          const SizedBox(height: 12),
-          _buildRecentSaleItem(
-            title: 'Guided "Anger Yoga" + Cold Towel Reset (1 Session)',
-            date: 'Mar 05, 2026',
-            amount: 'S\$5,000.00',
-          ),
+          if (_merchantOrders.isEmpty)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 12.0),
+              child: Text(
+                'No sales recorded yet.',
+                style: TextStyle(color: Colors.black38, fontSize: 13, fontStyle: FontStyle.italic),
+                textAlign: TextAlign.center,
+              ),
+            )
+          else
+            ..._merchantOrders.take(2).map((order) {
+              final String itemsSummary = (order['items'] as List?)
+                  ?.map((it) => it['package_title'] ?? '')
+                  .join(', ') ?? 'Sale Package';
+              final double totalVal = double.tryParse(order['total']?.toString() ?? '0.0') ?? 0.0;
+              final String priceStr = 'S\$${(totalVal / 100.0).toStringAsFixed(2)}';
+              
+              String dateStr = 'Recent Order';
+              if (order['created_at'] != null) {
+                try {
+                  final dt = DateTime.parse(order['created_at'].toString());
+                  dateStr = '${dt.day}/${dt.month}/${dt.year}';
+                } catch (_) {}
+              }
+              
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 12.0),
+                child: _buildRecentSaleItem(
+                  title: itemsSummary,
+                  date: dateStr,
+                  amount: priceStr,
+                ),
+              );
+            }),
           const SizedBox(height: 20),
         ],
       ),
@@ -704,20 +861,57 @@ class _MerchantDashboardState extends State<MerchantDashboard> {
                 _buildEditField('Phone', phoneCtrl),
                 const SizedBox(height: 24),
                 ElevatedButton(
-                  onPressed: () {
-                    setState(() {
-                      _merchantBusinessName = nameCtrl.text;
-                      _merchantBusinessType = typeCtrl.text;
-                      _merchantRegNumber = regCtrl.text;
-                      _merchantAddress = addrCtrl.text;
-                      _merchantWebsite = webCtrl.text;
-                      _merchantEmail = emailCtrl.text;
-                      _merchantPhone = phoneCtrl.text;
-                    });
-                    Navigator.of(context).pop();
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Profile updated successfully')),
+                  onPressed: () async {
+                    final data = {
+                      'business_name': nameCtrl.text.trim(),
+                      'business_type': typeCtrl.text.trim(),
+                      'business_registration': regCtrl.text.trim(),
+                      'business_address': addrCtrl.text.trim(),
+                      'website_link': webCtrl.text.trim(),
+                      'email': emailCtrl.text.trim(),
+                      'phone': phoneCtrl.text.trim(),
+                    };
+
+                    showDialog(
+                      context: context,
+                      barrierDismissible: false,
+                      builder: (context) => const Center(
+                        child: CircularProgressIndicator(
+                          valueColor: AlwaysStoppedAnimation<Color>(AppColors.primary),
+                        ),
+                      ),
                     );
+
+                    final res = await ApiService.updateMerchantMe(data);
+
+                    if (!context.mounted) return;
+                    Navigator.of(context).pop(); // pop loading spinner
+                    Navigator.of(context).pop(); // pop bottom sheet
+
+                    if (res['success'] == true) {
+                      setState(() {
+                        _merchantBusinessName = nameCtrl.text.trim();
+                        _merchantBusinessType = typeCtrl.text.trim();
+                        _merchantRegNumber = regCtrl.text.trim();
+                        _merchantAddress = addrCtrl.text.trim();
+                        _merchantWebsite = webCtrl.text.trim();
+                        _merchantEmail = emailCtrl.text.trim();
+                        _merchantPhone = phoneCtrl.text.trim();
+                      });
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('Profile updated successfully!'),
+                          backgroundColor: Color(0xFF22C55E),
+                        ),
+                      );
+                    } else {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text(res['message'] ?? 'Failed to update profile'),
+                          backgroundColor: Colors.red,
+                        ),
+                      );
+                    }
                   },
                   style: ElevatedButton.styleFrom(
                     backgroundColor: const Color(0xFF1F2E4E),
@@ -914,7 +1108,7 @@ class _MerchantDashboardState extends State<MerchantDashboard> {
           const SizedBox(height: 12),
           _buildProfileOption(
             title: 'Wallet',
-            subtitle: 'Balance: \$124.58',
+            subtitle: 'Balance: S\$${(_walletBalance / 100.0).toStringAsFixed(2)}',
             icon: Icons.account_balance_wallet_outlined,
             onTap: () {
               Navigator.of(context).push(
@@ -927,7 +1121,7 @@ class _MerchantDashboardState extends State<MerchantDashboard> {
           const SizedBox(height: 12),
           _buildProfileOption(
             title: 'My Sales',
-            subtitle: '2 Active Listings',
+            subtitle: '${_merchantPackages.length} Active Listings',
             icon: Icons.sell_outlined,
             onTap: () {
               Navigator.of(context).push(
@@ -953,7 +1147,7 @@ class _MerchantDashboardState extends State<MerchantDashboard> {
           const SizedBox(height: 12),
           _buildProfileOption(
             title: 'Wishlist',
-            subtitle: '14 saved items',
+            subtitle: '$_wishlistCount saved items',
             icon: Icons.favorite_outline_rounded,
             onTap: () {
               Navigator.of(context).push(

@@ -1,3 +1,4 @@
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/utils/session_manager.dart';
@@ -13,6 +14,7 @@ import 'payout_screen.dart';
 import 'add_package_screen.dart';
 import 'package_detail_screen.dart';
 import 'notifications_screen.dart';
+import 'packages_list_screen.dart';
 import '../../../../core/services/api_service.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -30,11 +32,296 @@ class _HomeScreenState extends State<HomeScreen> {
   final TextEditingController _homeSearchController = TextEditingController();
   final TextEditingController _searchTabController = TextEditingController();
 
+  bool _isLoadingPackages = false;
+  List<Map<String, dynamic>> _apiPackages = [];
+  final List<Map<String, dynamic>> _recentlyViewedPackages = [];
+
+  // Profile data loaded from API
+  Map<String, dynamic> _profileData = {};
+  bool _isLoadingProfile = false;
+  double _walletBalance = 0.0;
+  int _wishlistCount = 0;
+  int _salesCount = 0;
+  int _ordersCount = 0;
+
+  // Maps display filter label → API category slug
+  static const Map<String, String?> _filterToSlug = {
+    'For her': 'for-her',
+    'For him': 'for-him',
+    'General': 'general',
+    'Biz+': 'biz',
+  };
+
+  void _addToRecentlyViewed(Map<String, dynamic> pkg) {
+    setState(() {
+      _recentlyViewedPackages.removeWhere((item) => item['id'] == pkg['id']);
+      _recentlyViewedPackages.insert(0, pkg);
+      if (_recentlyViewedPackages.length > 4) {
+        _recentlyViewedPackages.removeLast();
+      }
+    });
+  }
+
+  List<Map<String, dynamic>> get _displayRecentlyViewed {
+    if (_recentlyViewedPackages.isNotEmpty) {
+      return _recentlyViewedPackages;
+    }
+    if (_apiPackages.isNotEmpty) {
+      return _apiPackages.take(2).toList();
+    }
+    return _allPackages.take(2).toList();
+  }
+
+  String _determineFilterCategory(Map<String, dynamic> apiPkg) {
+    final title = (apiPkg['title'] ?? '').toString().toLowerCase();
+    final description = (apiPkg['description'] ?? '').toString().toLowerCase();
+    
+    final categoryPart = apiPkg['category'];
+    final secondaryPart = apiPkg['secondary_category'];
+    String combinedCat = '';
+    
+    if (categoryPart != null) {
+      if (categoryPart is Map) {
+        combinedCat += ' ${categoryPart['name']?.toString() ?? ''}';
+      } else {
+        combinedCat += ' ${categoryPart.toString()}';
+      }
+    }
+    if (secondaryPart != null) {
+      combinedCat += ' ${secondaryPart.toString()}';
+    }
+    
+    final catLower = combinedCat.toLowerCase();
+
+    if (title.contains('corporate') || 
+        title.contains('team bonding') || 
+        title.contains('business') || 
+        description.contains('corporate') || 
+        catLower.contains('biz') || 
+        catLower.contains('corporate')) {
+      return 'Biz+';
+    }
+
+    if (title.contains('men') || 
+        title.contains('him') || 
+        title.contains('grooming for men') || 
+        description.contains('for men') || 
+        description.contains('for him')) {
+      return 'For him';
+    }
+
+    if (catLower.contains('beauty') || 
+        catLower.contains('nails') || 
+        catLower.contains('spa') || 
+        catLower.contains('massage') || 
+        catLower.contains('yoga') || 
+        catLower.contains('pilates') || 
+        catLower.contains('her') || 
+        title.contains('her') || 
+        title.contains('women') || 
+        title.contains('yoga') || 
+        title.contains('pilates') || 
+        title.contains('spa') || 
+        title.contains('massage') || 
+        description.contains('for women') || 
+        description.contains('for her')) {
+      return 'For her';
+    }
+
+    return 'General';
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchPackages(filter: _selectedFilter);
+    _loadProfile();
+    _fetchSearchTabPackages();
+  }
+
+  Future<void> _loadProfile() async {
+    if (!mounted) return;
+    if (_profileData.isEmpty) {
+      setState(() => _isLoadingProfile = true);
+    }
+    // Load user profile
+    final profileRes = await ApiService.getUserMe();
+    if (!mounted) return;
+    if (profileRes['success'] == true && profileRes['data'] != null) {
+      _profileData = Map<String, dynamic>.from(profileRes['data'] as Map);
+    }
+    // Load wallet balance
+    final walletRes = await ApiService.getWallet();
+    if (!mounted) return;
+    if (walletRes['success'] == true && walletRes['data'] != null) {
+      final wd = walletRes['data'] as Map;
+      _walletBalance = double.tryParse(wd['balance']?.toString() ?? '0') ?? 0.0;
+    }
+    // Load wishlist count
+    final wishRes = await ApiService.getUserWishlist(perPage: 1);
+    if (!mounted) return;
+    if (wishRes['success'] == true) {
+      _wishlistCount = (wishRes['meta']?['total'] ?? (wishRes['data'] as List?)?.length ?? 0) as int;
+    }
+    // Load sales count
+    final salesRes = await ApiService.getMySales(perPage: 1);
+    if (!mounted) return;
+    if (salesRes['success'] == true) {
+      _salesCount = (salesRes['meta']?['total'] ?? (salesRes['data'] as List?)?.length ?? 0) as int;
+    }
+    // Load orders count
+    final ordersRes = await ApiService.getMyOrders(perPage: 1);
+    if (!mounted) return;
+    if (ordersRes['success'] == true) {
+      _ordersCount = (ordersRes['meta']?['total'] ?? (ordersRes['data'] as List?)?.length ?? 0) as int;
+    }
+    if (mounted) setState(() => _isLoadingProfile = false);
+  }
+
+  Future<void> _fetchPackages({String? filter}) async {
+    if (mounted) setState(() => _isLoadingPackages = true);
+    final slug = _filterToSlug[filter ?? _selectedFilter];
+    final res = await ApiService.getPackages(
+      perPage: 20,
+      category: slug,
+    );
+    if (res['success'] == true && res['data'] != null) {
+      final List<dynamic> pkgs = res['data'];
+      if (mounted) {
+        setState(() {
+          _apiPackages = pkgs.map((p) => _mapApiPackage(p as Map<String, dynamic>)).toList();
+          _isLoadingPackages = false;
+        });
+      }
+    } else {
+      if (mounted) setState(() => _isLoadingPackages = false);
+    }
+  }
+
+  Map<String, dynamic> _mapApiPackage(Map<String, dynamic> apiPkg) {
+    String imageUrl = 'assets/images/package_spa.jpg';
+    if (apiPkg['cover_url'] != null && apiPkg['cover_url'].toString().isNotEmpty) {
+      imageUrl = apiPkg['cover_url'];
+    } else if (apiPkg['images'] != null && (apiPkg['images'] as List).isNotEmpty) {
+      imageUrl = apiPkg['images'][0]['url'] ?? 'assets/images/package_spa.jpg';
+    }
+
+    final double originalPrice = double.tryParse(apiPkg['original_price']?.toString() ?? '') ?? 
+                                 double.tryParse(apiPkg['price']?.toString() ?? '') ?? 0.0;
+    final double resalePrice = double.tryParse(apiPkg['resale_price']?.toString() ?? '') ?? 
+                               double.tryParse(apiPkg['price']?.toString() ?? '') ?? 0.0;
+
+    String? discountBadge;
+    if (originalPrice > 0 && resalePrice < originalPrice) {
+      final discountPct = ((originalPrice - resalePrice) / originalPrice * 100).round();
+      if (discountPct > 0) {
+        discountBadge = '$discountPct% OFF';
+      }
+    }
+
+    final String category = _determineFilterCategory(apiPkg);
+
+    String tag = '${category.toUpperCase()} • ACTIVE';
+    if (apiPkg['location'] != null) {
+      tag = '${category.toUpperCase()} • ${apiPkg['location'].toString().toUpperCase()}';
+    }
+
+    final secondarySlug = apiPkg['secondary_category']?.toString() ?? '';
+    final subcatLabel = _subcatLabels[secondarySlug] ?? '';
+
+    String merchantName = 'Twicely Merchant';
+    if (apiPkg['merchant'] is Map && apiPkg['merchant']['name'] != null) {
+      merchantName = apiPkg['merchant']['name'].toString();
+    } else if (apiPkg['merchant'] is Map && apiPkg['merchant']['display_name'] != null) {
+      merchantName = apiPkg['merchant']['display_name'].toString();
+    } else if (apiPkg['merchant_name'] != null) {
+      merchantName = apiPkg['merchant_name'].toString();
+    }
+
+    return {
+      'id': apiPkg['id'],
+      'imageUrl': imageUrl,
+      'tag': tag,
+      'title': apiPkg['title'] ?? 'Package Listing',
+      'originalPrice': 'S\$${originalPrice.toStringAsFixed(2)}',
+      'resalePrice': 'S\$${resalePrice.toStringAsFixed(2)}',
+      'hasHeart': apiPkg['liked'] == true || apiPkg['hasHeart'] == true,
+      'discountBadge': discountBadge,
+      'category': category,
+      'description': apiPkg['description'] ?? '',
+      'validity': apiPkg['validity_date'] ?? apiPkg['valid_until'] ?? '',
+      'merchant': apiPkg['merchant'] ?? {},
+      'merchantName': merchantName,
+      'secondaryCategory': secondarySlug,
+      'secondaryCategoryLabel': subcatLabel,
+    };
+  }
+
   String _selectedMerchant = 'All Merchants';
   String _selectedCategory = 'All Categories';
+  String? _selectedSubcat; // null means "All Types"
   String _selectedSort = 'Sort: Price Low to High';
-  bool _isRating4Plus = false;
-  String _selectedLocation = 'All Locations';
+
+  List<Map<String, dynamic>> _searchTabPackages = [];
+  bool _isLoadingSearchTab = false;
+
+  static const Map<String, String> _subcatLabels = {
+    'yoga-pilates': 'Yoga & Pilates',
+    'spa-massage': 'Spa & Massage',
+    'beauty-nails': 'Beauty & Nails',
+    'gym-fitness': 'Gym & Fitness',
+    'lifestyle-classes': 'Lifestyle Classes',
+  };
+
+  List<String> get _availableMerchants {
+    final Set<String> set = {'All Merchants'};
+    for (final p in _apiPackages) {
+      if (p['merchantName'] != null) {
+        set.add(p['merchantName'].toString());
+      }
+    }
+    for (final p in _allPackages) {
+      if (p['merchant'] is Map && p['merchant']['name'] != null) {
+        set.add(p['merchant']['name'].toString());
+      }
+    }
+    // fallbacks
+    set.addAll(['Active Life', 'Amara Spa', 'Absolute Cycle', 'Rolys', 'Synvolv', 'Tagpools', 'Test Business Ltd']);
+    return set.toList();
+  }
+
+  Future<void> _fetchSearchTabPackages() async {
+    if (!mounted) return;
+    setState(() => _isLoadingSearchTab = true);
+
+    String? categorySlug;
+    if (_selectedCategory == 'For her' || _selectedCategory == 'For Her') {
+      categorySlug = 'for-her';
+    } else if (_selectedCategory == 'For him' || _selectedCategory == 'For Him') {
+      categorySlug = 'for-him';
+    } else if (_selectedCategory == 'General') {
+      categorySlug = 'general';
+    } else if (_selectedCategory == 'Biz+') {
+      categorySlug = 'biz';
+    }
+
+    final res = await ApiService.getPackages(
+      perPage: 100,
+      search: _searchTabQuery.isNotEmpty ? _searchTabQuery : null,
+      category: categorySlug,
+    );
+
+    if (!mounted) return;
+    if (res['success'] == true && res['data'] != null) {
+      final List<dynamic> raw = res['data'];
+      setState(() {
+        _searchTabPackages = raw.map((p) => _mapApiPackage(p as Map<String, dynamic>)).toList();
+        _isLoadingSearchTab = false;
+      });
+    } else {
+      setState(() => _isLoadingSearchTab = false);
+    }
+  }
 
   void _showMerchantFilter() {
     showModalBottomSheet(
@@ -44,28 +331,44 @@ class _HomeScreenState extends State<HomeScreen> {
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
       builder: (context) {
-        final merchants = ['All Merchants', 'Active Life', 'Amara Spa', 'Absolute Cycle'];
+        final merchants = _availableMerchants;
         return SafeArea(
           child: Column(
             mainAxisSize: MainAxisSize.min,
-            children: merchants.map((m) {
-              return ListTile(
-                title: Text(
-                  m,
-                  style: TextStyle(
-                    fontWeight: _selectedMerchant == m ? FontWeight.bold : FontWeight.normal,
-                    color: AppColors.primary,
-                  ),
+            children: [
+              Container(
+                margin: const EdgeInsets.only(top: 8, bottom: 8),
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.black12,
+                  borderRadius: BorderRadius.circular(2),
                 ),
-                trailing: _selectedMerchant == m ? const Icon(Icons.check, color: AppColors.primary) : null,
-                onTap: () {
-                  setState(() {
-                    _selectedMerchant = m;
-                  });
-                  Navigator.of(context).pop();
-                },
-              );
-            }).toList(),
+              ),
+              Expanded(
+                child: ListView(
+                  physics: const BouncingScrollPhysics(),
+                  children: merchants.map((m) {
+                    return ListTile(
+                      title: Text(
+                        m,
+                        style: TextStyle(
+                          fontWeight: _selectedMerchant == m ? FontWeight.bold : FontWeight.normal,
+                          color: AppColors.primary,
+                        ),
+                      ),
+                      trailing: _selectedMerchant == m ? const Icon(Icons.check, color: AppColors.primary) : null,
+                      onTap: () {
+                        setState(() {
+                          _selectedMerchant = m;
+                        });
+                        Navigator.of(context).pop();
+                      },
+                    );
+                  }).toList(),
+                ),
+              ),
+            ],
           ),
         );
       },
@@ -80,7 +383,7 @@ class _HomeScreenState extends State<HomeScreen> {
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
       builder: (context) {
-        final categories = ['All Categories', 'Yoga & Pilates', 'Spa & Massage', 'Gym & Fitness', 'Beauty & Nails'];
+        final categories = ['All Categories', 'For her', 'For him', 'General', 'Biz+'];
         return SafeArea(
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -97,6 +400,53 @@ class _HomeScreenState extends State<HomeScreen> {
                 onTap: () {
                   setState(() {
                     _selectedCategory = c;
+                  });
+                  _fetchSearchTabPackages();
+                  Navigator.of(context).pop();
+                },
+              );
+            }).toList(),
+          ),
+        );
+      },
+    );
+  }
+
+  void _showSubcatFilter() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: const Color(0xFFFFF8EA),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) {
+        final subcats = [
+          {'slug': null, 'label': 'All Types'},
+          {'slug': 'yoga-pilates', 'label': 'Yoga & Pilates'},
+          {'slug': 'spa-massage', 'label': 'Spa & Massage'},
+          {'slug': 'beauty-nails', 'label': 'Beauty & Nails'},
+          {'slug': 'gym-fitness', 'label': 'Gym & Fitness'},
+          {'slug': 'lifestyle-classes', 'label': 'Lifestyle Classes'},
+        ];
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: subcats.map((sc) {
+              final label = sc['label'] ?? '';
+              final slug = sc['slug'];
+              final isSelected = _selectedSubcat == slug;
+              return ListTile(
+                title: Text(
+                  label,
+                  style: TextStyle(
+                    fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                    color: AppColors.primary,
+                  ),
+                ),
+                trailing: isSelected ? const Icon(Icons.check, color: AppColors.primary) : null,
+                onTap: () {
+                  setState(() {
+                    _selectedSubcat = slug;
                   });
                   Navigator.of(context).pop();
                 },
@@ -133,42 +483,6 @@ class _HomeScreenState extends State<HomeScreen> {
                 onTap: () {
                   setState(() {
                     _selectedSort = o;
-                  });
-                  Navigator.of(context).pop();
-                },
-              );
-            }).toList(),
-          ),
-        );
-      },
-    );
-  }
-
-  void _showLocationFilter() {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: const Color(0xFFFFF8EA),
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (context) {
-        final locations = ['All Locations', 'Central', 'East', 'West', 'North'];
-        return SafeArea(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: locations.map((l) {
-              return ListTile(
-                title: Text(
-                  l,
-                  style: TextStyle(
-                    fontWeight: _selectedLocation == l ? FontWeight.bold : FontWeight.normal,
-                    color: AppColors.primary,
-                  ),
-                ),
-                trailing: _selectedLocation == l ? const Icon(Icons.check, color: AppColors.primary) : null,
-                onTap: () {
-                  setState(() {
-                    _selectedLocation = l;
                   });
                   Navigator.of(context).pop();
                 },
@@ -305,6 +619,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _showPackageDetails(Map<String, dynamic> pkg) {
+    _addToRecentlyViewed(pkg);
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (context) => PackageDetailScreen(package: pkg),
@@ -406,7 +721,8 @@ class _HomeScreenState extends State<HomeScreen> {
   ];
 
   List<Map<String, dynamic>> get _filteredPackages {
-    var list = _allPackages.where((pkg) => pkg['category'] == _selectedFilter).toList();
+    // API already returns the correct category — just apply optional search filter
+    var list = _apiPackages.isNotEmpty ? List<Map<String, dynamic>>.from(_apiPackages) : <Map<String, dynamic>>[];
     if (_homeSearchQuery.isNotEmpty) {
       list = list
           .where((pkg) =>
@@ -445,9 +761,12 @@ class _HomeScreenState extends State<HomeScreen> {
 
   // --- HOME TAB (Figma Design Layout) ---
   Widget _buildHomeTab() {
-    return SingleChildScrollView(
-      physics: const BouncingScrollPhysics(),
-      padding: const EdgeInsets.symmetric(vertical: 16.0),
+    return RefreshIndicator(
+      onRefresh: () => _fetchPackages(filter: _selectedFilter),
+      color: AppColors.primary,
+      child: SingleChildScrollView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.symmetric(vertical: 16.0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -652,26 +971,33 @@ class _HomeScreenState extends State<HomeScreen> {
                           ),
                           const SizedBox(height: 12),
                           // Salmon CTA button
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFFF27B6E), // Bright salmon pink
-                              borderRadius: BorderRadius.circular(20),
-                            ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: const [
-                                Text(
-                                  'Start exploring now',
-                                  style: TextStyle(
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.bold,
-                                    color: Colors.white,
+                          GestureDetector(
+                            onTap: () {
+                              Navigator.of(context).push(MaterialPageRoute(
+                                builder: (_) => const PackagesListScreen(),
+                              ));
+                            },
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFF27B6E),
+                                borderRadius: BorderRadius.circular(20),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: const [
+                                  Text(
+                                    'Start exploring now',
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.bold,
+                                      color: Colors.white,
+                                    ),
                                   ),
-                                ),
-                                SizedBox(width: 4),
-                                Icon(Icons.arrow_forward_rounded, color: Colors.white, size: 12),
-                              ],
+                                  SizedBox(width: 4),
+                                  Icon(Icons.arrow_forward_rounded, color: Colors.white, size: 12),
+                                ],
+                              ),
                             ),
                           ),
                         ],
@@ -699,7 +1025,11 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                 ),
                 TextButton(
-                  onPressed: () {},
+                  onPressed: () {
+                    Navigator.of(context).push(MaterialPageRoute(
+                      builder: (_) => const PackagesListScreen(),
+                    ));
+                  },
                   child: const Text(
                     'See all',
                     style: TextStyle(
@@ -764,7 +1094,11 @@ class _HomeScreenState extends State<HomeScreen> {
                   ],
                 ),
                 TextButton(
-                  onPressed: () {},
+                  onPressed: () {
+                    Navigator.of(context).push(MaterialPageRoute(
+                      builder: (_) => const PackagesListScreen(),
+                    ));
+                  },
                   child: const Text(
                     'See all',
                     style: TextStyle(
@@ -801,39 +1135,47 @@ class _HomeScreenState extends State<HomeScreen> {
           // Horizontal Packages Scroller
           SizedBox(
             height: 270,
-            child: _filteredPackages.isEmpty
+            child: _isLoadingPackages
                 ? const Center(
-                    child: Text(
-                      'No packages available in this category.',
-                      style: TextStyle(color: Colors.black38, fontSize: 13),
+                    child: CircularProgressIndicator(
+                      valueColor: AlwaysStoppedAnimation<Color>(AppColors.primary),
                     ),
                   )
-                : ListView.builder(
-                    scrollDirection: Axis.horizontal,
-                    physics: const BouncingScrollPhysics(),
-                    padding: const EdgeInsets.symmetric(horizontal: 20.0),
-                    itemCount: _filteredPackages.length,
-                    itemBuilder: (context, index) {
-                      final pkg = _filteredPackages[index];
-                      return Padding(
-                        padding: const EdgeInsets.only(right: 14.0),
-                        child: _buildPackageCard(
-                          imageUrl: pkg['imageUrl'] as String,
-                          tag: pkg['tag'] as String,
-                          title: pkg['title'] as String,
-                          originalPrice: pkg['originalPrice'] as String,
-                          resalePrice: pkg['resalePrice'] as String,
-                          hasHeart: pkg['hasHeart'] as bool,
-                          discountBadge: pkg['discountBadge'] as String?,
+                : _filteredPackages.isEmpty
+                    ? const Center(
+                        child: Text(
+                          'No packages available in this category.',
+                          style: TextStyle(color: Colors.black38, fontSize: 13),
                         ),
-                      );
-                    },
-                  ),
+                      )
+                    : ListView.builder(
+                        scrollDirection: Axis.horizontal,
+                        physics: const BouncingScrollPhysics(),
+                        padding: const EdgeInsets.symmetric(horizontal: 20.0),
+                        itemCount: _filteredPackages.length,
+                        itemBuilder: (context, index) {
+                          final pkg = _filteredPackages[index];
+                          return Padding(
+                            padding: const EdgeInsets.only(right: 14.0),
+                            child: _buildPackageCard(
+                              id: pkg['id'],
+                              imageUrl: pkg['imageUrl'] as String,
+                              tag: pkg['tag'] as String,
+                              title: pkg['title'] as String,
+                              originalPrice: pkg['originalPrice'] as String,
+                              resalePrice: pkg['resalePrice'] as String,
+                              hasHeart: pkg['hasHeart'] as bool,
+                              discountBadge: pkg['discountBadge'] as String?,
+                            ),
+                          );
+                        },
+                      ),
           ),
         ],
       ),
-    );
-  }
+    ),
+  );
+}
 
   Widget _buildCategoryItem(String title, IconData icon, Color bgColor, Color iconColor, String originalName) {
     return GestureDetector(
@@ -884,7 +1226,11 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget _buildFilterChip(String text) {
     final isSelected = _selectedFilter == text;
     return GestureDetector(
-      onTap: () => setState(() => _selectedFilter = text),
+      onTap: () {
+        if (_selectedFilter == text) return;
+        setState(() => _selectedFilter = text);
+        _fetchPackages(filter: text);
+      },
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
         decoration: BoxDecoration(
@@ -914,10 +1260,12 @@ class _HomeScreenState extends State<HomeScreen> {
     required String resalePrice,
     bool hasHeart = false,
     String? discountBadge,
+    dynamic id,
   }) {
     return GestureDetector(
       onTap: () {
         _showPackageDetails({
+          'id': id,
           'imageUrl': imageUrl,
           'tag': tag,
           'title': title,
@@ -1065,7 +1413,6 @@ class _HomeScreenState extends State<HomeScreen> {
     ));
   }
 
-  // --- SECONDARY TABS SIMULATION ---
   Widget _buildSearchTab() {
     final filtered = _searchTabFilteredPackages;
     return Column(
@@ -1151,6 +1498,34 @@ class _HomeScreenState extends State<HomeScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
+                // Title and description
+                const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 24.0, vertical: 8.0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Search Packages',
+                        style: TextStyle(
+                          fontFamily: 'Recoleta Alt',
+                          fontSize: 26,
+                          fontWeight: FontWeight.bold,
+                          color: AppColors.primary,
+                        ),
+                      ),
+                      SizedBox(height: 6),
+                      Text(
+                        'Browse and select packages by category or merchant',
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: Colors.black54,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 16),
+
                 // Search Input Box
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 20.0),
@@ -1168,14 +1543,24 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                     child: TextField(
                       controller: _searchTabController,
+                      textInputAction: TextInputAction.search,
+                      onSubmitted: (val) {
+                        setState(() {
+                          _searchTabQuery = val;
+                        });
+                        _fetchSearchTabPackages();
+                      },
                       onChanged: (val) {
                         setState(() {
                           _searchTabQuery = val;
                         });
+                        if (val.isEmpty) {
+                          _fetchSearchTabPackages();
+                        }
                       },
                       style: const TextStyle(fontSize: 14, color: AppColors.primary),
                       decoration: InputDecoration(
-                        hintText: 'Search packages...',
+                        hintText: 'Search by package name...',
                         hintStyle: TextStyle(color: AppColors.primary.withValues(alpha: 0.4), fontSize: 13),
                         prefixIcon: const Icon(Icons.search_rounded, color: AppColors.primary, size: 20),
                         suffixIcon: _searchTabQuery.isNotEmpty
@@ -1185,6 +1570,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                     _searchTabController.clear();
                                     _searchTabQuery = '';
                                   });
+                                  _fetchSearchTabPackages();
                                 },
                                 child: const Icon(Icons.cancel_rounded, color: AppColors.primary, size: 20),
                               )
@@ -1195,226 +1581,152 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                   ),
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: 20),
 
-                // Filters dropdown row: All Merchants, All Categories
+                // Dashed filter options (Merchant, Primary Category, Secondary Category)
                 Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 20.0),
-                  child: Row(
+                  padding: const EdgeInsets.symmetric(horizontal: 24.0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // Merchants Dropdown
-                      Expanded(
-                        child: GestureDetector(
-                          onTap: _showMerchantFilter,
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                            decoration: BoxDecoration(
-                              color: Colors.white,
-                              borderRadius: BorderRadius.circular(10),
-                              border: Border.all(color: AppColors.primary.withValues(alpha: 0.12)),
+                      SingleChildScrollView(
+                        scrollDirection: Axis.horizontal,
+                        physics: const BouncingScrollPhysics(),
+                        child: Row(
+                          children: [
+                            _buildDashedPill(
+                              label: 'Merchant',
+                              selectedValue: _selectedMerchant,
+                              placeholder: '+ Merchant',
+                              onTap: _showMerchantFilter,
+                              onClear: () {
+                                setState(() {
+                                  _selectedMerchant = 'All Merchants';
+                                });
+                              },
                             ),
-                            child: Row(
-                              children: [
-                                Expanded(
-                                  child: Text(
-                                    _selectedMerchant,
-                                    style: const TextStyle(fontSize: 12, color: AppColors.primary, fontWeight: FontWeight.w500),
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                ),
-                                const Icon(Icons.keyboard_arrow_down_rounded, size: 16, color: AppColors.primary),
-                              ],
+                            const SizedBox(width: 8),
+                            _buildDashedPill(
+                              label: 'Primary Category',
+                              selectedValue: _selectedCategory,
+                              placeholder: '+ Category',
+                              onTap: _showCategoryFilter,
+                              onClear: () {
+                                setState(() {
+                                  _selectedCategory = 'All Categories';
+                                });
+                                _fetchSearchTabPackages();
+                              },
                             ),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      // Categories Dropdown
-                      Expanded(
-                        child: GestureDetector(
-                          onTap: _showCategoryFilter,
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                            decoration: BoxDecoration(
-                              color: Colors.white,
-                              borderRadius: BorderRadius.circular(10),
-                              border: Border.all(color: AppColors.primary.withValues(alpha: 0.12)),
+                            const SizedBox(width: 8),
+                            _buildDashedPill(
+                              label: 'Secondary Category',
+                              selectedValue: _selectedSubcat != null ? _subcatLabels[_selectedSubcat!] : null,
+                              placeholder: '+ Subcategory',
+                              onTap: _showSubcatFilter,
+                              onClear: () {
+                                setState(() {
+                                  _selectedSubcat = null;
+                                });
+                              },
                             ),
-                            child: Row(
-                              children: [
-                                Expanded(
-                                  child: Text(
-                                    _selectedCategory,
-                                    style: const TextStyle(fontSize: 12, color: AppColors.primary, fontWeight: FontWeight.w500),
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                ),
-                                const Icon(Icons.keyboard_arrow_down_rounded, size: 16, color: AppColors.primary),
-                              ],
-                            ),
-                          ),
+                          ],
                         ),
                       ),
                     ],
                   ),
                 ),
-                const SizedBox(height: 10),
+                const SizedBox(height: 24),
 
-                // Horizontally Scrollable Pills Row (Sort, Rating, Location)
-                SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  physics: const BouncingScrollPhysics(),
-                  padding: const EdgeInsets.symmetric(horizontal: 20.0),
-                  child: Row(
-                    children: [
-                      // Sort Pill
-                      GestureDetector(
-                        onTap: _showSortFilter,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(20),
-                            border: Border.all(color: const Color(0xFF1F2E4E)),
-                          ),
-                          child: Text(
-                            _selectedSort,
-                            style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF1F2E4E)),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      // Rating Pill
-                      GestureDetector(
-                        onTap: () {
-                          setState(() {
-                            _isRating4Plus = !_isRating4Plus;
-                          });
-                        },
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                          decoration: BoxDecoration(
-                            color: _isRating4Plus ? const Color(0xFF1F2E4E) : Colors.white,
-                            borderRadius: BorderRadius.circular(20),
-                            border: Border.all(color: _isRating4Plus ? const Color(0xFF1F2E4E) : AppColors.primary.withValues(alpha: 0.15)),
-                          ),
-                          child: Text(
-                            'Rating 4.0+',
-                            style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isRating4Plus ? Colors.white : AppColors.primary),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      // Location Pill
-                      GestureDetector(
-                        onTap: _showLocationFilter,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                          decoration: BoxDecoration(
-                            color: _selectedLocation != 'All Locations' ? const Color(0xFF1F2E4E) : Colors.white,
-                            borderRadius: BorderRadius.circular(20),
-                            border: Border.all(color: _selectedLocation != 'All Locations' ? const Color(0xFF1F2E4E) : AppColors.primary.withValues(alpha: 0.15)),
-                          ),
-                          child: Text(
-                            _selectedLocation,
-                            style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _selectedLocation != 'All Locations' ? Colors.white : AppColors.primary),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 20),
-
-                // Results Count text
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 20.0),
-                  child: Text(
-                    '${filtered.length} Results Found',
-                    style: const TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.bold,
-                      color: AppColors.primary,
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 20),
-
-                // Section: Shop popular packages
+                // Results Count text and Sort button
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 20.0),
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text(
-                            'Shop popular packages',
-                            style: TextStyle(
-                              fontFamily: 'Recoleta Alt',
-                              fontSize: 20,
-                              fontWeight: FontWeight.bold,
-                              color: AppColors.primary,
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            "Browse what our community is lovin'",
-                            style: TextStyle(
-                              fontSize: 11,
-                              color: AppColors.primary.withValues(alpha: 0.5),
-                            ),
-                          ),
-                        ],
+                      Text(
+                        _isLoadingSearchTab ? 'Searching...' : '${filtered.length} Results Found',
+                        style: const TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.bold,
+                          color: AppColors.primary,
+                        ),
                       ),
-                      TextButton(
-                        onPressed: () {},
-                        child: const Text(
-                          'See all',
-                          style: TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.bold,
-                            color: AppColors.primary,
+                      GestureDetector(
+                        onTap: _showSortFilter,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: Colors.black12),
+                          ),
+                          child: Row(
+                            children: [
+                              const Icon(Icons.sort_rounded, size: 14, color: AppColors.primary),
+                              const SizedBox(width: 4),
+                              Text(
+                                _selectedSort.replaceAll('Sort: ', ''),
+                                style: const TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w600,
+                                  color: AppColors.primary,
+                                ),
+                              ),
+                              const Icon(Icons.keyboard_arrow_down_rounded, size: 14, color: AppColors.primary),
+                            ],
                           ),
                         ),
                       ),
                     ],
                   ),
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: 16),
 
-                // Horizontal popular packages list
-                SizedBox(
-                  height: 260,
-                  child: filtered.isEmpty
+                // Vertical Grid of package search results
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 20.0),
+                  child: _isLoadingSearchTab
                       ? const Center(
-                          child: Text(
-                            'No matching packages found',
-                            style: TextStyle(color: Colors.black38, fontSize: 13),
+                          child: Padding(
+                            padding: EdgeInsets.symmetric(vertical: 40.0),
+                            child: CircularProgressIndicator(color: AppColors.primary),
                           ),
                         )
-                      : ListView.builder(
-                          scrollDirection: Axis.horizontal,
-                          physics: const BouncingScrollPhysics(),
-                          padding: const EdgeInsets.symmetric(horizontal: 20.0),
-                          itemCount: filtered.length,
-                          itemBuilder: (context, index) {
-                            final pkg = filtered[index];
-                            return Padding(
-                              padding: const EdgeInsets.only(right: 14.0),
-                              child: _buildPackageCard(
-                                imageUrl: pkg['imageUrl'] as String,
-                                tag: pkg['tag'] as String,
-                                title: pkg['title'] as String,
-                                originalPrice: pkg['originalPrice'] as String,
-                                resalePrice: pkg['resalePrice'] as String,
-                                hasHeart: pkg['hasHeart'] as bool,
-                                discountBadge: pkg['discountBadge'] as String?,
+                      : filtered.isEmpty
+                          ? const Center(
+                              child: Padding(
+                                padding: EdgeInsets.symmetric(vertical: 40.0),
+                                child: Text(
+                                  'No matching packages found',
+                                  style: TextStyle(color: Colors.black38, fontSize: 13),
+                                ),
                               ),
-                            );
-                          },
-                        ),
+                            )
+                          : GridView.builder(
+                              shrinkWrap: true,
+                              physics: const NeverScrollableScrollPhysics(),
+                              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                                crossAxisCount: 2,
+                                crossAxisSpacing: 14,
+                                mainAxisSpacing: 14,
+                                childAspectRatio: 0.67,
+                              ),
+                              itemCount: filtered.length,
+                              itemBuilder: (context, index) {
+                                final pkg = filtered[index];
+                                return _buildPackageCard(
+                                  id: pkg['id'],
+                                  imageUrl: pkg['imageUrl'] as String,
+                                  tag: pkg['tag'] as String,
+                                  title: pkg['title'] as String,
+                                  originalPrice: pkg['originalPrice'] as String,
+                                  resalePrice: pkg['resalePrice'] as String,
+                                  hasHeart: pkg['hasHeart'] as bool,
+                                  discountBadge: pkg['discountBadge'] as String?,
+                                );
+                              },
+                            ),
                 ),
                 const SizedBox(height: 28),
 
@@ -1436,31 +1748,34 @@ class _HomeScreenState extends State<HomeScreen> {
                 // Two columns grid of recently viewed
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 20.0),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Expanded(
-                        child: _buildPackageCard(
-                          imageUrl: 'assets/images/package_yoga.jpg',
-                          tag: 'FOR HER • YOGA & PILATES',
-                          title: 'Guided "Anger Yoga" + Cold Towel Reset (1 Session)',
-                          originalPrice: 'S\$6,500.00',
-                          resalePrice: 'S\$5,000.00',
-                          hasHeart: false,
-                        ),
-                      ),
-                      const SizedBox(width: 14),
-                      Expanded(
-                        child: _buildPackageCard(
-                          imageUrl: 'assets/images/package_yoga.jpg',
-                          tag: 'FOR HER • YOGA & PILATES',
-                          title: 'Beer Yoga Class at Marina Bay',
-                          originalPrice: 'S\$1,500.00',
-                          resalePrice: 'S\$1,120.00',
-                          hasHeart: false,
-                        ),
-                      ),
-                    ],
+                  child: Builder(
+                    builder: (context) {
+                      final items = _displayRecentlyViewed;
+                      if (items.isEmpty) return const SizedBox.shrink();
+                      return Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: List.generate(items.length.clamp(0, 2), (index) {
+                          final pkg = items[index];
+                          return Expanded(
+                            child: Padding(
+                              padding: EdgeInsets.only(
+                                right: index == 0 && items.length > 1 ? 14.0 : 0.0,
+                              ),
+                              child: _buildPackageCard(
+                                id: pkg['id'],
+                                imageUrl: pkg['imageUrl'] as String,
+                                tag: pkg['tag'] as String,
+                                title: pkg['title'] as String,
+                                originalPrice: pkg['originalPrice'] as String,
+                                resalePrice: pkg['resalePrice'] as String,
+                                hasHeart: pkg['hasHeart'] as bool? ?? false,
+                                discountBadge: pkg['discountBadge'] as String?,
+                              ),
+                            ),
+                          );
+                        }),
+                      );
+                    }
                   ),
                 ),
                 const SizedBox(height: 30),
@@ -1478,7 +1793,8 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   List<Map<String, dynamic>> get _searchTabFilteredPackages {
-    List<Map<String, dynamic>> res = List.from(_allPackages);
+    final baseList = _searchTabPackages.isNotEmpty ? _searchTabPackages : _allPackages;
+    List<Map<String, dynamic>> res = List.from(baseList);
 
     if (_searchTabQuery.isNotEmpty) {
       res = res.where((pkg) =>
@@ -1488,34 +1804,31 @@ class _HomeScreenState extends State<HomeScreen> {
     }
 
     if (_selectedMerchant != 'All Merchants') {
-      if (_selectedMerchant == 'Active Life') {
-        res = res.where((pkg) => pkg['tag'].toString().contains('GYM')).toList();
-      } else if (_selectedMerchant == 'Amara Spa') {
-        res = res.where((pkg) => pkg['tag'].toString().contains('SPA')).toList();
-      } else if (_selectedMerchant == 'Absolute Cycle') {
-        res = res.where((pkg) => pkg['tag'].toString().contains('YOGA')).toList();
-      }
+      res = res.where((pkg) {
+        final mName = pkg['merchantName']?.toString() ?? '';
+        final mObjName = (pkg['merchant'] is Map) ? (pkg['merchant']['name']?.toString() ?? '') : '';
+        return mName.toLowerCase() == _selectedMerchant.toLowerCase() ||
+               mObjName.toLowerCase() == _selectedMerchant.toLowerCase();
+      }).toList();
     }
 
     if (_selectedCategory != 'All Categories') {
-      if (_selectedCategory == 'Yoga & Pilates') {
-        res = res.where((pkg) => pkg['tag'].toString().contains('YOGA')).toList();
-      } else if (_selectedCategory == 'Spa & Massage') {
-        res = res.where((pkg) => pkg['tag'].toString().contains('SPA')).toList();
-      } else if (_selectedCategory == 'Gym & Fitness') {
-        res = res.where((pkg) => pkg['tag'].toString().contains('GYM')).toList();
-      } else if (_selectedCategory == 'Beauty & Nails') {
-        res = res.where((pkg) => pkg['tag'].toString().contains('BEAUTY')).toList();
-      }
+      res = res.where((pkg) {
+        final cat = pkg['category']?.toString() ?? '';
+        return cat.toLowerCase() == _selectedCategory.toLowerCase();
+      }).toList();
     }
 
-    if (_isRating4Plus) {
-      res = res.where((pkg) => pkg['hasHeart'] == true || pkg['discountBadge'] != null).toList();
+    if (_selectedSubcat != null) {
+      res = res.where((pkg) {
+        final sub = pkg['secondaryCategory']?.toString() ?? '';
+        return sub.toLowerCase() == _selectedSubcat!.toLowerCase();
+      }).toList();
     }
 
-    if (_selectedSort == 'Sort: Price Low to High') {
+    if (_selectedSort == 'Sort: Price Low to High' || _selectedSort == 'Price: Low to High') {
       res.sort((a, b) => _parsePrice(a['resalePrice'] as String).compareTo(_parsePrice(b['resalePrice'] as String)));
-    } else if (_selectedSort == 'Sort: Price High to Low') {
+    } else if (_selectedSort == 'Sort: Price High to Low' || _selectedSort == 'Price: High to Low') {
       res.sort((a, b) => _parsePrice(b['resalePrice'] as String).compareTo(_parsePrice(a['resalePrice'] as String)));
     }
 
@@ -1533,238 +1846,283 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildProfileTab() {
-    return SingleChildScrollView(
-      physics: const BouncingScrollPhysics(),
-      padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 20.0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          const SizedBox(height: 10),
-          // Profile image & edit pencil badge
-          Center(
-            child: Stack(
-              children: [
-                Container(
-                  width: 96,
-                  height: 96,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    border: Border.all(color: const Color(0xFFF27B6E).withValues(alpha: 0.2), width: 2),
-                    image: const DecorationImage(
-                      image: AssetImage('assets/images/avatar_sarah.png'),
-                      fit: BoxFit.cover,
-                    ),
-                  ),
-                ),
-                Positioned(
-                  bottom: 0,
-                  right: 4,
-                  child: Container(
-                    padding: const EdgeInsets.all(6),
-                    decoration: const BoxDecoration(
-                      color: Color(0xFF1F2E4E),
+    final nameFallback = '${_profileData['first_name'] ?? ''} ${_profileData['last_name'] ?? ''}'.trim();
+    final name = (_profileData['name']?.toString().isNotEmpty == true
+            ? _profileData['name']!.toString()
+            : nameFallback.isNotEmpty ? nameFallback : null)
+        ?? SessionManager.userName ?? 'Twicely Member';
+    final email = _profileData['email']?.toString() ?? SessionManager.userEmail ?? '';
+    final phone = _profileData['phone_number']?.toString() ?? '';
+    final verified = _profileData['verification_status']?.toString() == 'verified';
+    final isMerchant = SessionManager.isMerchant;
+    final initials = name.split(' ').where((w) => w.isNotEmpty).take(2).map((w) => w[0].toUpperCase()).join();
+
+    return RefreshIndicator(
+      onRefresh: _loadProfile,
+      color: AppColors.primary,
+      child: SingleChildScrollView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 20.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const SizedBox(height: 10),
+            // Avatar
+            Center(
+              child: Stack(
+                children: [
+                  Container(
+                    width: 96,
+                    height: 96,
+                    decoration: BoxDecoration(
                       shape: BoxShape.circle,
+                      gradient: const LinearGradient(
+                        colors: [Color(0xFF1F2E4E), Color(0xFF2D4270)],
+                      ),
+                      border: Border.all(color: const Color(0xFFF27B6E).withValues(alpha: 0.3), width: 2),
                     ),
-                    child: const Icon(
-                      Icons.edit,
-                      color: Colors.white,
-                      size: 14,
+                    alignment: Alignment.center,
+                    child: Text(
+                      initials.isEmpty ? 'T' : initials,
+                      style: const TextStyle(color: Colors.white, fontSize: 32, fontWeight: FontWeight.bold, fontFamily: 'Recoleta Alt'),
                     ),
                   ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 16),
-
-          // Name and Member Date
-          Text(
-            SessionManager.userName ?? 'Twicely Member',
-            textAlign: TextAlign.center,
-            style: const TextStyle(
-              fontFamily: 'Recoleta Alt',
-              fontSize: 22,
-              fontWeight: FontWeight.bold,
-              color: AppColors.primary,
-            ),
-          ),
-          const SizedBox(height: 6),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: const [
-              Icon(Icons.account_circle_outlined, size: 14, color: Colors.black38),
-              SizedBox(width: 4),
-              Text(
-                'Member since 2024',
-                style: TextStyle(
-                  fontSize: 11,
-                  color: Colors.black45,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 14),
-
-          // Badges row
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF1F2E4E),
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: const Text(
-                  'CONCIERGE',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 9,
-                    fontWeight: FontWeight.w900,
-                    letterSpacing: 0.5,
-                  ),
-                ),
-              ),
-              const SizedBox(width: 8),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                decoration: BoxDecoration(
-                  color: Colors.black.withValues(alpha: 0.04),
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: Row(
-                  children: const [
-                    Text(
-                      '5.0',
-                      style: TextStyle(
-                        color: AppColors.primary,
-                        fontSize: 9,
-                        fontWeight: FontWeight.bold,
+                  Positioned(
+                    bottom: 0, right: 4,
+                    child: GestureDetector(
+                      onTap: () => _showEditProfileSheet(name, phone),
+                      child: Container(
+                        padding: const EdgeInsets.all(6),
+                        decoration: const BoxDecoration(color: Color(0xFFF27B6E), shape: BoxShape.circle),
+                        child: const Icon(Icons.edit, color: Colors.white, size: 14),
                       ),
                     ),
-                    SizedBox(width: 2),
-                    Icon(Icons.star, size: 10, color: AppColors.primary),
-                  ],
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+
+            // Name
+            _isLoadingProfile
+              ? const Center(child: SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2, valueColor: AlwaysStoppedAnimation<Color>(AppColors.primary))))
+              : Text(
+                  name.isEmpty ? 'Twicely Member' : name,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(fontFamily: 'Recoleta Alt', fontSize: 22, fontWeight: FontWeight.bold, color: AppColors.primary),
                 ),
+            const SizedBox(height: 4),
+            if (email.isNotEmpty)
+              Text(email, textAlign: TextAlign.center,
+                  style: TextStyle(fontSize: 11, color: AppColors.primary.withValues(alpha: 0.5))),
+            if (phone.isNotEmpty) ...[const SizedBox(height: 2),
+              Text(phone, textAlign: TextAlign.center,
+                  style: TextStyle(fontSize: 11, color: AppColors.primary.withValues(alpha: 0.4))),
+            ],
+            const SizedBox(height: 10),
+
+            // Badges
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: isMerchant ? const Color(0xFF1F2E4E) : const Color(0xFFF27B6E),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Text(
+                    isMerchant ? 'MERCHANT' : 'C2C MEMBER',
+                    style: const TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.w900, letterSpacing: 0.5),
+                  ),
+                ),
+                if (verified) ...[const SizedBox(width: 8),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                    decoration: BoxDecoration(color: const Color(0xFF22C55E).withValues(alpha: 0.12), borderRadius: BorderRadius.circular(20)),
+                    child: Row(children: const [
+                      Icon(Icons.verified_rounded, size: 11, color: Color(0xFF22C55E)),
+                      SizedBox(width: 3),
+                      Text('VERIFIED', style: TextStyle(color: Color(0xFF22C55E), fontSize: 9, fontWeight: FontWeight.bold)),
+                    ]),
+                  ),
+                ],
+              ],
+            ),
+            const SizedBox(height: 28),
+
+            // Option cards with real data
+            _buildProfileOption(
+              title: 'Wallet',
+              subtitle: _isLoadingProfile ? 'Loading...' : 'Balance: SGD ${_walletBalance.toStringAsFixed(2)}',
+              icon: Icons.account_balance_wallet_outlined,
+              onTap: () async {
+                await Navigator.of(context).push(MaterialPageRoute(builder: (_) => const WalletScreen()));
+                _loadProfile();
+              },
+            ),
+            const SizedBox(height: 12),
+            _buildProfileOption(
+              title: 'My Sales',
+              subtitle: _isLoadingProfile ? 'Loading...' : '$_salesCount sale${_salesCount != 1 ? 's' : ''}',
+              icon: Icons.sell_outlined,
+              onTap: () async {
+                await Navigator.of(context).push(MaterialPageRoute(builder: (_) => const MySalesScreen()));
+                _loadProfile();
+              },
+            ),
+            const SizedBox(height: 12),
+            _buildProfileOption(
+              title: 'My Orders',
+              subtitle: _isLoadingProfile ? 'Loading...' : '$_ordersCount order${_ordersCount != 1 ? 's' : ''}',
+              icon: Icons.shopping_bag_outlined,
+              onTap: () async {
+                await Navigator.of(context).push(MaterialPageRoute(builder: (_) => const MyOrdersScreen()));
+                _loadProfile();
+              },
+            ),
+            const SizedBox(height: 12),
+            _buildProfileOption(
+              title: 'Wishlist',
+              subtitle: _isLoadingProfile ? 'Loading...' : '$_wishlistCount saved item${_wishlistCount != 1 ? 's' : ''}',
+              icon: Icons.favorite_outline_rounded,
+              onTap: () async {
+                await Navigator.of(context).push(MaterialPageRoute(builder: (_) => const WishlistScreen()));
+                _loadProfile();
+              },
+            ),
+            const SizedBox(height: 12),
+            _buildProfileOption(
+              title: 'Payout Methods',
+              subtitle: 'Manage withdrawals',
+              icon: Icons.payment_outlined,
+              onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const PayoutScreen())),
+            ),
+            const SizedBox(height: 24),
+
+            // Logout
+            OutlinedButton.icon(
+              onPressed: () async {
+                final navigator = Navigator.of(context);
+                await ApiService.logout();
+                navigator.pushAndRemoveUntil(
+                  MaterialPageRoute(builder: (context) => const LoginScreen()),
+                  (route) => false,
+                );
+              },
+              icon: const Icon(Icons.logout, size: 16, color: AppColors.primary),
+              label: const Text('Log Out',
+                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: AppColors.primary)),
+              style: OutlinedButton.styleFrom(
+                backgroundColor: const Color(0xFFFFFDF9),
+                side: BorderSide(color: AppColors.primary.withValues(alpha: 0.08)),
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
+              ),
+            ),
+            const SizedBox(height: 20),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showEditProfileSheet(String currentName, String currentPhone) {
+    final nameCtrl = TextEditingController(text: currentName);
+    final phoneCtrl = TextEditingController(text: currentPhone);
+    bool isSaving = false;
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => StatefulBuilder(
+        builder: (ctx, setModalState) => Container(
+          padding: EdgeInsets.only(
+            left: 24, right: 24, top: 24,
+            bottom: MediaQuery.of(ctx).viewInsets.bottom + 24,
+          ),
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text('Edit Profile',
+                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppColors.primary, fontFamily: 'Recoleta Alt')),
+                  IconButton(icon: const Icon(Icons.close), onPressed: () => Navigator.of(ctx).pop()),
+                ],
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: nameCtrl,
+                style: const TextStyle(fontSize: 14, color: AppColors.primary),
+                decoration: InputDecoration(
+                  labelText: 'Full Name',
+                  labelStyle: TextStyle(color: AppColors.primary.withValues(alpha: 0.6)),
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(14),
+                    borderSide: const BorderSide(color: AppColors.primary, width: 1.5),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: phoneCtrl,
+                keyboardType: TextInputType.phone,
+                style: const TextStyle(fontSize: 14, color: AppColors.primary),
+                decoration: InputDecoration(
+                  labelText: 'Phone Number',
+                  labelStyle: TextStyle(color: AppColors.primary.withValues(alpha: 0.6)),
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(14),
+                    borderSide: const BorderSide(color: AppColors.primary, width: 1.5),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 20),
+              ElevatedButton(
+                onPressed: isSaving
+                    ? null
+                    : () async {
+                        setModalState(() => isSaving = true);
+                        final res = await ApiService.updateUserMe({
+                          'name': nameCtrl.text.trim(),
+                          'phone': phoneCtrl.text.trim(),
+                        });
+                        if (!ctx.mounted) return;
+                        setModalState(() => isSaving = false);
+                        Navigator.of(ctx).pop();
+                        if (!mounted) return;
+                        if (res['success'] == true) {
+                          _loadProfile();
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('Profile updated!'), backgroundColor: Color(0xFF22C55E)));
+                        } else {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text(res['message'] ?? 'Update failed'), backgroundColor: Colors.red));
+                        }
+                      },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.primary,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                ),
+                child: isSaving
+                    ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                    : const Text('Save Changes', style: TextStyle(fontWeight: FontWeight.bold)),
               ),
             ],
           ),
-          const SizedBox(height: 28),
-
-          // Option cards
-          _buildProfileOption(
-            title: 'Wallet',
-            subtitle: 'Balance: \$124.58',
-            icon: Icons.account_balance_wallet_outlined,
-            onTap: () async {
-              final result = await Navigator.of(context).push(
-                MaterialPageRoute(
-                  builder: (context) => const WalletScreen(),
-                ),
-              );
-              if (result is int) {
-                setState(() => _currentIndex = result);
-              }
-            },
-          ),
-          const SizedBox(height: 12),
-          _buildProfileOption(
-            title: 'My Sales',
-            subtitle: '2 Active Listings',
-            icon: Icons.sell_outlined,
-            onTap: () async {
-              final result = await Navigator.of(context).push(
-                MaterialPageRoute(
-                  builder: (context) => const MySalesScreen(),
-                ),
-              );
-              if (result is int) {
-                setState(() => _currentIndex = result);
-              }
-            },
-          ),
-          const SizedBox(height: 12),
-          _buildProfileOption(
-            title: 'My Orders',
-            subtitle: 'Track your purchases',
-            icon: Icons.shopping_bag_outlined,
-            onTap: () async {
-              final result = await Navigator.of(context).push(
-                MaterialPageRoute(
-                  builder: (context) => const MyOrdersScreen(),
-                ),
-              );
-              if (result is int) {
-                setState(() => _currentIndex = result);
-              }
-            },
-          ),
-          const SizedBox(height: 12),
-          _buildProfileOption(
-            title: 'Wishlist',
-            subtitle: '14 saved items',
-            icon: Icons.favorite_outline_rounded,
-            onTap: () async {
-              final result = await Navigator.of(context).push(
-                MaterialPageRoute(
-                  builder: (context) => const WishlistScreen(),
-                ),
-              );
-              if (result is int) {
-                setState(() => _currentIndex = result);
-              }
-            },
-          ),
-          const SizedBox(height: 12),
-          _buildProfileOption(
-            title: 'Payout Methods',
-            subtitle: 'Manage bank accounts',
-            icon: Icons.payment_outlined,
-            onTap: () async {
-              final result = await Navigator.of(context).push(
-                MaterialPageRoute(
-                  builder: (context) => const PayoutScreen(),
-                ),
-              );
-              if (result is int) {
-                setState(() => _currentIndex = result);
-              }
-            },
-          ),
-          const SizedBox(height: 12),
-          _buildProfileOption(
-            title: 'Settings',
-            subtitle: 'Notifications, Privacy',
-            icon: Icons.settings_outlined,
-            onTap: () {},
-          ),
-          const SizedBox(height: 24),
-
-          // Logout Action button
-          OutlinedButton.icon(
-            onPressed: () async {
-              final navigator = Navigator.of(context);
-              await ApiService.logout();
-              navigator.pushAndRemoveUntil(
-                MaterialPageRoute(builder: (context) => const LoginScreen()),
-                (route) => false,
-              );
-            },
-            icon: const Icon(Icons.logout, size: 16, color: AppColors.primary),
-            label: const Text(
-              'Log Out',
-              style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: AppColors.primary),
-            ),
-            style: OutlinedButton.styleFrom(
-              backgroundColor: const Color(0xFFFFFDF9),
-              side: BorderSide(color: AppColors.primary.withValues(alpha: 0.08)),
-              padding: const EdgeInsets.symmetric(vertical: 14),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
-            ),
-          ),
-          const SizedBox(height: 20),
-        ],
+        ),
       ),
     );
   }
@@ -1836,8 +2194,8 @@ class _HomeScreenState extends State<HomeScreen> {
         borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.05),
-            blurRadius: 12,
+            color: Colors.black.withValues(alpha: 0.08),
+            blurRadius: 16,
             offset: const Offset(0, -4),
           ),
         ],
@@ -1845,78 +2203,72 @@ class _HomeScreenState extends State<HomeScreen> {
       child: Stack(
         clipBehavior: Clip.none,
         children: [
-          // Navigation Icons
+          // Nav items row
           Positioned.fill(
             child: SafeArea(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 12.0),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceAround,
-                  children: [
-                    Expanded(child: _buildNavBarItem(0, Icons.home_rounded, 'Home')),
-                    Expanded(child: _buildNavBarItem(1, Icons.search_rounded, 'Search')),
-                    const SizedBox(width: 64), // Empty space for protruding center button
-                    Expanded(child: _buildNavBarItem(3, Icons.chat_bubble_outline_rounded, 'Chat')),
-                    Expanded(child: _buildNavBarItem(4, Icons.person_outline_rounded, 'Profile')),
-                  ],
-                ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceAround,
+                children: [
+                  _buildNavBarItem(0, Icons.home_rounded, 'Home'),
+                  _buildNavBarItem(1, Icons.search_rounded, 'Search'),
+                  // Gap for center Sell button
+                  const SizedBox(width: 72),
+                  _buildNavBarItem(3, Icons.chat_bubble_outline_rounded, 'Chat'),
+                  _buildNavBarItem(4, Icons.person_outline_rounded, 'Profile'),
+                ],
               ),
             ),
           ),
-          // Floating Center Button
+          // Floating Sell button (center)
           Positioned(
-            top: -24,
+            top: -22,
             left: 0,
             right: 0,
             child: Center(
-              child: GestureDetector(
-                onTap: () {
-                  if (_checkAuthWithPrompt(
-                    title: 'Please Login',
-                    message: 'Please login to list and sell your lifestyle packages.',
-                  )) {
-                    Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (context) => const AddPackageScreen(),
+              child: Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  onTap: () {
+                    if (_checkAuthWithPrompt(
+                      title: 'Please Login',
+                      message: 'Please login to list and sell your lifestyle packages.',
+                    )) {
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (context) => const AddPackageScreen(),
+                        ),
+                      );
+                    }
+                  },
+                  borderRadius: BorderRadius.circular(40),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(
+                        width: 56,
+                        height: 56,
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF1F2E4E),
+                          shape: BoxShape.circle,
+                          border: Border.all(color: Colors.white, width: 4),
+                          boxShadow: [
+                            BoxShadow(
+                              color: const Color(0xFF1F2E4E).withValues(alpha: 0.3),
+                              blurRadius: 12,
+                              offset: const Offset(0, 4),
+                            ),
+                          ],
+                        ),
+                        alignment: Alignment.center,
+                        child: const Icon(Icons.add_rounded, color: Colors.white, size: 30),
                       ),
-                    );
-                  }
-                },
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Container(
-                      width: 56,
-                      height: 56,
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF1F2E4E),
-                        shape: BoxShape.circle,
-                        border: Border.all(color: Colors.white, width: 4),
-                        boxShadow: [
-                          BoxShadow(
-                            color: const Color(0xFF1F2E4E).withValues(alpha: 0.3),
-                            blurRadius: 10,
-                            offset: const Offset(0, 4),
-                          ),
-                        ],
+                      const SizedBox(height: 4),
+                      const Text(
+                        'Sell',
+                        style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF1F2E4E)),
                       ),
-                      alignment: Alignment.center,
-                      child: const Icon(
-                        Icons.add_rounded,
-                        color: Colors.white,
-                        size: 32,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    const Text(
-                      'Sell',
-                      style: TextStyle(
-                        fontSize: 10,
-                        fontWeight: FontWeight.bold,
-                        color: Color(0xFF1F2E4E),
-                      ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -1928,47 +2280,178 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Widget _buildNavBarItem(int index, IconData icon, String label) {
     final isSelected = _currentIndex == index;
-    final activeColor = const Color(0xFF1F2E4E);
-    final inactiveColor = const Color(0xFF1F2E4E).withValues(alpha: 0.4);
+    const activeColor = Color(0xFF1F2E4E);
+    final inactiveColor = const Color(0xFF1F2E4E).withValues(alpha: 0.38);
 
-    return GestureDetector(
-      onTap: () {
-        if (index == 3) {
-          if (!_checkAuthWithPrompt(
-            title: 'Please Login',
-            message: 'Please login to chat with seller',
-          )) {
-            return;
-          }
-        } else if (index == 4) {
-          if (!_checkAuthWithPrompt(
-            title: 'Please Login',
-            message: 'Please login to view and edit your profile details.',
-          )) {
-            return;
-          }
-        }
-        setState(() => _currentIndex = index);
-      },
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(
-            icon,
-            color: isSelected ? activeColor : inactiveColor,
-            size: 26,
-          ),
-          const SizedBox(height: 4),
-          Text(
-            label,
-            style: TextStyle(
-              fontSize: 11,
-              fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-              color: isSelected ? activeColor : inactiveColor,
+    return Expanded(
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: () {
+            if (index == 3) {
+              if (!_checkAuthWithPrompt(
+                title: 'Please Login',
+                message: 'Please login to chat with seller',
+              )) { return; }
+            } else if (index == 4) {
+              if (!_checkAuthWithPrompt(
+                title: 'Please Login',
+                message: 'Please login to view and edit your profile details.',
+              )) { return; }
+            }
+            setState(() => _currentIndex = index);
+          },
+          // opaque covers full area, not just icon pixels
+          customBorder: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+          child: SizedBox(
+            height: 72,
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 200),
+                  child: Icon(
+                    icon,
+                    key: ValueKey(isSelected),
+                    color: isSelected ? activeColor : inactiveColor,
+                    size: 26,
+                  ),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  label,
+                  style: TextStyle(
+                    fontSize: 10,
+                    fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+                    color: isSelected ? activeColor : inactiveColor,
+                  ),
+                ),
+              ],
             ),
           ),
-        ],
+        ),
       ),
     );
+  }
+
+  Widget _buildDashedPill({
+    required String label,
+    required String? selectedValue,
+    required String placeholder,
+    required VoidCallback onTap,
+    required VoidCallback onClear,
+  }) {
+    final hasValue = selectedValue != null && selectedValue != 'All Merchants' && selectedValue != 'All Categories' && selectedValue != 'All Types';
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: GestureDetector(
+        onTap: onTap,
+        child: CustomPaint(
+          painter: DashedBorderPainter(
+            color: AppColors.primary.withValues(alpha: 0.35),
+            borderRadius: 20,
+            strokeWidth: 1.2,
+            gap: 4,
+            dashLength: 5,
+          ),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  hasValue ? selectedValue : placeholder,
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.bold,
+                    color: AppColors.primary.withValues(alpha: hasValue ? 0.9 : 0.6),
+                  ),
+                ),
+                if (hasValue) ...[
+                  const SizedBox(width: 6),
+                  GestureDetector(
+                    onTap: onClear,
+                    child: Icon(
+                      Icons.close_rounded,
+                      size: 14,
+                      color: AppColors.primary.withValues(alpha: 0.6),
+                    ),
+                  ),
+                ] else ...[
+                  const SizedBox(width: 4),
+                  const Icon(
+                    Icons.add,
+                    size: 14,
+                    color: AppColors.primary,
+                  ),
+                ]
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class DashedBorderPainter extends CustomPainter {
+  final Color color;
+  final double strokeWidth;
+  final double gap;
+  final double dashLength;
+  final double borderRadius;
+
+  DashedBorderPainter({
+    required this.color,
+    this.strokeWidth = 1.0,
+    this.gap = 3.0,
+    this.dashLength = 5.0,
+    this.borderRadius = 20.0,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = color
+      ..strokeWidth = strokeWidth
+      ..style = PaintingStyle.stroke;
+
+    final RRect rrect = RRect.fromRectAndRadius(
+      Rect.fromLTWH(0, 0, size.width, size.height),
+      Radius.circular(borderRadius),
+    );
+
+    final Path path = Path()..addRRect(rrect);
+    final Path dashedPath = Path();
+
+    double distance = 0.0;
+    for (final PathMetric metric in path.computeMetrics()) {
+      while (distance < metric.length) {
+        final double len = dashLength;
+        if (distance + len > metric.length) {
+          dashedPath.addPath(
+            metric.extractPath(distance, metric.length),
+            Offset.zero,
+          );
+        } else {
+          dashedPath.addPath(
+            metric.extractPath(distance, distance + len),
+            Offset.zero,
+          );
+        }
+        distance += len + gap;
+      }
+    }
+
+    canvas.drawPath(dashedPath, paint);
+  }
+
+  @override
+  bool shouldRepaint(covariant DashedBorderPainter oldDelegate) {
+    return oldDelegate.color != color ||
+        oldDelegate.strokeWidth != strokeWidth ||
+        oldDelegate.gap != gap ||
+        oldDelegate.dashLength != dashLength ||
+        oldDelegate.borderRadius != borderRadius;
   }
 }

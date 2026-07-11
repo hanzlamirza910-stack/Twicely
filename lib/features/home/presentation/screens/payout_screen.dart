@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../../../core/constants/app_colors.dart';
+import '../../../../core/services/api_service.dart';
 
 class PayoutScreen extends StatefulWidget {
   const PayoutScreen({super.key});
@@ -8,269 +9,312 @@ class PayoutScreen extends StatefulWidget {
   State<PayoutScreen> createState() => _PayoutScreenState();
 }
 
-class _PayoutScreenState extends State<PayoutScreen> {
-  final _formKey = GlobalKey<FormState>();
-  String _selectedMethod = 'paynow'; // 'paynow' or 'bank'
+class _PayoutScreenState extends State<PayoutScreen> with SingleTickerProviderStateMixin {
+  late TabController _tabController;
 
-  // PayNow text controllers
-  final TextEditingController _mobileController = TextEditingController(text: '+65 9123 4567');
-  final TextEditingController _nricController = TextEditingController(text: 'S1234567A');
+  // Payout requests
+  bool _isLoadingRequests = true;
+  List<Map<String, dynamic>> _requests = [];
 
-  // Bank Transfer text controllers
-  final TextEditingController _bankNameController = TextEditingController(text: 'DBS Bank');
-  final TextEditingController _accountHolderController = TextEditingController(text: 'John Smith');
-  final TextEditingController _accountNumberController = TextEditingController(text: '123-45678-9');
+  // Wallet
+  bool _isLoadingWallet = true;
+  double _availableBalance = 0.0;
+  String _currency = 'SGD';
+
+  // Settings form
+  String _selectedSchedule = 'weekly';
+  String _selectedMethod = 'stripe';
+  bool _isSavingSettings = false;
+  bool _isRequestingPayout = false;
+  final TextEditingController _amountController = TextEditingController();
+
+  final List<String> _schedules = ['weekly', 'monthly'];
+  final List<String> _methods = ['stripe'];
+
+  @override
+  void initState() {
+    super.initState();
+    _tabController = TabController(length: 2, vsync: this);
+    _fetchAll();
+  }
 
   @override
   void dispose() {
-    _mobileController.dispose();
-    _nricController.dispose();
-    _bankNameController.dispose();
-    _accountHolderController.dispose();
-    _accountNumberController.dispose();
+    _tabController.dispose();
+    _amountController.dispose();
     super.dispose();
+  }
+
+  Future<void> _fetchAll() async {
+    await Future.wait([_fetchWallet(), _fetchRequests()]);
+  }
+
+  Future<void> _fetchWallet() async {
+    setState(() => _isLoadingWallet = true);
+    final res = await ApiService.getWallet();
+    if (!mounted) return;
+    if (res['success'] == true && res['data'] != null) {
+      final data = res['data'] as Map;
+      setState(() {
+        _availableBalance = double.tryParse(data['available_balance']?.toString() ?? '0') ?? 0.0;
+        _currency = data['currency']?.toString() ?? 'SGD';
+        _selectedSchedule = data['payout_schedule']?.toString() ?? 'weekly';
+        _isLoadingWallet = false;
+      });
+    } else {
+      setState(() => _isLoadingWallet = false);
+    }
+  }
+
+  Future<void> _fetchRequests() async {
+    setState(() => _isLoadingRequests = true);
+    final res = await ApiService.getUserPayoutRequests(perPage: 50);
+    if (!mounted) return;
+    if (res['success'] == true && res['data'] != null) {
+      setState(() {
+        _requests = (res['data'] as List<dynamic>)
+            .map((e) => Map<String, dynamic>.from(e as Map))
+            .toList();
+        _isLoadingRequests = false;
+      });
+    } else {
+      setState(() => _isLoadingRequests = false);
+    }
+  }
+
+  Future<void> _saveSettings() async {
+    setState(() => _isSavingSettings = true);
+    final res = await ApiService.updatePayoutSettings(_selectedMethod, _selectedSchedule);
+    if (!mounted) return;
+    setState(() => _isSavingSettings = false);
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(res['success'] == true ? 'Payout settings saved!' : res['message'] ?? 'Failed to save'),
+      backgroundColor: res['success'] == true ? const Color(0xFF22C55E) : Colors.red,
+    ));
+  }
+
+  Future<void> _requestPayout() async {
+    final amtText = _amountController.text.trim();
+    final amount = double.tryParse(amtText);
+    if (amount == null || amount <= 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Please enter a valid amount')));
+      return;
+    }
+    if (amount > _availableBalance) {
+      ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Amount exceeds available balance')));
+      return;
+    }
+    setState(() => _isRequestingPayout = true);
+    final res = await ApiService.createUserPayoutRequest(amount, method: _selectedMethod);
+    if (!mounted) return;
+    setState(() => _isRequestingPayout = false);
+    if (res['success'] == true) {
+      _amountController.clear();
+      ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Payout request submitted!'), backgroundColor: Color(0xFF22C55E)));
+      _fetchRequests();
+      _fetchWallet();
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(res['message'] ?? 'Failed to request payout'), backgroundColor: Colors.red));
+    }
+  }
+
+  Color _statusColor(String status) {
+    switch (status.toLowerCase()) {
+      case 'approved': case 'paid': return const Color(0xFF22C55E);
+      case 'pending': return const Color(0xFFF59E0B);
+      case 'rejected': return const Color(0xFFEF4444);
+      default: return AppColors.primary.withValues(alpha: 0.5);
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.bgLight,
-      appBar: _buildAppBar(),
-      body: _buildBody(),
-      bottomNavigationBar: _buildCustomBottomNavBar(),
+      appBar: AppBar(
+        backgroundColor: AppColors.primary,
+        elevation: 0,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_rounded, color: Colors.white),
+          onPressed: () => Navigator.of(context).pop(),
+        ),
+        title: const Text('Payout Methods',
+            style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontFamily: 'Recoleta Alt')),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.refresh_rounded, color: Colors.white),
+            onPressed: _fetchAll,
+          ),
+        ],
+        bottom: TabBar(
+          controller: _tabController,
+          indicatorColor: Colors.white,
+          labelColor: Colors.white,
+          unselectedLabelColor: Colors.white60,
+          labelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
+          tabs: const [
+            Tab(text: 'Request Payout'),
+            Tab(text: 'History'),
+          ],
+        ),
+      ),
+      body: TabBarView(
+        controller: _tabController,
+        children: [
+          _buildRequestTab(),
+          _buildHistoryTab(),
+        ],
+      ),
     );
   }
 
-  PreferredSizeWidget _buildAppBar() {
-    return AppBar(
-      backgroundColor: Colors.transparent,
-      elevation: 0,
-      leading: IconButton(
-        icon: const Icon(Icons.arrow_back_rounded, color: AppColors.primary),
-        onPressed: () => Navigator.of(context).pop(),
-      ),
-      title: Image.asset(
-        'assets/images/logo.webp',
-        height: 34,
-        fit: BoxFit.contain,
-        errorBuilder: (context, error, stackTrace) => const Text(
-          'twicely',
-          style: TextStyle(
-            fontSize: 22,
-            fontWeight: FontWeight.bold,
-            color: AppColors.primary,
-          ),
-        ),
-      ),
-      centerTitle: false,
-      actions: [
-        IconButton(
-          icon: const Icon(Icons.notifications_none_rounded, color: AppColors.primary, size: 26),
-          onPressed: () {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('No new notifications')),
-            );
-          },
-        ),
-        GestureDetector(
-          onTap: () {
-            Navigator.of(context).pop(4); // pop to profile
-          },
-          child: Container(
-            margin: const EdgeInsets.only(right: 16, left: 4),
-            width: 32,
-            height: 32,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: AppColors.primary.withValues(alpha: 0.1),
-              border: Border.all(color: AppColors.primary.withValues(alpha: 0.2)),
-            ),
-            child: const Icon(Icons.person_outline_rounded, color: AppColors.primary, size: 18),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildBody() {
-    return SingleChildScrollView(
-      physics: const BouncingScrollPhysics(),
-      padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 12.0),
-      child: Form(
-        key: _formKey,
+  Widget _buildRequestTab() {
+    return RefreshIndicator(
+      onRefresh: _fetchAll,
+      color: AppColors.primary,
+      child: SingleChildScrollView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.all(20),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // Title & Subtitle
-            const Text(
-              'Payout Methods',
-              style: TextStyle(
-                fontFamily: 'Recoleta Alt',
-                fontSize: 26,
-                fontWeight: FontWeight.bold,
-                color: AppColors.primary,
-              ),
-            ),
-            const SizedBox(height: 4),
-            const Text(
-              'Choose your preferred payout method and configure the details.',
-              style: TextStyle(
-                fontSize: 13,
-                color: Color(0xFF6B7280),
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-            const SizedBox(height: 28),
-
-            // PREFERRED PAYOUT METHOD label
-            Text(
-              'PREFERRED PAYOUT METHOD',
-              style: TextStyle(
-                fontSize: 11,
-                fontWeight: FontWeight.bold,
-                letterSpacing: 0.5,
-                color: AppColors.primary.withValues(alpha: 0.5),
-              ),
-            ),
-            const SizedBox(height: 14),
-
-            // Option 1: PayNow
-            _buildPayoutOptionCard(
-              id: 'paynow',
-              title: 'PayNow',
-              subtitle: 'Instant transfers via mobile or NRIC/FIN',
-              icon: Icons.money_rounded,
-              iconBgColor: const Color(0xFFE8F5E9),
-              iconColor: const Color(0xFF2E7D32),
-            ),
-            const SizedBox(height: 12),
-
-            // Option 2: Bank Transfer
-            _buildPayoutOptionCard(
-              id: 'bank',
-              title: 'Bank Transfer',
-              subtitle: 'Manual transfer (3-5 business days)',
-              icon: Icons.account_balance_rounded,
-              iconBgColor: const Color(0xFFFFFDE7),
-              iconColor: const Color(0xFFF57F17),
-            ),
-            const SizedBox(height: 24),
-
-            // Dynamic Form Section based on selected payout method
-            _selectedMethod == 'paynow' ? _buildPayNowForm() : _buildBankTransferForm(),
-
-            const SizedBox(height: 32),
-
-            // Save Changes CTA Button
-            ElevatedButton.icon(
-              onPressed: _saveChanges,
-              icon: const Icon(Icons.save_rounded, color: Colors.white, size: 18),
-              label: const Text(
-                'Save Changes',
-                style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.white),
-              ),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF1F2E4E), // Navy blue CTA
-                padding: const EdgeInsets.symmetric(vertical: 15),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
-                elevation: 0,
-              ),
-            ),
-            const SizedBox(height: 24),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildPayoutOptionCard({
-    required String id,
-    required String title,
-    required String subtitle,
-    required IconData icon,
-    required Color iconBgColor,
-    required Color iconColor,
-  }) {
-    final isSelected = _selectedMethod == id;
-
-    return GestureDetector(
-      onTap: () {
-        setState(() {
-          _selectedMethod = id;
-        });
-      },
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(24),
-          border: Border.all(
-            color: isSelected ? const Color(0xFF1F2E4E) : AppColors.primary.withValues(alpha: 0.08),
-            width: isSelected ? 1.8 : 1.2,
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: isSelected ? const Color(0xFF1F2E4E).withValues(alpha: 0.04) : Colors.black.withValues(alpha: 0.01),
-              blurRadius: 10,
-              offset: const Offset(0, 4),
-            ),
-          ],
-        ),
-        child: Row(
-          children: [
-            // Left Rounded Icon Box
+            // Balance card
             Container(
-              padding: const EdgeInsets.all(12),
+              padding: const EdgeInsets.all(20),
               decoration: BoxDecoration(
-                color: iconBgColor,
-                shape: BoxShape.circle,
+                gradient: const LinearGradient(
+                  colors: [Color(0xFF1F2E4E), Color(0xFF2D4270)],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                borderRadius: BorderRadius.circular(20),
               ),
-              child: Icon(
-                icon,
-                color: iconColor,
-                size: 22,
-              ),
+              child: _isLoadingWallet
+                  ? const Center(child: CircularProgressIndicator(color: Colors.white))
+                  : Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('Available Balance',
+                            style: TextStyle(color: Colors.white.withValues(alpha: 0.7), fontSize: 12)),
+                        const SizedBox(height: 4),
+                        Text('$_currency ${_availableBalance.toStringAsFixed(2)}',
+                            style: const TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.w900)),
+                      ],
+                    ),
             ),
-            const SizedBox(width: 14),
 
-            // Text Titles
-            Expanded(
+            const SizedBox(height: 24),
+
+            // Request form
+            Container(
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(20),
+                boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 10)],
+              ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    title,
-                    style: const TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.bold,
-                      color: AppColors.primary,
+                  const Text('Request Withdrawal',
+                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: AppColors.primary, fontFamily: 'Recoleta Alt')),
+                  const SizedBox(height: 16),
+
+                  // Amount field
+                  TextField(
+                    controller: _amountController,
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    style: const TextStyle(fontSize: 14, color: AppColors.primary),
+                    decoration: InputDecoration(
+                      labelText: 'Amount ($_currency)',
+                      labelStyle: TextStyle(color: AppColors.primary.withValues(alpha: 0.6), fontSize: 13),
+                      prefixIcon: const Icon(Icons.attach_money_rounded, color: AppColors.primary),
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
+                      focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(14),
+                          borderSide: const BorderSide(color: AppColors.primary, width: 1.5)),
+                      suffixText: 'Max: ${_availableBalance.toStringAsFixed(2)}',
+                      suffixStyle: TextStyle(color: AppColors.primary.withValues(alpha: 0.45), fontSize: 11),
                     ),
                   ),
-                  const SizedBox(height: 3),
-                  Text(
-                    subtitle,
-                    style: TextStyle(
-                      fontSize: 11,
-                      color: AppColors.primary.withValues(alpha: 0.5),
-                      fontWeight: FontWeight.w500,
+                  const SizedBox(height: 16),
+
+                  // Payout method
+                  const Text('Payout Method', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.primary)),
+                  const SizedBox(height: 8),
+                  RadioGroup<String>(
+                    groupValue: _selectedMethod,
+                    onChanged: (v) => setState(() => _selectedMethod = v ?? ''),
+                    child: Column(
+                      children: _methods.map((m) => RadioListTile<String>(
+                            value: m,
+                            title: Text(m.toUpperCase(),
+                                style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: AppColors.primary)),
+                            activeColor: AppColors.primary,
+                            contentPadding: EdgeInsets.zero,
+                            dense: true,
+                          )).toList(),
+                    ),
+                  ),
+
+                  const SizedBox(height: 16),
+
+                  // Payout schedule
+                  const Text('Payout Schedule', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.primary)),
+                  const SizedBox(height: 8),
+                  RadioGroup<String>(
+                    groupValue: _selectedSchedule,
+                    onChanged: (v) => setState(() => _selectedSchedule = v ?? ''),
+                    child: Column(
+                      children: _schedules.map((s) => RadioListTile<String>(
+                            value: s,
+                            title: Text(s[0].toUpperCase() + s.substring(1),
+                                style: const TextStyle(fontSize: 13, color: AppColors.primary)),
+                            activeColor: AppColors.primary,
+                            contentPadding: EdgeInsets.zero,
+                            dense: true,
+                          )).toList(),
+                    ),
+                  ),
+
+                  const SizedBox(height: 20),
+
+                  // Save settings button
+                  OutlinedButton.icon(
+                    onPressed: _isSavingSettings ? null : _saveSettings,
+                    icon: _isSavingSettings
+                        ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2))
+                        : const Icon(Icons.save_rounded, size: 16),
+                    label: const Text('Save Settings'),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: AppColors.primary,
+                      side: const BorderSide(color: AppColors.primary),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                      minimumSize: const Size(double.infinity, 44),
+                    ),
+                  ),
+
+                  const SizedBox(height: 10),
+
+                  // Submit withdrawal
+                  ElevatedButton.icon(
+                    onPressed: _isRequestingPayout ? null : _requestPayout,
+                    icon: _isRequestingPayout
+                        ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                        : const Icon(Icons.send_rounded, size: 16),
+                    label: const Text('Request Payout'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.primary,
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                      minimumSize: const Size(double.infinity, 48),
                     ),
                   ),
                 ],
-              ),
-            ),
-            const SizedBox(width: 8),
-
-            // Radio Indicator on the right
-            Container(
-              width: 20,
-              height: 20,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                border: Border.all(
-                  color: isSelected ? const Color(0xFF1F2E4E) : AppColors.primary.withValues(alpha: 0.2),
-                  width: isSelected ? 6 : 1.5,
-                ),
-                color: Colors.white,
               ),
             ),
           ],
@@ -279,357 +323,96 @@ class _PayoutScreenState extends State<PayoutScreen> {
     );
   }
 
-  Widget _buildPayNowForm() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        // Info Button link
-        InkWell(
-          onTap: () {
-            _showPayNowInfo();
-          },
-          borderRadius: BorderRadius.circular(4),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 4.0),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: const [
-                Icon(Icons.info_outline_rounded, size: 16, color: Color(0xFF2563EB)),
-                SizedBox(width: 6),
-                Text(
-                  'PayNow Details',
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.bold,
-                    color: Color(0xFF2563EB),
-                    decoration: TextDecoration.underline,
-                  ),
-                ),
+  Widget _buildHistoryTab() {
+    if (_isLoadingRequests) {
+      return const Center(child: CircularProgressIndicator(valueColor: AlwaysStoppedAnimation<Color>(AppColors.primary)));
+    }
+    if (_requests.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.inbox_rounded, size: 52, color: AppColors.primary.withValues(alpha: 0.15)),
+            const SizedBox(height: 12),
+            Text('No payout requests yet',
+                style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: AppColors.primary.withValues(alpha: 0.35))),
+          ],
+        ),
+      );
+    }
+    return RefreshIndicator(
+      onRefresh: _fetchRequests,
+      color: AppColors.primary,
+      child: ListView.builder(
+        padding: const EdgeInsets.all(20),
+        itemCount: _requests.length,
+        itemBuilder: (_, i) => _buildRequestCard(_requests[i]),
+      ),
+    );
+  }
+
+  Widget _buildRequestCard(Map<String, dynamic> req) {
+    final status = (req['status'] ?? 'pending').toString();
+    final amount = double.tryParse(req['amount']?.toString() ?? '0') ?? 0.0;
+    final method = (req['payout_method'] ?? 'stripe').toString().toUpperCase();
+    final createdAt = req['created_at']?.toString() ?? '';
+    String dateStr = '';
+    if (createdAt.isNotEmpty) {
+      try {
+        final dt = DateTime.parse(createdAt);
+        dateStr = '${dt.day}/${dt.month}/${dt.year}';
+      } catch (_) {
+        dateStr = createdAt.split('T').first;
+      }
+    }
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 10, offset: const Offset(0, 3))],
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(
+              color: _statusColor(status).withValues(alpha: 0.1),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(Icons.account_balance_wallet_rounded, color: _statusColor(status), size: 20),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Payout via $method',
+                    style: const TextStyle(fontWeight: FontWeight.bold, color: AppColors.primary, fontSize: 13)),
+                if (dateStr.isNotEmpty)
+                  Text(dateStr, style: TextStyle(fontSize: 11, color: AppColors.primary.withValues(alpha: 0.4))),
               ],
             ),
           ),
-        ),
-        const SizedBox(height: 20),
-
-        // Mobile Number Field
-        _buildLabel('Mobile Number *'),
-        _buildTextField(
-          controller: _mobileController,
-          hintText: 'e.g., +65 9123 4567',
-          helperText: 'Your Singapore mobile number linked to PayNow',
-          keyboardType: TextInputType.phone,
-          validator: (val) {
-            if (val == null || val.trim().isEmpty) {
-              return 'Mobile number is required';
-            }
-            return null;
-          },
-        ),
-        const SizedBox(height: 18),
-
-        // NRIC/FIN Field
-        _buildLabel('NRIC/FIN *'),
-        _buildTextField(
-          controller: _nricController,
-          hintText: 'e.g., S1234567A',
-          helperText: 'Your Singapore NRIC or FIN number',
-          keyboardType: TextInputType.text,
-          textCapitalization: TextCapitalization.characters,
-          validator: (val) {
-            if (val == null || val.trim().isEmpty) {
-              return 'NRIC/FIN is required';
-            }
-            return null;
-          },
-        ),
-      ],
-    );
-  }
-
-  Widget _buildBankTransferForm() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        // Info Header
-        Row(
-          children: const [
-            Icon(Icons.info_outline_rounded, size: 16, color: AppColors.primary),
-            SizedBox(width: 6),
-            Text(
-              'Bank Account Transfer Details',
-              style: TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.bold,
-                color: AppColors.primary,
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Text('S\$${amount.toStringAsFixed(2)}',
+                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: AppColors.primary)),
+              Container(
+                margin: const EdgeInsets.only(top: 4),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: _statusColor(status).withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Text(status.toUpperCase(),
+                    style: TextStyle(fontSize: 8, fontWeight: FontWeight.bold, color: _statusColor(status))),
               ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 20),
-
-        // Bank Name Field
-        _buildLabel('Bank Name *'),
-        _buildTextField(
-          controller: _bankNameController,
-          hintText: 'e.g., DBS Bank, UOB, OCBC',
-          helperText: 'Enter the name of your financial institution',
-          validator: (val) {
-            if (val == null || val.trim().isEmpty) {
-              return 'Bank name is required';
-            }
-            return null;
-          },
-        ),
-        const SizedBox(height: 18),
-
-        // Account Holder Name Field
-        _buildLabel('Account Holder Name *'),
-        _buildTextField(
-          controller: _accountHolderController,
-          hintText: 'e.g., John Smith',
-          helperText: 'Make sure this matches your bank records exactly',
-          validator: (val) {
-            if (val == null || val.trim().isEmpty) {
-              return 'Account holder name is required';
-            }
-            return null;
-          },
-        ),
-        const SizedBox(height: 18),
-
-        // Account Number Field
-        _buildLabel('Account Number *'),
-        _buildTextField(
-          controller: _accountNumberController,
-          hintText: 'e.g., 123-45678-9',
-          helperText: 'Specify your savings or current account number',
-          keyboardType: TextInputType.number,
-          validator: (val) {
-            if (val == null || val.trim().isEmpty) {
-              return 'Account number is required';
-            }
-            return null;
-          },
-        ),
-      ],
-    );
-  }
-
-  Widget _buildLabel(String text) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8.0, left: 2.0),
-      child: Text(
-        text,
-        style: const TextStyle(
-          fontSize: 13,
-          fontWeight: FontWeight.bold,
-          color: AppColors.primary,
-        ),
-      ),
-    );
-  }
-
-  Widget _buildTextField({
-    required TextEditingController controller,
-    required String hintText,
-    required String helperText,
-    TextInputType keyboardType = TextInputType.text,
-    TextCapitalization textCapitalization = TextCapitalization.none,
-    String? Function(String?)? validator,
-  }) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Container(
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: AppColors.primary.withValues(alpha: 0.12)),
-          ),
-          child: TextFormField(
-            controller: controller,
-            keyboardType: keyboardType,
-            textCapitalization: textCapitalization,
-            validator: validator,
-            style: const TextStyle(
-              fontSize: 14,
-              color: AppColors.primary,
-              fontWeight: FontWeight.w500,
-            ),
-            decoration: InputDecoration(
-              hintText: hintText,
-              hintStyle: TextStyle(
-                color: AppColors.primary.withValues(alpha: 0.35),
-                fontSize: 14,
-              ),
-              border: InputBorder.none,
-              contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-            ),
-          ),
-        ),
-        const SizedBox(height: 6),
-        Padding(
-          padding: const EdgeInsets.only(left: 6.0),
-          child: Text(
-            helperText,
-            style: TextStyle(
-              fontSize: 10,
-              color: AppColors.primary.withValues(alpha: 0.4),
-              fontWeight: FontWeight.w500,
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
-  void _showPayNowInfo() {
-    showModalBottomSheet(
-      context: context,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      backgroundColor: AppColors.bgLight,
-      builder: (context) => Container(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            const Text(
-              'About PayNow Payouts',
-              style: TextStyle(
-                fontFamily: 'Recoleta Alt',
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-                color: AppColors.primary,
-              ),
-            ),
-            const SizedBox(height: 12),
-            Text(
-              'PayNow is a real-time instant payment service in Singapore. By linking your mobile number or NRIC/FIN, funds cleared from your successful package sales will be transferred instantly directly to your connected bank account.',
-              style: TextStyle(
-                fontSize: 13,
-                height: 1.4,
-                color: AppColors.primary.withValues(alpha: 0.7),
-              ),
-            ),
-            const SizedBox(height: 24),
-            ElevatedButton(
-              onPressed: () => Navigator.of(context).pop(),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.primary,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-              ),
-              child: const Text('Got it', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  void _saveChanges() {
-    if (_formKey.currentState!.validate()) {
-      // Simulate save spinner
-      showDialog(
-        context: context,
-        barrierDismissible: false,
-        builder: (context) => const Center(
-          child: CircularProgressIndicator(valueColor: AlwaysStoppedAnimation<Color>(AppColors.primary)),
-        ),
-      );
-
-      Future.delayed(const Duration(milliseconds: 800), () {
-        if (!mounted) return;
-        Navigator.of(context).pop(); // pop spinner
-
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              _selectedMethod == 'paynow'
-                  ? 'PayNow payout settings saved successfully!'
-                  : 'Bank transfer details saved successfully!',
-            ),
-            backgroundColor: AppColors.success,
-          ),
-        );
-      });
-    }
-  }
-
-  Widget _buildCustomBottomNavBar() {
-    return Container(
-      decoration: BoxDecoration(
-        color: const Color(0xFFFFF8EA),
-        border: Border(
-          top: BorderSide(
-            color: AppColors.primary.withValues(alpha: 0.08),
-            width: 1.2,
-          ),
-        ),
-      ),
-      padding: const EdgeInsets.symmetric(vertical: 8),
-      child: SafeArea(
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceAround,
-          children: [
-            _buildNavBarItem(0, Icons.home_rounded, 'Home'),
-            _buildNavBarItem(1, Icons.search_rounded, 'Search'),
-            // Sell Button
-            GestureDetector(
-              onTap: () {
-                Navigator.of(context).pop(2); // return to home with index 2
-              },
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Container(
-                    width: 48,
-                    height: 48,
-                    decoration: const BoxDecoration(
-                      color: Color(0xFF1F2E4E),
-                      shape: BoxShape.circle,
-                    ),
-                    alignment: Alignment.center,
-                    child: const Icon(Icons.add, color: Colors.white, size: 24),
-                  ),
-                ],
-              ),
-            ),
-            _buildNavBarItem(3, Icons.chat_bubble_outline_rounded, 'Chat'),
-            _buildNavBarItem(4, Icons.person_rounded, 'Profile'),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildNavBarItem(int index, IconData icon, String label) {
-    final isSelected = index == 4; // Highlight Profile
-    final activeColor = const Color(0xFF1F2E4E);
-    final inactiveColor = const Color(0xFF1F2E4E).withValues(alpha: 0.4);
-
-    return GestureDetector(
-      onTap: () {
-        Navigator.of(context).pop(index);
-      },
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(
-            icon,
-            color: isSelected ? activeColor : inactiveColor,
-            size: 26,
-          ),
-          const SizedBox(height: 4),
-          Text(
-            label,
-            style: TextStyle(
-              fontSize: 11,
-              fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-              color: isSelected ? activeColor : inactiveColor,
-            ),
+            ],
           ),
         ],
       ),

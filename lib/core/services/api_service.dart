@@ -219,6 +219,74 @@ class ApiService {
     return response;
   }
 
+  // Generic PUT Request helper
+  static Future<http.Response> put(
+    String path,
+    Map<String, dynamic> body, {
+    bool authenticated = true,
+  }) async {
+    final url = Uri.parse('$baseUrl$path');
+    final headers = _getHeaders(authenticated: authenticated);
+    final bodyStr = jsonEncode(body);
+
+    debugPrint('\n[API Request] ========================================');
+    debugPrint('METHOD: PUT');
+    debugPrint('URL: $url');
+    debugPrint('Headers: $headers');
+    debugPrint('Body: $bodyStr');
+    debugPrint('======================================================');
+
+    http.Response response;
+    try {
+      response = await http.put(url, headers: headers, body: bodyStr);
+      debugPrint('\n[API Response] =======================================');
+      debugPrint('URL: $url');
+      debugPrint('Status Code: ${response.statusCode}');
+      debugPrint('Headers: ${response.headers}');
+      debugPrint('Body: ${response.body}');
+      debugPrint('======================================================\n');
+    } catch (e) {
+      debugPrint('\n[API Error] ==========================================');
+      debugPrint('URL: $url');
+      debugPrint('Exception: $e');
+      debugPrint('======================================================\n');
+      rethrow;
+    }
+
+    if (response.statusCode == 401 && authenticated) {
+      try {
+        final decoded = jsonDecode(response.body);
+        final code = decoded['code'];
+        if (code == 'expired_token') {
+          final refreshSuccess = await _refreshTokens();
+          if (refreshSuccess) {
+            final newHeaders = _getHeaders(authenticated: true);
+            debugPrint('\n[API Retry Request] ==================================');
+            debugPrint('METHOD: PUT');
+            debugPrint('URL: $url');
+            debugPrint('Headers: $newHeaders');
+            debugPrint('Body: $bodyStr');
+            debugPrint('======================================================');
+            response = await http.put(url, headers: newHeaders, body: bodyStr);
+            debugPrint('\n[API Retry Response] =================================');
+            debugPrint('URL: $url');
+            debugPrint('Status Code: ${response.statusCode}');
+            debugPrint('Body: ${response.body}');
+            debugPrint('======================================================\n');
+          } else {
+            _handleForcedLogout();
+          }
+        } else if (code == 'invalid_token' || code == 'invalid_refresh_token') {
+          _handleForcedLogout();
+        }
+      } catch (_) {
+        _handleForcedLogout();
+      }
+    }
+
+    return response;
+  }
+
   // Token refresh logic
   static Future<bool> _refreshTokens() async {
     final refreshToken = SessionManager.refreshToken;
@@ -672,4 +740,568 @@ class ApiService {
       return {'success': false, 'message': 'Failed to revoke all sessions: $e'};
     }
   }
+
+  // --- API Packages Endpoints ---
+
+  // 1. Get Packages
+  static Future<Map<String, dynamic>> getPackages({
+    int page = 1,
+    int perPage = 20,
+    String? search,
+    String? category,
+    String? status,
+    bool? featured,
+  }) async {
+    try {
+      final queryParams = <String, String>{
+        'page': page.toString(),
+        'per_page': perPage.toString(),
+      };
+      if (search != null && search.isNotEmpty) queryParams['search'] = search;
+      if (category != null && category.isNotEmpty) queryParams['category'] = category;
+      if (status != null && status.isNotEmpty) queryParams['status'] = status;
+      if (featured == true) queryParams['featured'] = 'true';
+
+      final queryString = Uri(queryParameters: queryParams).query;
+      final path = '/packages${queryString.isNotEmpty ? '?$queryString' : ''}';
+      
+      final response = await get(path, authenticated: false);
+      return _safeDecode(response, 'Failed to fetch packages.');
+    } catch (e) {
+      return {'success': false, 'message': 'Failed to fetch packages: $e'};
+    }
+  }
+
+  // 2. Get Package Categories
+  static Future<Map<String, dynamic>> getPackageCategories() async {
+    try {
+      final response = await get('/packages/categories', authenticated: false);
+      return _safeDecode(response, 'Failed to fetch categories.');
+    } catch (e) {
+      return {'success': false, 'message': 'Failed to fetch categories: $e'};
+    }
+  }
+
+  // 3. Get Package by ID
+  static Future<Map<String, dynamic>> getPackageById(int id) async {
+    try {
+      final response = await get('/packages/$id', authenticated: false);
+      return _safeDecode(response, 'Failed to fetch package details.');
+    } catch (e) {
+      return {'success': false, 'message': 'Failed to fetch package details: $e'};
+    }
+  }
+
+  // 4. Create Package
+  static Future<Map<String, dynamic>> createPackage(Map<String, dynamic> packageData) async {
+    try {
+      final response = await post('/packages', packageData, authenticated: true);
+      return _safeDecode(response, 'Failed to create package.');
+    } catch (e) {
+      return {'success': false, 'message': 'Failed to create package: $e'};
+    }
+  }
+
+  // 5. Update Package
+  static Future<Map<String, dynamic>> updatePackage(int id, Map<String, dynamic> packageData) async {
+    try {
+      // Use PUT method as defined in API docs
+      final url = Uri.parse('$baseUrl/packages/$id');
+      final headers = _getHeaders(authenticated: true);
+      final bodyStr = jsonEncode(packageData);
+
+      debugPrint('\n[API Request] ========================================');
+      debugPrint('METHOD: PUT');
+      debugPrint('URL: $url');
+      debugPrint('Headers: $headers');
+      debugPrint('Body: $bodyStr');
+      debugPrint('======================================================');
+
+      final response = await http.put(url, headers: headers, body: bodyStr);
+
+      debugPrint('\n[API Response] =======================================');
+      debugPrint('URL: $url');
+      debugPrint('Status Code: ${response.statusCode}');
+      debugPrint('Body: ${response.body}');
+      debugPrint('======================================================\n');
+
+      return _safeDecode(response, 'Failed to update package.');
+    } catch (e) {
+      return {'success': false, 'message': 'Failed to update package: $e'};
+    }
+  }
+
+  // 6. Delete Package
+  static Future<Map<String, dynamic>> deletePackage(int id) async {
+    try {
+      final response = await delete('/packages/$id', authenticated: true);
+      return _safeDecode(response, 'Failed to delete package.');
+    } catch (e) {
+      return {'success': false, 'message': 'Failed to delete package: $e'};
+    }
+  }
+
+  // 7. Update Package Status
+  static Future<Map<String, dynamic>> updatePackageStatus(int id, String status) async {
+    try {
+      final response = await post('/packages/$id/status', {'status': status}, authenticated: true);
+      return _safeDecode(response, 'Failed to update package status.');
+    } catch (e) {
+      return {'success': false, 'message': 'Failed to update package status: $e'};
+    }
+  }
+
+  // 8. Upload Package Images (Multipart)
+  static Future<Map<String, dynamic>> uploadPackageImages(int id, List<String> filePaths) async {
+    try {
+      final url = Uri.parse('$baseUrl/packages/$id/images');
+      final request = http.MultipartRequest('POST', url);
+      
+      if (SessionManager.accessToken != null) {
+        request.headers['Authorization'] = 'Bearer ${SessionManager.accessToken}';
+      }
+      
+      for (int i = 0; i < filePaths.length; i++) {
+        final path = filePaths[i];
+        if (path.startsWith('assets/')) {
+          // If it is a mock asset path, we cannot read it directly as a file from path.
+          // In a real application, users select real files. For testing/demo with mock assets,
+          // we can send a mock text file or skip it, but let's implement standard file path upload.
+          continue;
+        }
+        final file = await http.MultipartFile.fromPath('file$i', path);
+        request.files.add(file);
+      }
+      
+      // If we only have mock assets and no files were added, we can send a dummy byte array as a placeholder
+      if (request.files.isEmpty) {
+        request.files.add(http.MultipartFile.fromBytes(
+          'file0',
+          [137, 80, 78, 71, 13, 10, 26, 10], // Dummy PNG header
+          filename: 'placeholder.png',
+        ));
+      }
+
+      debugPrint('\n[API Multipart Request] =================================');
+      debugPrint('METHOD: POST (Multipart)');
+      debugPrint('URL: $url');
+      debugPrint('Headers: ${request.headers}');
+      debugPrint('Files Count: ${request.files.length}');
+      debugPrint('======================================================');
+      
+      final streamedResponse = await request.send();
+      final response = await http.Response.fromStream(streamedResponse);
+      
+      debugPrint('\n[API Response] =======================================');
+      debugPrint('URL: $url');
+      debugPrint('Status Code: ${response.statusCode}');
+      debugPrint('Body: ${response.body}');
+      debugPrint('======================================================\n');
+      
+      return _safeDecode(response, 'Failed to upload images.');
+    } catch (e) {
+      return {'success': false, 'message': 'Failed to upload images: $e'};
+    }
+  }
+
+  // 9. Delete Package Image
+  static Future<Map<String, dynamic>> deletePackageImage(int id, int imageId) async {
+    try {
+      final response = await delete('/packages/$id/images/$imageId', authenticated: true);
+      return _safeDecode(response, 'Failed to remove image.');
+    } catch (e) {
+      return {'success': false, 'message': 'Failed to remove image: $e'};
+    }
+  }
+
+  // 10. Like Package (Add to wishlist)
+  static Future<Map<String, dynamic>> likePackage(int id) async {
+    try {
+      final response = await post('/packages/$id/like', {}, authenticated: true);
+      return _safeDecode(response, 'Failed to add to wishlist.');
+    } catch (e) {
+      return {'success': false, 'message': 'Failed to add to wishlist: $e'};
+    }
+  }
+
+  // 11. Unlike Package (Remove from wishlist)
+  static Future<Map<String, dynamic>> unlikePackage(int id) async {
+    try {
+      final response = await delete('/packages/$id/like', authenticated: true);
+      return _safeDecode(response, 'Failed to remove from wishlist.');
+    } catch (e) {
+      return {'success': false, 'message': 'Failed to remove from wishlist: $e'};
+    }
+  }
+
+  // --- Additional Merchant/User Package Endpoints ---
+
+  // Get All Merchants
+  static Future<Map<String, dynamic>> getMerchants() async {
+    try {
+      final response = await get('/merchants', authenticated: false);
+      return _safeDecode(response, 'Failed to fetch merchants.');
+    } catch (e) {
+      return {'success': false, 'message': 'Failed to fetch merchants: $e'};
+    }
+  }
+
+  // Get Merchant Packages (Own)
+  static Future<Map<String, dynamic>> getMerchantPackages({
+    int page = 1,
+    int perPage = 20,
+    String? status,
+  }) async {
+    try {
+      final queryParams = <String, String>{
+        'page': page.toString(),
+        'per_page': perPage.toString(),
+      };
+      if (status != null && status.isNotEmpty) queryParams['status'] = status;
+      
+      final queryString = Uri(queryParameters: queryParams).query;
+      final path = '/merchants/me/packages${queryString.isNotEmpty ? '?$queryString' : ''}';
+      
+      final response = await get(path, authenticated: true);
+      return _safeDecode(response, 'Failed to fetch merchant packages.');
+    } catch (e) {
+      return {'success': false, 'message': 'Failed to fetch merchant packages: $e'};
+    }
+  }
+
+  // Get User Listed Packages (Own C2C)
+  static Future<Map<String, dynamic>> getUserPackages({
+    int page = 1,
+    int perPage = 20,
+  }) async {
+    try {
+      final path = '/users/me/packages?page=$page&per_page=$perPage';
+      final response = await get(path, authenticated: true);
+      return _safeDecode(response, 'Failed to fetch user packages.');
+    } catch (e) {
+      return {'success': false, 'message': 'Failed to fetch user packages: $e'};
+    }
+  }
+
+  // Get User Wishlist Packages
+  static Future<Map<String, dynamic>> getUserWishlist({
+    int page = 1,
+    int perPage = 20,
+  }) async {
+    try {
+      final path = '/users/me/wishlist?page=$page&per_page=$perPage';
+      final response = await get(path, authenticated: true);
+      return _safeDecode(response, 'Failed to fetch wishlist.');
+    } catch (e) {
+      return {'success': false, 'message': 'Failed to fetch wishlist: $e'};
+    }
+  }
+
+  // Place Order
+  static Future<Map<String, dynamic>> placeOrder(Map<String, dynamic> orderData) async {
+    try {
+      final response = await post('/orders', orderData, authenticated: true);
+      return _safeDecode(response, 'Failed to place order.');
+    } catch (e) {
+      return {'success': false, 'message': 'Failed to place order: $e'};
+    }
+  }
+
+  // Get My Orders
+  static Future<Map<String, dynamic>> getMyOrders({int page = 1, int perPage = 20}) async {
+    try {
+      final response = await get('/users/me/orders?page=$page&per_page=$perPage', authenticated: true);
+      return _safeDecode(response, 'Failed to fetch orders.');
+    } catch (e) {
+      return {'success': false, 'message': 'Failed to fetch orders: $e'};
+    }
+  }
+
+  // Create Stripe PaymentIntent
+  static Future<Map<String, dynamic>> createStripePaymentIntent(int orderId) async {
+    try {
+      final response = await post('/payments/stripe/intent', {'order_id': orderId}, authenticated: true);
+      return _safeDecode(response, 'Failed to create payment intent.');
+    } catch (e) {
+      return {'success': false, 'message': 'Failed to create payment intent: $e'};
+    }
+  }
+
+  // --- API Cart Endpoints ---
+
+  // Get Cart
+  static Future<Map<String, dynamic>> getCart() async {
+    try {
+      final response = await get('/cart', authenticated: true);
+      return _safeDecode(response, 'Failed to fetch cart.');
+    } catch (e) {
+      return {'success': false, 'message': 'Failed to fetch cart: $e'};
+    }
+  }
+
+  // Clear Cart
+  static Future<Map<String, dynamic>> clearCart() async {
+    try {
+      final response = await delete('/cart', authenticated: true);
+      return _safeDecode(response, 'Failed to clear cart.');
+    } catch (e) {
+      return {'success': false, 'message': 'Failed to clear cart: $e'};
+    }
+  }
+
+  // Add Item to Cart
+  static Future<Map<String, dynamic>> addToCart(int packageId) async {
+    try {
+      final response = await post('/cart/items', {'package_id': packageId}, authenticated: true);
+      return _safeDecode(response, 'Failed to add item to cart.');
+    } catch (e) {
+      return {'success': false, 'message': 'Failed to add item to cart: $e'};
+    }
+  }
+
+  // Remove Item from Cart
+  static Future<Map<String, dynamic>> removeFromCart(int packageId) async {
+    try {
+      final response = await delete('/cart/items/$packageId', authenticated: true);
+      return _safeDecode(response, 'Failed to remove item from cart.');
+    } catch (e) {
+      return {'success': false, 'message': 'Failed to remove item from cart: $e'};
+    }
+  }
+
+  // --- Wallet & Stripe Payments Endpoints ---
+
+  // Get Wallet Balance & Info
+  static Future<Map<String, dynamic>> getWallet() async {
+    try {
+      final response = await get('/payments/wallet', authenticated: true);
+      return _safeDecode(response, 'Failed to fetch wallet information.');
+    } catch (e) {
+      return {'success': false, 'message': 'Failed to fetch wallet: $e'};
+    }
+  }
+
+  // Get Wallet Transactions
+  static Future<Map<String, dynamic>> getWalletTransactions({int page = 1, int perPage = 20}) async {
+    try {
+      final response = await get('/payments/wallet/transactions?page=$page&per_page=$perPage', authenticated: true);
+      return _safeDecode(response, 'Failed to fetch transactions.');
+    } catch (e) {
+      return {'success': false, 'message': 'Failed to fetch transactions: $e'};
+    }
+  }
+
+  // Request Wallet Withdrawal
+  static Future<Map<String, dynamic>> withdrawWallet(double amount) async {
+    try {
+      final uuid = DateTime.now().millisecondsSinceEpoch.toString();
+      final url = Uri.parse('$baseUrl/payments/wallet/withdraw');
+      final headers = _getHeaders(authenticated: true);
+      headers['Idempotency-Key'] = uuid;
+      
+      final bodyStr = jsonEncode({
+        'amount': amount,
+      });
+
+      debugPrint('\n[Withdraw Request] ========================================');
+      debugPrint('URL: $url');
+      debugPrint('Headers: $headers');
+      debugPrint('Body: $bodyStr');
+      
+      final response = await http.post(url, headers: headers, body: bodyStr);
+      return _safeDecode(response, 'Failed to request withdrawal.');
+    } catch (e) {
+      return {'success': false, 'message': 'Failed to request withdrawal: $e'};
+    }
+  }
+
+  // Get Stripe Connected Account Status
+  static Future<Map<String, dynamic>> getStripeAccountStatus() async {
+    try {
+      final response = await get('/payments/stripe/account', authenticated: true);
+      return _safeDecode(response, 'Failed to fetch Stripe account status.');
+    } catch (e) {
+      return {'success': false, 'message': 'Failed to fetch Stripe status: $e'};
+    }
+  }
+
+  // Onboard Stripe Connected Account
+  static Future<Map<String, dynamic>> onboardStripe(String role) async {
+    try {
+      final response = await post('/payments/stripe/onboard', {'role': role}, authenticated: true);
+      return _safeDecode(response, 'Failed to initialize Stripe onboarding.');
+    } catch (e) {
+      return {'success': false, 'message': 'Failed to onboard Stripe: $e'};
+    }
+  }
+
+  // Disconnect Stripe Connected Account
+  static Future<Map<String, dynamic>> disconnectStripe() async {
+    try {
+      final response = await post('/payments/stripe/disconnect', {}, authenticated: true);
+      return _safeDecode(response, 'Failed to disconnect Stripe account.');
+    } catch (e) {
+      return {'success': false, 'message': 'Failed to disconnect Stripe: $e'};
+    }
+  }
+
+  // Reconnect Stripe Connected Account
+  static Future<Map<String, dynamic>> reconnectStripe() async {
+    try {
+      final response = await post('/payments/stripe/reconnect', {}, authenticated: true);
+      return _safeDecode(response, 'Failed to reconnect Stripe account.');
+    } catch (e) {
+      return {'success': false, 'message': 'Failed to reconnect Stripe: $e'};
+    }
+  }
+
+  // Update Payout Settings
+  static Future<Map<String, dynamic>> updatePayoutSettings(String method, String schedule) async {
+    try {
+      final response = await put(
+        '/users/me/payout-settings',
+        {
+          'payout_method': method,
+          'payout_schedule': schedule,
+        },
+        authenticated: true,
+      );
+      return _safeDecode(response, 'Failed to update payout settings.');
+    } catch (e) {
+      return {'success': false, 'message': 'Failed to update payout settings: $e'};
+    }
+  }
+
+  // ── User Profile ────────────────────────────────────────────
+  static Future<Map<String, dynamic>> getUserMe() async {
+    try {
+      final response = await get('/users/me', authenticated: true);
+      return _safeDecode(response, 'Failed to fetch user profile.');
+    } catch (e) {
+      return {'success': false, 'message': 'Failed to fetch user profile: $e'};
+    }
+  }
+
+  static Future<Map<String, dynamic>> updateUserMe(Map<String, dynamic> data) async {
+    try {
+      final response = await put('/users/me', data, authenticated: true);
+      return _safeDecode(response, 'Failed to update user profile.');
+    } catch (e) {
+      return {'success': false, 'message': 'Failed to update profile: $e'};
+    }
+  }
+
+  // ── Merchant Profile ─────────────────────────────────────────
+  static Future<Map<String, dynamic>> getMerchantMe() async {
+    try {
+      final response = await get('/merchants/me', authenticated: true);
+      return _safeDecode(response, 'Failed to fetch merchant profile.');
+    } catch (e) {
+      return {'success': false, 'message': 'Failed to fetch merchant profile: $e'};
+    }
+  }
+
+  static Future<Map<String, dynamic>> updateMerchantMe(Map<String, dynamic> data) async {
+    try {
+      final response = await put('/merchants/me', data, authenticated: true);
+      return _safeDecode(response, 'Failed to update merchant profile.');
+    } catch (e) {
+      return {'success': false, 'message': 'Failed to update merchant profile: $e'};
+    }
+  }
+
+  // ── C2C Sales ────────────────────────────────────────────────
+  static Future<Map<String, dynamic>> getMySales({int page = 1, int perPage = 20}) async {
+    try {
+      final response = await get(
+        '/users/me/sales?page=$page&per_page=$perPage',
+        authenticated: true,
+      );
+      return _safeDecode(response, 'Failed to fetch sales.');
+    } catch (e) {
+      return {'success': false, 'message': 'Failed to fetch sales: $e'};
+    }
+  }
+
+  // ── User Payout Requests ────────────────────────────────────
+  static Future<Map<String, dynamic>> getUserPayoutRequests({int page = 1, int perPage = 20}) async {
+    try {
+      final response = await get(
+        '/users/me/payout-requests?page=$page&per_page=$perPage',
+        authenticated: true,
+      );
+      return _safeDecode(response, 'Failed to fetch payout requests.');
+    } catch (e) {
+      return {'success': false, 'message': 'Failed to fetch payout requests: $e'};
+    }
+  }
+
+  static Future<Map<String, dynamic>> createUserPayoutRequest(double amount, {String method = 'stripe'}) async {
+    try {
+      final response = await post(
+        '/users/me/payout-requests',
+        {'amount': amount, 'payout_method': method},
+        authenticated: true,
+      );
+      return _safeDecode(response, 'Failed to create payout request.');
+    } catch (e) {
+      return {'success': false, 'message': 'Failed to create payout request: $e'};
+    }
+  }
+
+  // ── Merchant Wallet & Transactions ──────────────────────────
+  static Future<Map<String, dynamic>> getMerchantWallet() async {
+    try {
+      final response = await get('/merchants/me/wallet', authenticated: true);
+      return _safeDecode(response, 'Failed to fetch merchant wallet.');
+    } catch (e) {
+      return {'success': false, 'message': 'Failed to fetch merchant wallet: $e'};
+    }
+  }
+
+  static Future<Map<String, dynamic>> getMerchantTransactions({int page = 1, int perPage = 20}) async {
+    try {
+      final response = await get(
+        '/merchants/me/transactions?page=$page&per_page=$perPage',
+        authenticated: true,
+      );
+      return _safeDecode(response, 'Failed to fetch merchant transactions.');
+    } catch (e) {
+      return {'success': false, 'message': 'Failed to fetch merchant transactions: $e'};
+    }
+  }
+
+  static Future<Map<String, dynamic>> getMerchantStats() async {
+    try {
+      final response = await get('/merchants/me/stats', authenticated: true);
+      return _safeDecode(response, 'Failed to fetch merchant stats.');
+    } catch (e) {
+      return {'success': false, 'message': 'Failed to fetch merchant stats: $e'};
+    }
+  }
+
+  static Future<Map<String, dynamic>> getMerchantOrders({int page = 1, int perPage = 20}) async {
+    try {
+      final response = await get(
+        '/merchants/me/orders?page=$page&per_page=$perPage',
+        authenticated: true,
+      );
+      return _safeDecode(response, 'Failed to fetch merchant orders.');
+    } catch (e) {
+      return {'success': false, 'message': 'Failed to fetch merchant orders: $e'};
+    }
+  }
+
+  static Future<Map<String, dynamic>> getUserTransactions({int page = 1, int perPage = 20}) async {
+    try {
+      final response = await get(
+        '/users/me/transactions?page=$page&per_page=$perPage',
+        authenticated: true,
+      );
+      return _safeDecode(response, 'Failed to fetch transactions.');
+    } catch (e) {
+      return {'success': false, 'message': 'Failed to fetch transactions: $e'};
+    }
+  }
 }
+

@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../../../core/constants/app_colors.dart';
+import '../../../../core/services/api_service.dart';
+import '../../../../core/utils/session_manager.dart';
 
 class MyOrdersScreen extends StatefulWidget {
   const MyOrdersScreen({super.key});
@@ -12,6 +14,8 @@ class _MyOrdersScreenState extends State<MyOrdersScreen> {
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
   String _selectedStatusFilter = 'All';
+  bool _isLoading = true;
+  List<Map<String, dynamic>> _apiOrders = [];
 
   // Mock Orders Data matching the mockup exactly
   final List<Map<String, dynamic>> _orders = [
@@ -56,8 +60,129 @@ class _MyOrdersScreenState extends State<MyOrdersScreen> {
     },
   ];
 
+  @override
+  void initState() {
+    super.initState();
+    _fetchOrders();
+  }
+
+  Future<void> _fetchOrders() async {
+    if (!mounted) return;
+    setState(() {
+      _isLoading = true;
+    });
+    final res = await ApiService.getMyOrders();
+    if (res['success'] == true && res['data'] != null) {
+      final List<dynamic> ordersList = res['data'];
+      if (mounted) {
+        setState(() {
+          _apiOrders = ordersList.map((o) => _mapApiOrder(o as Map<String, dynamic>)).toList();
+          _isLoading = false;
+        });
+      }
+    } else {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
+  }
+
+  Map<String, dynamic> _mapApiOrder(Map<String, dynamic> apiOrder) {
+    final String idStr = apiOrder['number']?.toString() ?? apiOrder['id']?.toString() ?? 'N/A';
+    
+    String dateStr = 'N/A';
+    String timeStr = 'N/A';
+    if (apiOrder['date_created'] != null) {
+      try {
+        final dt = DateTime.parse(apiOrder['date_created'].toString());
+        final months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+        dateStr = "${months[dt.month - 1]} ${dt.day}, ${dt.year}";
+        
+        final hour = dt.hour == 0 ? 12 : (dt.hour > 12 ? dt.hour - 12 : dt.hour);
+        final ampm = dt.hour >= 12 ? 'PM' : 'AM';
+        final minuteStr = dt.minute.toString().padLeft(2, '0');
+        timeStr = "${hour.toString().padLeft(2, '0')}:$minuteStr $ampm";
+      } catch (_) {
+        dateStr = apiOrder['date_created'].toString().split('T')[0];
+      }
+    }
+
+    final String apiStatus = apiOrder['status']?.toString().toLowerCase() ?? 'pending';
+    String uiStatus = 'Paid';
+    if (apiStatus == 'refunded') {
+      uiStatus = 'Refunded';
+    } else if (apiStatus == 'cancelled' || apiStatus == 'failed') {
+      uiStatus = 'Cancelled';
+    } else if (apiStatus == 'completed') {
+      uiStatus = 'Redeemed';
+    } else if (apiStatus == 'processing' || apiStatus == 'pending') {
+      uiStatus = 'Paid';
+    }
+
+    final List<dynamic> items = apiOrder['line_items'] ?? [];
+    String title = 'Twicely Package';
+    double price = double.tryParse(apiOrder['total']?.toString() ?? '') ?? 0.0;
+    String seller = 'Twicely Merchant';
+    int count = 0;
+
+    if (items.isNotEmpty) {
+      final firstItem = items[0] as Map<String, dynamic>;
+      title = firstItem['name']?.toString() ?? 'Twicely Package';
+      count = items.fold<int>(0, (sum, it) => sum + (int.tryParse(it['quantity']?.toString() ?? '1') ?? 1));
+      
+      if (firstItem['merchant_name'] != null) {
+        seller = firstItem['merchant_name'].toString();
+      } else if (firstItem['seller'] != null) {
+        seller = firstItem['seller'].toString();
+      }
+    }
+
+    IconData icon = Icons.shopping_bag_rounded;
+    Color iconBg = const Color(0xFFE0F2FE);
+    Color iconColor = const Color(0xFF0369A1);
+
+    final titleLower = title.toLowerCase();
+    if (titleLower.contains('golf') || titleLower.contains('sport')) {
+      icon = Icons.golf_course_rounded;
+      iconBg = const Color(0xFFE0F2FE);
+      iconColor = const Color(0xFF0369A1);
+    } else if (titleLower.contains('yoga') || titleLower.contains('pilates')) {
+      icon = Icons.self_improvement_rounded;
+      iconBg = const Color(0xFFFEF9C3);
+      iconColor = const Color(0xFFA16207);
+    } else if (titleLower.contains('spa') || titleLower.contains('massage') || titleLower.contains('salon') || titleLower.contains('injection')) {
+      icon = Icons.spa_rounded;
+      iconBg = const Color(0xFFFCE7F3);
+      iconColor = const Color(0xFFBE185D);
+    }
+
+    return {
+      'id': idStr,
+      'date': dateStr,
+      'time': timeStr,
+      'title': title,
+      'seller': seller,
+      'price': price,
+      'packagesCount': count > 0 ? count : 1,
+      'statuses': [uiStatus],
+      'icon': icon,
+      'iconBg': iconBg,
+      'iconColor': iconColor,
+    };
+  }
+
+  String _getFormattedToday() {
+    final dt = DateTime.now();
+    final days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    final months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+    return "${days[dt.weekday % 7]}, ${months[dt.month - 1]} ${dt.day}, ${dt.year}";
+  }
+
   List<Map<String, dynamic>> get _filteredOrders {
-    return _orders.where((order) {
+    final baseList = _apiOrders.isNotEmpty ? _apiOrders : _orders;
+    return baseList.where((order) {
       // 1. Search Query Filter
       final query = _searchQuery.toLowerCase();
       final matchesSearch = order['id'].toString().toLowerCase().contains(query) ||
@@ -319,290 +444,303 @@ class _MyOrdersScreenState extends State<MyOrdersScreen> {
           ),
         ],
       ),
-      body: SingleChildScrollView(
-        physics: const BouncingScrollPhysics(),
-        padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 10.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            // User Header Row
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  'John Smith!',
-                  style: TextStyle(
-                    fontFamily: 'Recoleta Alt',
-                    fontSize: 24,
-                    fontWeight: FontWeight.bold,
-                    color: AppColors.primary,
+      body: RefreshIndicator(
+        onRefresh: _fetchOrders,
+        color: AppColors.primary,
+        child: SingleChildScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 10.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // User Header Row
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    SessionManager.userName != null ? '${SessionManager.userName}!' : 'John Smith!',
+                    style: const TextStyle(
+                      fontFamily: 'Recoleta Alt',
+                      fontSize: 24,
+                      fontWeight: FontWeight.bold,
+                      color: AppColors.primary,
+                    ),
                   ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  'Saturday, May 23, 2026',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: AppColors.primary.withValues(alpha: 0.5),
-                    fontWeight: FontWeight.w500,
+                  const SizedBox(height: 4),
+                  Text(
+                    _getFormattedToday(),
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: AppColors.primary.withValues(alpha: 0.5),
+                      fontWeight: FontWeight.w500,
+                    ),
                   ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 20),
-
-            // Title
-            const Text(
-              'My Orders',
-              style: TextStyle(
-                fontFamily: 'Recoleta Alt',
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-                color: AppColors.primary,
+                ],
               ),
-            ),
-            const SizedBox(height: 2),
-            Text(
-              'View your purchase history',
-              style: TextStyle(
-                fontSize: 12,
-                color: AppColors.primary.withValues(alpha: 0.4),
+              const SizedBox(height: 20),
+
+              // Title
+              const Text(
+                'My Orders',
+                style: TextStyle(
+                  fontFamily: 'Recoleta Alt',
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: AppColors.primary,
+                ),
               ),
-            ),
-            const SizedBox(height: 16),
-
-            // Search Bar & Filter Row
-            Row(
-              children: [
-                Expanded(
-                  child: Container(
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(30),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.02),
-                          blurRadius: 8,
-                          offset: const Offset(0, 4),
-                        ),
-                      ],
-                    ),
-                    child: TextField(
-                      controller: _searchController,
-                      style: const TextStyle(fontSize: 13, color: AppColors.primary),
-                      onChanged: (val) {
-                        setState(() {
-                          _searchQuery = val;
-                        });
-                      },
-                      decoration: InputDecoration(
-                        hintText: 'Search by order, seller, or package...',
-                        hintStyle: TextStyle(color: AppColors.primary.withValues(alpha: 0.4), fontSize: 13),
-                        prefixIcon: const Icon(Icons.search, color: AppColors.primary, size: 20),
-                        border: InputBorder.none,
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
-                      ),
-                    ),
-                  ),
+              const SizedBox(height: 2),
+              Text(
+                'View your purchase history',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: AppColors.primary.withValues(alpha: 0.4),
                 ),
-                const SizedBox(width: 12),
-                GestureDetector(
-                  onTap: _showFilterOptions,
-                  child: Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      shape: BoxShape.circle,
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.02),
-                          blurRadius: 8,
-                          offset: const Offset(0, 4),
-                        ),
-                      ],
-                    ),
-                    child: Icon(
-                      Icons.tune_rounded,
-                      color: _selectedStatusFilter != 'All' ? const Color(0xFF3B82F6) : AppColors.primary,
-                      size: 20,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 20),
+              ),
+              const SizedBox(height: 16),
 
-            // Order History List
-            filtered.isEmpty
-                ? Center(
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 40.0),
-                      child: Column(
-                        children: [
-                          Icon(Icons.shopping_bag_outlined, size: 48, color: AppColors.primary.withValues(alpha: 0.2)),
-                          const SizedBox(height: 12),
-                          Text(
-                            'No orders found',
-                            style: TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.bold,
-                              color: AppColors.primary.withValues(alpha: 0.4),
-                            ),
+              // Search Bar & Filter Row
+              Row(
+                children: [
+                  Expanded(
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(30),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.02),
+                            blurRadius: 8,
+                            offset: const Offset(0, 4),
                           ),
                         ],
                       ),
+                      child: TextField(
+                        controller: _searchController,
+                        style: const TextStyle(fontSize: 13, color: AppColors.primary),
+                        onChanged: (val) {
+                          setState(() {
+                            _searchQuery = val;
+                          });
+                        },
+                        decoration: InputDecoration(
+                          hintText: 'Search by order, seller, or package...',
+                          hintStyle: TextStyle(color: AppColors.primary.withValues(alpha: 0.4), fontSize: 13),
+                          prefixIcon: const Icon(Icons.search, color: AppColors.primary, size: 20),
+                          border: InputBorder.none,
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+                        ),
+                      ),
                     ),
-                  )
-                : ListView.separated(
-                    shrinkWrap: true,
-                    physics: const NeverScrollableScrollPhysics(),
-                    itemCount: filtered.length,
-                    separatorBuilder: (context, index) => const SizedBox(height: 16),
-                    itemBuilder: (context, index) {
-                      final order = filtered[index];
-                      final statuses = List<String>.from(order['statuses']);
-
-                      return GestureDetector(
-                        onTap: () => _showOrderDetails(order),
-                        child: Container(
-                          padding: const EdgeInsets.all(16),
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(24),
-                            border: Border.all(color: AppColors.primary.withValues(alpha: 0.04)),
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.black.withValues(alpha: 0.02),
-                                blurRadius: 12,
-                                offset: const Offset(0, 4),
-                              ),
-                            ],
+                  ),
+                  const SizedBox(width: 12),
+                  GestureDetector(
+                    onTap: _showFilterOptions,
+                    child: Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        shape: BoxShape.circle,
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.02),
+                            blurRadius: 8,
+                            offset: const Offset(0, 4),
                           ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.stretch,
-                            children: [
-                              // Order ID and Statuses
-                              Row(
-                                children: [
-                                  Expanded(
-                                    child: Text(
-                                      'Order #${order['id']}',
-                                      style: const TextStyle(
-                                        fontSize: 13,
-                                        fontWeight: FontWeight.bold,
-                                        color: AppColors.primary,
-                                      ),
-                                    ),
-                                  ),
-                                  Wrap(
-                                    spacing: 4,
-                                    children: statuses.map((st) => _buildStatusTag(st)).toList(),
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(height: 10),
+                        ],
+                      ),
+                      child: Icon(
+                        Icons.tune_rounded,
+                        color: _selectedStatusFilter != 'All' ? const Color(0xFF3B82F6) : AppColors.primary,
+                        size: 20,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 20),
 
-                              // Date & Time Row
-                              Row(
-                                children: [
-                                  Icon(Icons.calendar_month_outlined, size: 14, color: AppColors.primary.withValues(alpha: 0.4)),
-                                  const SizedBox(width: 6),
-                                  Text(
-                                    '${order['date']}, ${order['time']}',
-                                    style: TextStyle(
-                                      fontSize: 11,
-                                      color: AppColors.primary.withValues(alpha: 0.4),
-                                      fontWeight: FontWeight.w500,
-                                    ),
+              // Order History List
+              _isLoading && _apiOrders.isEmpty
+                  ? const Center(
+                      child: Padding(
+                        padding: EdgeInsets.symmetric(vertical: 40.0),
+                        child: CircularProgressIndicator(
+                          valueColor: AlwaysStoppedAnimation<Color>(AppColors.primary),
+                        ),
+                      ),
+                    )
+                  : filtered.isEmpty
+                      ? Center(
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 40.0),
+                            child: Column(
+                              children: [
+                                Icon(Icons.shopping_bag_outlined, size: 48, color: AppColors.primary.withValues(alpha: 0.2)),
+                                const SizedBox(height: 12),
+                                Text(
+                                  'No orders found',
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.bold,
+                                    color: AppColors.primary.withValues(alpha: 0.4),
                                   ),
-                                ],
-                              ),
-                              const Padding(
-                                padding: EdgeInsets.symmetric(vertical: 12.0),
-                                child: Divider(height: 1, color: Colors.black12),
-                              ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        )
+                      : ListView.separated(
+                          shrinkWrap: true,
+                          physics: const NeverScrollableScrollPhysics(),
+                          itemCount: filtered.length,
+                          separatorBuilder: (context, index) => const SizedBox(height: 16),
+                          itemBuilder: (context, index) {
+                            final order = filtered[index];
+                            final statuses = List<String>.from(order['statuses']);
 
-                              // Package Item Details
-                              Row(
-                                children: [
-                                  Container(
-                                    padding: const EdgeInsets.all(12),
-                                    decoration: BoxDecoration(
-                                      color: order['iconBg'] as Color,
-                                      shape: BoxShape.circle,
+                            return GestureDetector(
+                              onTap: () => _showOrderDetails(order),
+                              child: Container(
+                                padding: const EdgeInsets.all(16),
+                                decoration: BoxDecoration(
+                                  color: Colors.white,
+                                  borderRadius: BorderRadius.circular(24),
+                                  border: Border.all(color: AppColors.primary.withValues(alpha: 0.04)),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: Colors.black.withValues(alpha: 0.02),
+                                      blurRadius: 12,
+                                      offset: const Offset(0, 4),
                                     ),
-                                    child: Icon(
-                                      order['icon'] as IconData,
-                                      color: order['iconColor'] as Color,
-                                      size: 22,
-                                    ),
-                                  ),
-                                  const SizedBox(width: 14),
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                  ],
+                                ),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                                  children: [
+                                    // Order ID and Statuses
+                                    Row(
                                       children: [
-                                        Text(
-                                          order['title'] as String,
-                                          style: const TextStyle(
-                                            fontSize: 13,
-                                            fontWeight: FontWeight.bold,
-                                            color: AppColors.primary,
+                                        Expanded(
+                                          child: Text(
+                                            'Order #${order['id']}',
+                                            style: const TextStyle(
+                                              fontSize: 13,
+                                              fontWeight: FontWeight.bold,
+                                              color: AppColors.primary,
+                                            ),
                                           ),
-                                          maxLines: 2,
-                                          overflow: TextOverflow.ellipsis,
                                         ),
-                                        const SizedBox(height: 4),
+                                        Wrap(
+                                          spacing: 4,
+                                          children: statuses.map((st) => _buildStatusTag(st)).toList(),
+                                        ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 10),
+
+                                    // Date & Time Row
+                                    Row(
+                                      children: [
+                                        Icon(Icons.calendar_month_outlined, size: 14, color: AppColors.primary.withValues(alpha: 0.4)),
+                                        const SizedBox(width: 6),
                                         Text(
-                                          'Seller: ${order['seller']}',
+                                          '${order['date']}, ${order['time']}',
                                           style: TextStyle(
                                             fontSize: 11,
                                             color: AppColors.primary.withValues(alpha: 0.4),
+                                            fontWeight: FontWeight.w500,
                                           ),
                                         ),
                                       ],
                                     ),
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(height: 16),
-
-                              // Footer Row
-                              Row(
-                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                children: [
-                                  Row(
-                                    children: [
-                                      Icon(Icons.inbox_outlined, size: 14, color: AppColors.primary.withValues(alpha: 0.4)),
-                                      const SizedBox(width: 4),
-                                      Text(
-                                        '${order['packagesCount']} Package',
-                                        style: TextStyle(
-                                          fontSize: 11,
-                                          color: AppColors.primary.withValues(alpha: 0.4),
-                                          fontWeight: FontWeight.bold,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                  Text(
-                                    '\$${(order['price'] as double).toStringAsFixed(2)}',
-                                    style: const TextStyle(
-                                      fontSize: 16,
-                                      fontWeight: FontWeight.w900,
-                                      color: AppColors.primary,
+                                    const Padding(
+                                      padding: EdgeInsets.symmetric(vertical: 12.0),
+                                      child: Divider(height: 1, color: Colors.black12),
                                     ),
-                                  ),
-                                ],
+
+                                    // Package Item Details
+                                    Row(
+                                      children: [
+                                        Container(
+                                          padding: const EdgeInsets.all(12),
+                                          decoration: BoxDecoration(
+                                            color: order['iconBg'] as Color,
+                                            shape: BoxShape.circle,
+                                          ),
+                                          child: Icon(
+                                            order['icon'] as IconData,
+                                            color: order['iconColor'] as Color,
+                                            size: 22,
+                                          ),
+                                        ),
+                                        const SizedBox(width: 14),
+                                        Expanded(
+                                          child: Column(
+                                            crossAxisAlignment: CrossAxisAlignment.start,
+                                            children: [
+                                              Text(
+                                                order['title'] as String,
+                                                style: const TextStyle(
+                                                  fontSize: 13,
+                                                  fontWeight: FontWeight.bold,
+                                                  color: AppColors.primary,
+                                                ),
+                                                maxLines: 2,
+                                                overflow: TextOverflow.ellipsis,
+                                              ),
+                                              const SizedBox(height: 4),
+                                              Text(
+                                                'Seller: ${order['seller']}',
+                                                style: TextStyle(
+                                                  fontSize: 11,
+                                                  color: AppColors.primary.withValues(alpha: 0.4),
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 16),
+
+                                    // Footer Row
+                                    Row(
+                                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                      children: [
+                                        Row(
+                                          children: [
+                                            Icon(Icons.inbox_outlined, size: 14, color: AppColors.primary.withValues(alpha: 0.4)),
+                                            const SizedBox(width: 4),
+                                            Text(
+                                              '${order['packagesCount']} Package',
+                                              style: TextStyle(
+                                                fontSize: 11,
+                                                color: AppColors.primary.withValues(alpha: 0.4),
+                                                fontWeight: FontWeight.bold,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                        Text(
+                                          '\$${(order['price'] as double).toStringAsFixed(2)}',
+                                          style: const TextStyle(
+                                            fontSize: 16,
+                                            fontWeight: FontWeight.w900,
+                                            color: AppColors.primary,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ],
+                                ),
                               ),
-                            ],
-                          ),
+                            );
+                          },
                         ),
-                      );
-                    },
-                  ),
-            const SizedBox(height: 32),
-          ],
+              const SizedBox(height: 32),
+            ],
+          ),
         ),
       ),
     );

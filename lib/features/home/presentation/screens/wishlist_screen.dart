@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../../../core/constants/app_colors.dart';
+import '../../../../core/services/api_service.dart';
+import '../../../../core/utils/cart_manager.dart';
 import 'shopping_cart_screen.dart';
 
 class WishlistScreen extends StatefulWidget {
@@ -10,46 +12,161 @@ class WishlistScreen extends StatefulWidget {
 }
 
 class _WishlistScreenState extends State<WishlistScreen> {
-  // Mock wishlist data matching the figma screenshot exactly
-  final List<Map<String, dynamic>> _wishlistItems = [
-    {
-      'id': '1',
-      'title': 'Zen Retreat Pass',
-      'description': 'Full day access + Massage',
-      'category': 'Wellness',
-      'price': 120.00,
-      'imageUrl': 'assets/images/package_spa.jpg',
-      'pillColor': const Color(0xFFE8F5E9), // light green
-      'pillTextColor': const Color(0xFF2E7D32),
-    },
-    {
-      'id': '2',
-      'title': 'Vibrant Dinner Date',
-      'description': '3-Course for 2 + Wine',
-      'category': 'Dining',
-      'price': 85.00,
-      'imageUrl': 'assets/images/package_yoga.jpg',
-      'pillColor': const Color(0xFFFFFDE7), // light yellow
-      'pillTextColor': const Color(0xFFF57F17),
-    },
-    {
-      'id': '3',
-      'title': 'Analog Vinyl Set',
-      'description': 'Curated Jazz Selection',
-      'category': 'Lifestyle',
-      'price': 45.00,
-      'imageUrl': 'assets/images/package_gym.jpg',
-      'pillColor': const Color(0xFFE3F2FD), // light blue
-      'pillTextColor': const Color(0xFF0D47A1),
-    },
-  ];
+  bool _isLoading = true;
+  List<dynamic> _wishlistItems = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _loadWishlist();
+  }
+
+  Future<void> _loadWishlist() async {
+    if (!mounted) return;
+    setState(() {
+      _isLoading = true;
+    });
+    try {
+      final res = await ApiService.getUserWishlist();
+      if (mounted) {
+        setState(() {
+          if (res['success'] == true && res['data'] != null) {
+            final List<dynamic> rawItems = res['data'];
+            _wishlistItems = rawItems.map((p) => _mapApiPackage(p as Map<String, dynamic>)).toList();
+          }
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to load wishlist: $e'), backgroundColor: AppColors.danger),
+        );
+      }
+    }
+  }
+
+  Map<String, Color> _getCategoryColors(String category) {
+    switch (category.toLowerCase()) {
+      case 'wellness':
+      case 'spa-massage':
+        return {
+          'bg': const Color(0xFFE8F5E9),
+          'text': const Color(0xFF2E7D32),
+        };
+      case 'dining':
+        return {
+          'bg': const Color(0xFFFFFDE7),
+          'text': const Color(0xFFF57F17),
+        };
+      case 'lifestyle':
+      case 'lifestyle-classes':
+        return {
+          'bg': const Color(0xFFE3F2FD),
+          'text': const Color(0xFF0D47A1),
+        };
+      default:
+        return {
+          'bg': const Color(0xFFF3F4F6),
+          'text': const Color(0xFF374151),
+        };
+    }
+  }
+
+  Map<String, dynamic> _mapApiPackage(Map<String, dynamic> apiPkg) {
+    String imageUrl = 'assets/images/package_spa.jpg';
+    if (apiPkg['cover_url'] != null && apiPkg['cover_url'].toString().isNotEmpty) {
+      imageUrl = apiPkg['cover_url'];
+    } else if (apiPkg['images'] != null && (apiPkg['images'] as List).isNotEmpty) {
+      imageUrl = apiPkg['images'][0]['url'] ?? 'assets/images/package_spa.jpg';
+    }
+
+    final double priceVal = (apiPkg['price'] is num)
+        ? (apiPkg['price'] as num).toDouble()
+        : double.tryParse(apiPkg['price']?.toString() ?? '') ?? 0.0;
+
+    String category = 'General';
+    if (apiPkg['category'] != null) {
+      if (apiPkg['category'] is Map) {
+        category = apiPkg['category']['name']?.toString() ?? 'General';
+      } else {
+        category = apiPkg['category'].toString();
+      }
+    }
+
+    final colors = _getCategoryColors(category);
+
+    return {
+      'id': apiPkg['id']?.toString() ?? '',
+      'title': apiPkg['title'] ?? 'Package Listing',
+      'description': apiPkg['description'] ?? 'No description available',
+      'category': category,
+      'price': priceVal,
+      'imageUrl': imageUrl,
+      'pillColor': colors['bg'],
+      'pillTextColor': colors['text'],
+    };
+  }
+
+  Future<void> _toggleWishlist(Map<String, dynamic> item) async {
+    final int? pkgId = int.tryParse(item['id'].toString());
+    if (pkgId == null) return;
+
+    // Show loading spinner
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const Center(
+        child: CircularProgressIndicator(valueColor: AlwaysStoppedAnimation<Color>(AppColors.primary)),
+      ),
+    );
+
+    try {
+      final res = await ApiService.unlikePackage(pkgId);
+      if (!mounted) return;
+      Navigator.of(context).pop(); // dismiss loading
+      if (res['success'] == true) {
+        _loadWishlist(); // Refresh wishlist
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Removed "${item['title']}" from Wishlist'),
+            backgroundColor: AppColors.primary,
+          ),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(res['message'] ?? 'Failed to update wishlist'),
+            backgroundColor: AppColors.danger,
+          ),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      Navigator.of(context).pop(); // dismiss loading
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error: $e'), backgroundColor: AppColors.danger),
+      );
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.bgLight,
       appBar: _buildAppBar(),
-      body: _buildBody(),
+      body: _isLoading
+          ? const Center(
+              child: CircularProgressIndicator(valueColor: AlwaysStoppedAnimation<Color>(AppColors.primary)),
+            )
+          : RefreshIndicator(
+              onRefresh: _loadWishlist,
+              color: AppColors.primary,
+              child: _buildBody(),
+            ),
       bottomNavigationBar: _buildCustomBottomNavBar(),
     );
   }
@@ -87,7 +204,6 @@ class _WishlistScreenState extends State<WishlistScreen> {
         ),
         GestureDetector(
           onTap: () {
-            // Pop to Profile
             Navigator.of(context).pop(4);
           },
           child: Container(
@@ -108,7 +224,7 @@ class _WishlistScreenState extends State<WishlistScreen> {
 
   Widget _buildBody() {
     return SingleChildScrollView(
-      physics: const BouncingScrollPhysics(),
+      physics: const AlwaysScrollableScrollPhysics(),
       padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 12.0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -220,14 +336,23 @@ class _WishlistScreenState extends State<WishlistScreen> {
                   child: SizedBox(
                     width: double.infinity,
                     height: double.infinity,
-                    child: Image.asset(
-                      item['imageUrl'] as String,
-                      fit: BoxFit.cover,
-                      errorBuilder: (context, error, stackTrace) => Container(
-                        color: AppColors.primary.withValues(alpha: 0.05),
-                        child: const Icon(Icons.image, color: AppColors.primary),
-                      ),
-                    ),
+                    child: item['imageUrl'].toString().startsWith('assets/')
+                        ? Image.asset(
+                            item['imageUrl'] as String,
+                            fit: BoxFit.cover,
+                            errorBuilder: (context, error, stackTrace) => Container(
+                              color: AppColors.primary.withValues(alpha: 0.05),
+                              child: const Icon(Icons.image, color: AppColors.primary),
+                            ),
+                          )
+                        : Image.network(
+                            item['imageUrl'] as String,
+                            fit: BoxFit.cover,
+                            errorBuilder: (context, error, stackTrace) => Container(
+                              color: AppColors.primary.withValues(alpha: 0.05),
+                              child: const Icon(Icons.image, color: AppColors.primary),
+                            ),
+                          ),
                   ),
                 ),
                 // Category Pill floating on top of image
@@ -237,7 +362,7 @@ class _WishlistScreenState extends State<WishlistScreen> {
                   child: Container(
                     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                     decoration: BoxDecoration(
-                      color: item['pillColor'] as Color,
+                      color: item['pillColor'] as Color? ?? const Color(0xFFF3F4F6),
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: Text(
@@ -245,7 +370,7 @@ class _WishlistScreenState extends State<WishlistScreen> {
                       style: TextStyle(
                         fontSize: 9,
                         fontWeight: FontWeight.bold,
-                        color: item['pillTextColor'] as Color,
+                        color: item['pillTextColor'] as Color? ?? const Color(0xFF374151),
                       ),
                     ),
                   ),
@@ -255,27 +380,7 @@ class _WishlistScreenState extends State<WishlistScreen> {
                   right: 8,
                   top: 8,
                   child: GestureDetector(
-                    onTap: () {
-                      final removedItem = item;
-                      final removedIndex = _wishlistItems.indexOf(item);
-                      setState(() {
-                        _wishlistItems.removeAt(removedIndex);
-                      });
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text('Removed "${removedItem['title']}" from Wishlist'),
-                          action: SnackBarAction(
-                            label: 'UNDO',
-                            textColor: const Color(0xFFFBBD03),
-                            onPressed: () {
-                              setState(() {
-                                _wishlistItems.insert(removedIndex, removedItem);
-                              });
-                            },
-                          ),
-                        ),
-                      );
-                    },
+                    onTap: () => _toggleWishlist(item),
                     child: Container(
                       padding: const EdgeInsets.all(6),
                       decoration: const BoxDecoration(
@@ -291,7 +396,7 @@ class _WishlistScreenState extends State<WishlistScreen> {
                       ),
                       child: const Icon(
                         Icons.favorite_rounded,
-                        color: Color(0xFF1F2E4E), // Active navy heart
+                        color: Color(0xFF1F2E4E),
                         size: 16,
                       ),
                     ),
@@ -332,7 +437,7 @@ class _WishlistScreenState extends State<WishlistScreen> {
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     Text(
-                      '\$${(item['price'] as double).toStringAsFixed(0)}',
+                      'SGD ${(item['price'] as double).toStringAsFixed(0)}',
                       style: const TextStyle(
                         fontSize: 13,
                         fontWeight: FontWeight.w900,
@@ -341,24 +446,57 @@ class _WishlistScreenState extends State<WishlistScreen> {
                     ),
                     // Shopping Bag/Cart Icon Button
                     GestureDetector(
-                      onTap: () {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text('Added "${item['title']}" to cart!'),
-                            backgroundColor: AppColors.success,
-                            action: SnackBarAction(
-                              label: 'VIEW CART',
-                              textColor: Colors.white,
-                              onPressed: () {
-                                Navigator.of(context).push(
-                                  MaterialPageRoute(
-                                    builder: (context) => const ShoppingCartScreen(),
-                                  ),
-                                );
-                              },
-                            ),
+                      onTap: () async {
+                        final int? pkgId = int.tryParse(item['id'].toString());
+                        if (pkgId == null) return;
+                        
+                        showDialog(
+                          context: context,
+                          barrierDismissible: false,
+                          builder: (context) => const Center(
+                            child: CircularProgressIndicator(valueColor: AlwaysStoppedAnimation<Color>(AppColors.primary)),
                           ),
                         );
+
+                        try {
+                          final res = await ApiService.addToCart(pkgId);
+                          if (!mounted) return;
+                          Navigator.of(context).pop(); // dismiss loading
+                          if (res['success'] == true) {
+                            await CartManager().syncWithBackend();
+                            if (!mounted) return;
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text('Added "${item['title']}" to cart!'),
+                                backgroundColor: AppColors.success,
+                                action: SnackBarAction(
+                                  label: 'VIEW CART',
+                                  textColor: Colors.white,
+                                  onPressed: () {
+                                    Navigator.of(context).push(
+                                      MaterialPageRoute(
+                                        builder: (context) => const ShoppingCartScreen(),
+                                      ),
+                                    );
+                                  },
+                                ),
+                              ),
+                            );
+                          } else {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text(res['message'] ?? 'Failed to add item to cart.'),
+                                backgroundColor: AppColors.danger,
+                              ),
+                            );
+                          }
+                        } catch (e) {
+                          if (!mounted) return;
+                          Navigator.of(context).pop();
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text('Error: $e'), backgroundColor: AppColors.danger),
+                          );
+                        }
                       },
                       child: Container(
                         padding: const EdgeInsets.all(4),
@@ -401,10 +539,9 @@ class _WishlistScreenState extends State<WishlistScreen> {
           children: [
             _buildNavBarItem(0, Icons.home_rounded, 'Home'),
             _buildNavBarItem(1, Icons.search_rounded, 'Search'),
-            // Sell Button
             GestureDetector(
               onTap: () {
-                Navigator.of(context).pop(2); // return to home with index 2
+                Navigator.of(context).pop(2);
               },
               child: Column(
                 mainAxisSize: MainAxisSize.min,
@@ -431,7 +568,7 @@ class _WishlistScreenState extends State<WishlistScreen> {
   }
 
   Widget _buildNavBarItem(int index, IconData icon, String label) {
-    final isSelected = index == 4; // Since we came from Profile, show Profile as active/selected
+    final isSelected = index == 4;
     final activeColor = const Color(0xFF1F2E4E);
     final inactiveColor = const Color(0xFF1F2E4E).withValues(alpha: 0.4);
 
