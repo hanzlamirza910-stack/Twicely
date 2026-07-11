@@ -16,6 +16,7 @@ import 'package_detail_screen.dart';
 import 'notifications_screen.dart';
 import 'packages_list_screen.dart';
 import '../../../../core/services/api_service.dart';
+import 'merchant_dashboard.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -1952,6 +1953,19 @@ class _HomeScreenState extends State<HomeScreen> {
             const SizedBox(height: 28),
 
             // Option cards with real data
+            if (isMerchant) ...[
+              _buildProfileOption(
+                title: 'Switch to Merchant Dashboard',
+                subtitle: 'Manage packages & sales',
+                icon: Icons.storefront_outlined,
+                onTap: () {
+                  Navigator.of(context).pushReplacement(
+                    MaterialPageRoute(builder: (_) => const MerchantDashboard()),
+                  );
+                },
+              ),
+              const SizedBox(height: 12),
+            ],
             _buildProfileOption(
               title: 'Wallet',
               subtitle: _isLoadingProfile ? 'Loading...' : 'Balance: SGD ${_walletBalance.toStringAsFixed(2)}',

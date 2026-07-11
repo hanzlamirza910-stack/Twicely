@@ -946,7 +946,7 @@ class ApiService {
     }
   }
 
-  // Get Merchant Packages (Own)
+  // Get Merchant Packages (Own + Assigned)
   static Future<Map<String, dynamic>> getMerchantPackages({
     int page = 1,
     int perPage = 20,
@@ -960,10 +960,47 @@ class ApiService {
       if (status != null && status.isNotEmpty) queryParams['status'] = status;
       
       final queryString = Uri(queryParameters: queryParams).query;
-      final path = '/merchants/me/packages${queryString.isNotEmpty ? '?$queryString' : ''}';
       
-      final response = await get(path, authenticated: true);
-      return _safeDecode(response, 'Failed to fetch merchant packages.');
+      // 1. Fetch own packages
+      final ownPath = '/merchants/me/packages${queryString.isNotEmpty ? '?$queryString' : ''}';
+      final ownResponse = await get(ownPath, authenticated: true);
+      final ownDecoded = _safeDecode(ownResponse, 'Failed to fetch own merchant packages.');
+      
+      List<dynamic> combinedList = [];
+      if (ownDecoded['success'] == true && ownDecoded['data'] is List) {
+        combinedList.addAll(ownDecoded['data']);
+      }
+      
+      // 2. Fetch assigned packages where merchant is selected
+      final mId = SessionManager.userId;
+      if (mId != null && mId > 0) {
+        final assignedParams = <String, String>{
+          'merchant_id': mId.toString(),
+          'page': page.toString(),
+          'per_page': perPage.toString(),
+        };
+        if (status != null && status.isNotEmpty) assignedParams['status'] = status;
+        final assignedQueryString = Uri(queryParameters: assignedParams).query;
+        
+        final assignedPath = '/packages?$assignedQueryString';
+        final assignedResponse = await get(assignedPath, authenticated: true);
+        final assignedDecoded = _safeDecode(assignedResponse, 'Failed to fetch assigned merchant packages.');
+        
+        if (assignedDecoded['success'] == true && assignedDecoded['data'] is List) {
+          final assignedList = assignedDecoded['data'] as List;
+          for (var item in assignedList) {
+            final bool alreadyExists = combinedList.any((e) => e['id'] == item['id']);
+            if (!alreadyExists) {
+              combinedList.add(item);
+            }
+          }
+        }
+      }
+      
+      return {
+        'success': true,
+        'data': combinedList,
+      };
     } catch (e) {
       return {'success': false, 'message': 'Failed to fetch merchant packages: $e'};
     }

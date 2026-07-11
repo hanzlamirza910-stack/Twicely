@@ -11,6 +11,7 @@ import 'wishlist_screen.dart';
 import 'payout_screen.dart';
 import '../../../../core/services/api_service.dart';
 import '../../../../core/utils/session_manager.dart';
+import 'home_screen.dart';
 
 class MerchantDashboard extends StatefulWidget {
   const MerchantDashboard({super.key});
@@ -24,6 +25,8 @@ class _MerchantDashboardState extends State<MerchantDashboard> {
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
   String _selectedPill = 'All';
+  String _selectedDateFilter = 'All time';
+  String _selectedSortOrder = 'Newest';
 
   String _merchantBusinessName = "Rolys";
   String _merchantBusinessType = "Company";
@@ -98,6 +101,7 @@ class _MerchantDashboardState extends State<MerchantDashboard> {
       'badge': (apiPkg['status']?.toString().toUpperCase() ?? 'ACTIVE'),
       'image': imageUrl,
       'imageUrl': imageUrl,
+      'createdAt': apiPkg['date_created']?.toString() ?? apiPkg['created_at']?.toString() ?? apiPkg['date']?.toString() ?? '',
     };
   }
 
@@ -181,20 +185,63 @@ class _MerchantDashboardState extends State<MerchantDashboard> {
   }
 
   List<Map<String, dynamic>> get _filteredPackages {
-    return _merchantPackages.where((pkg) {
+    var list = _merchantPackages.where((pkg) {
       final matchesSearch = pkg['title'].toString().toLowerCase().contains(_searchQuery.toLowerCase()) ||
           pkg['category'].toString().toLowerCase().contains(_searchQuery.toLowerCase());
       
       if (!matchesSearch) return false;
       
+      // Status Filter
       if (_selectedPill == 'Published') {
-        return pkg['status'] == 'PUBLISHED';
+        if (pkg['status'].toString().toUpperCase() != 'PUBLISHED') return false;
       } else if (_selectedPill == 'Pending') {
-        return pkg['status'] == 'PENDING';
+        if (pkg['status'].toString().toUpperCase() != 'PENDING') return false;
+      }
+      
+      // Date Filter
+      if (_selectedDateFilter != 'All time') {
+        final dateStr = pkg['createdAt']?.toString() ?? '';
+        if (dateStr.isNotEmpty) {
+          try {
+            final dt = DateTime.parse(dateStr);
+            final difference = DateTime.now().difference(dt).inDays;
+            if (_selectedDateFilter == 'This Week') {
+              if (difference > 7) return false;
+            } else if (_selectedDateFilter == 'This Month') {
+              if (difference > 30) return false;
+            }
+          } catch (_) {
+            return false;
+          }
+        } else {
+          return false;
+        }
       }
       
       return true;
     }).toList();
+
+    if (_selectedSortOrder == 'Price: Low to High') {
+      list.sort((a, b) {
+        final double aPrice = double.tryParse(a['price']?.toString() ?? '0.0') ?? 0.0;
+        final double bPrice = double.tryParse(b['price']?.toString() ?? '0.0') ?? 0.0;
+        return aPrice.compareTo(bPrice);
+      });
+    } else if (_selectedSortOrder == 'Price: High to Low') {
+      list.sort((a, b) {
+        final double aPrice = double.tryParse(a['price']?.toString() ?? '0.0') ?? 0.0;
+        final double bPrice = double.tryParse(b['price']?.toString() ?? '0.0') ?? 0.0;
+        return bPrice.compareTo(aPrice);
+      });
+    } else {
+      list.sort((a, b) {
+        final int aId = int.tryParse(a['id']?.toString() ?? '0') ?? 0;
+        final int bId = int.tryParse(b['id']?.toString() ?? '0') ?? 0;
+        return bId.compareTo(aId);
+      });
+    }
+
+    return list;
   }
 
   @override
@@ -1100,6 +1147,17 @@ class _MerchantDashboardState extends State<MerchantDashboard> {
 
           // Option cards
           _buildProfileOption(
+            title: 'Switch to C2C Dashboard',
+            subtitle: 'Browse packages & buy items',
+            icon: Icons.swap_horiz_rounded,
+            onTap: () {
+              Navigator.of(context).pushReplacement(
+                MaterialPageRoute(builder: (_) => const HomeScreen()),
+              );
+            },
+          ),
+          const SizedBox(height: 12),
+          _buildProfileOption(
             title: 'Business Profile',
             subtitle: 'Edit business details & address',
             icon: Icons.business_outlined,
@@ -1471,65 +1529,114 @@ class _MerchantDashboardState extends State<MerchantDashboard> {
             children: [
               // Date
               Expanded(
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: AppColors.primary.withValues(alpha: 0.12)),
-                  ),
-                  child: Row(
-                    children: [
-                      const Icon(Icons.calendar_today_outlined, size: 14, color: AppColors.primary),
-                      const SizedBox(width: 6),
-                      const Expanded(
-                        child: Text(
-                          'Date (All time)',
-                          style: TextStyle(fontSize: 12, color: AppColors.primary, fontWeight: FontWeight.w500),
-                          overflow: TextOverflow.ellipsis,
+                child: GestureDetector(
+                  onTap: () {
+                    _showFilterSheet<String>(
+                      title: 'Select Date Range',
+                      options: ['All time', 'This Week', 'This Month'],
+                      selectedValue: _selectedDateFilter,
+                      labelMapper: (val) => val,
+                      onSelected: (val) {
+                        setState(() {
+                          _selectedDateFilter = val;
+                        });
+                      },
+                    );
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: AppColors.primary.withValues(alpha: 0.12)),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.calendar_today_outlined, size: 14, color: AppColors.primary),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: Text(
+                            'Date ($_selectedDateFilter)',
+                            style: const TextStyle(fontSize: 11, color: AppColors.primary, fontWeight: FontWeight.w500),
+                            overflow: TextOverflow.ellipsis,
+                          ),
                         ),
-                      ),
-                      const Icon(Icons.keyboard_arrow_down_rounded, size: 16, color: AppColors.primary),
-                    ],
+                        const Icon(Icons.keyboard_arrow_down_rounded, size: 16, color: AppColors.primary),
+                      ],
+                    ),
                   ),
                 ),
               ),
               const SizedBox(width: 10),
               // Status
               Expanded(
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: AppColors.primary.withValues(alpha: 0.12)),
-                  ),
-                  child: Row(
-                    children: [
-                      const Icon(Icons.filter_list_rounded, size: 14, color: AppColors.primary),
-                      const SizedBox(width: 6),
-                      const Expanded(
-                        child: Text(
-                          'Status (All)',
-                          style: TextStyle(fontSize: 12, color: AppColors.primary, fontWeight: FontWeight.w500),
-                          overflow: TextOverflow.ellipsis,
+                child: GestureDetector(
+                  onTap: () {
+                    _showFilterSheet<String>(
+                      title: 'Select Package Status',
+                      options: ['All', 'Published', 'Pending'],
+                      selectedValue: _selectedPill,
+                      labelMapper: (val) => val,
+                      onSelected: (val) {
+                        setState(() {
+                          _selectedPill = val;
+                        });
+                      },
+                    );
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: AppColors.primary.withValues(alpha: 0.12)),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.filter_list_rounded, size: 14, color: AppColors.primary),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: Text(
+                            'Status ($_selectedPill)',
+                            style: const TextStyle(fontSize: 11, color: AppColors.primary, fontWeight: FontWeight.w500),
+                            overflow: TextOverflow.ellipsis,
+                          ),
                         ),
-                      ),
-                      const Icon(Icons.keyboard_arrow_down_rounded, size: 16, color: AppColors.primary),
-                    ],
+                        const Icon(Icons.keyboard_arrow_down_rounded, size: 16, color: AppColors.primary),
+                      ],
+                    ),
                   ),
                 ),
               ),
               const SizedBox(width: 10),
               // Sort Icon button
-              Container(
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: AppColors.primary.withValues(alpha: 0.12)),
+              GestureDetector(
+                onTap: () {
+                  _showFilterSheet<String>(
+                    title: 'Sort Packages By',
+                    options: ['Newest', 'Price: Low to High', 'Price: High to Low'],
+                    selectedValue: _selectedSortOrder,
+                    labelMapper: (val) => val,
+                    onSelected: (val) {
+                      setState(() {
+                        _selectedSortOrder = val;
+                      });
+                    },
+                  );
+                },
+                child: Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: _selectedSortOrder == 'Newest' ? Colors.white : AppColors.primary,
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: AppColors.primary.withValues(alpha: 0.12)),
+                  ),
+                  child: Icon(
+                    Icons.swap_vert_rounded,
+                    size: 18,
+                    color: _selectedSortOrder == 'Newest' ? AppColors.primary : Colors.white,
+                  ),
                 ),
-                child: const Icon(Icons.swap_vert_rounded, size: 18, color: AppColors.primary),
               ),
             ],
           ),
@@ -1863,6 +1970,79 @@ class _MerchantDashboardState extends State<MerchantDashboard> {
           ),
         ],
       ),
+    );
+  }
+
+  void _showFilterSheet<T>({
+    required String title,
+    required List<T> options,
+    required T selectedValue,
+    required String Function(T) labelMapper,
+    required ValueChanged<T> onSelected,
+  }) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (context) {
+        return Container(
+          padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                title,
+                style: const TextStyle(
+                  fontFamily: 'Recoleta Alt',
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: AppColors.primary,
+                ),
+              ),
+              const SizedBox(height: 16),
+              ...options.map((opt) {
+                final isSelected = opt == selectedValue;
+                return GestureDetector(
+                  onTap: () {
+                    onSelected(opt);
+                    Navigator.of(context).pop();
+                  },
+                  child: Container(
+                    margin: const EdgeInsets.only(bottom: 8),
+                    padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
+                    decoration: BoxDecoration(
+                      color: isSelected ? AppColors.primary.withValues(alpha: 0.05) : Colors.transparent,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: isSelected ? AppColors.primary.withValues(alpha: 0.15) : Colors.grey.shade100,
+                      ),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          labelMapper(opt),
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                            color: isSelected ? AppColors.primary : Colors.black87,
+                          ),
+                        ),
+                        if (isSelected)
+                          const Icon(Icons.check_circle_rounded, color: AppColors.primary, size: 20),
+                      ],
+                    ),
+                  ),
+                );
+              }),
+              const SizedBox(height: 12),
+            ],
+          ),
+        );
+      },
     );
   }
 }

@@ -17,48 +17,6 @@ class _MyOrdersScreenState extends State<MyOrdersScreen> {
   bool _isLoading = true;
   List<Map<String, dynamic>> _apiOrders = [];
 
-  // Mock Orders Data matching the mockup exactly
-  final List<Map<String, dynamic>> _orders = [
-    {
-      'id': 'TWC-20260226-00028',
-      'date': 'Feb 26, 2026',
-      'time': '03:49 AM',
-      'title': '5 Golf Sessions At Orchid Country Club (Zaman)',
-      'seller': 'Muhammad Anwar',
-      'price': 800.00,
-      'packagesCount': 1,
-      'statuses': ['Refunded', 'Cancelled'],
-      'icon': Icons.golf_course_rounded,
-      'iconBg': Color(0xFFE0F2FE),
-      'iconColor': Color(0xFF0369A1),
-    },
-    {
-      'id': 'TWC-20260305-00034',
-      'date': 'Mar 5, 2026',
-      'time': '12:54 PM',
-      'title': 'Rejuran Salmon Injection - Full Face',
-      'seller': 'Test Minn',
-      'price': 750.00,
-      'packagesCount': 1,
-      'statuses': ['Paid', 'Redeemed'],
-      'icon': Icons.spa_rounded,
-      'iconBg': Color(0xFFFCE7F3),
-      'iconColor': Color(0xFFBE185D),
-    },
-    {
-      'id': 'TWC-20260305-00033',
-      'date': 'Mar 5, 2026',
-      'time': '12:46 PM',
-      'title': 'Guided "Anger Yoga" + Cold Towel Reset',
-      'seller': 'Test Minn',
-      'price': 5000.00,
-      'packagesCount': 1,
-      'statuses': ['Cancelled'],
-      'icon': Icons.self_improvement_rounded,
-      'iconBg': Color(0xFFFEF9C3),
-      'iconColor': Color(0xFFA16207),
-    },
-  ];
 
   @override
   void initState() {
@@ -181,7 +139,7 @@ class _MyOrdersScreenState extends State<MyOrdersScreen> {
   }
 
   List<Map<String, dynamic>> get _filteredOrders {
-    final baseList = _apiOrders.isNotEmpty ? _apiOrders : _orders;
+    final baseList = _apiOrders;
     return baseList.where((order) {
       // 1. Search Query Filter
       final query = _searchQuery.toLowerCase();
