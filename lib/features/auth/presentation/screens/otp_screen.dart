@@ -7,6 +7,7 @@ import '../../../../core/widgets/custom_button.dart';
 import '../../../home/presentation/screens/home_screen.dart';
 import '../../../home/presentation/screens/merchant_dashboard.dart';
 import 'reset_password_screen.dart';
+import '../../../../core/widgets/custom_snackbar.dart';
 
 class OtpScreen extends StatefulWidget {
   final String email;
@@ -75,11 +76,10 @@ class _OtpScreenState extends State<OtpScreen> {
   void _verifyOtp() async {
     final code = _controllers.map((c) => c.text).join();
     if (code.length < 6) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Please enter the full 6-digit code'),
-          backgroundColor: AppColors.danger,
-        ),
+      CustomSnackBar.show(
+        context,
+        message: 'Please enter the full 6-digit code',
+        type: SnackBarType.warning,
       );
       return;
     }
@@ -107,15 +107,14 @@ class _OtpScreenState extends State<OtpScreen> {
     setState(() => _isLoading = false);
 
     if (result['success'] == true) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(widget.isPasswordReset
-              ? 'OTP verified! Set your new password.'
-              : widget.isMerchant
-                  ? 'Merchant account activated!'
-                  : 'Account verified successfully!'),
-          backgroundColor: AppColors.success,
-        ),
+      CustomSnackBar.show(
+        context,
+        message: widget.isPasswordReset
+            ? 'OTP verified! Set your new password.'
+            : widget.isMerchant
+                ? 'Merchant account activated!'
+                : 'Account verified successfully!',
+        type: SnackBarType.success,
       );
 
       if (widget.isPasswordReset) {
@@ -155,11 +154,10 @@ class _OtpScreenState extends State<OtpScreen> {
         }
       }
     } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(result['message'] ?? 'Invalid OTP code. Please try again.'),
-          backgroundColor: AppColors.danger,
-        ),
+      CustomSnackBar.show(
+        context,
+        message: result['message'] ?? 'Invalid OTP code. Please try again.',
+        type: SnackBarType.error,
       );
     }
   }
@@ -189,16 +187,14 @@ class _OtpScreenState extends State<OtpScreen> {
       _startTimer(); // Restart the 60s countdown timer on successful resend
     }
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(result['success'] == true
-            ? (widget.isPasswordReset
-                ? 'Verification code resent to your email.'
-                : (result['message'] ?? 'New code sent to ${widget.email}'))
-            : (result['message'] ?? 'Failed to resend OTP. Try again.')),
-        backgroundColor:
-            result['success'] == true ? AppColors.success : AppColors.danger,
-      ),
+    CustomSnackBar.show(
+      context,
+      message: result['success'] == true
+          ? (widget.isPasswordReset
+              ? 'Verification code resent to your email.'
+              : (result['message'] ?? 'New code sent to ${widget.email}'))
+          : (result['message'] ?? 'Failed to resend OTP. Try again.'),
+      type: result['success'] == true ? SnackBarType.success : SnackBarType.error,
     );
   }
 

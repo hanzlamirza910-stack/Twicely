@@ -3,6 +3,7 @@ import '../../../../core/constants/app_colors.dart';
 import '../../../../core/services/api_service.dart';
 import '../../../../core/utils/cart_manager.dart';
 import 'shopping_cart_screen.dart';
+import '../../../../core/widgets/custom_snackbar.dart';
 
 class WishlistScreen extends StatefulWidget {
   const WishlistScreen({super.key});
@@ -42,8 +43,10 @@ class _WishlistScreenState extends State<WishlistScreen> {
         setState(() {
           _isLoading = false;
         });
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to load wishlist: $e'), backgroundColor: AppColors.danger),
+        CustomSnackBar.show(
+          context,
+          message: 'Failed to load wishlist: $e',
+          type: SnackBarType.error,
         );
       }
     }
@@ -130,25 +133,25 @@ class _WishlistScreenState extends State<WishlistScreen> {
       Navigator.of(context).pop(); // dismiss loading
       if (res['success'] == true) {
         _loadWishlist(); // Refresh wishlist
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Removed "${item['title']}" from Wishlist'),
-            backgroundColor: AppColors.primary,
-          ),
+        CustomSnackBar.show(
+          context,
+          message: 'Removed "${item['title']}" from Wishlist',
+          type: SnackBarType.success,
         );
       } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(res['message'] ?? 'Failed to update wishlist'),
-            backgroundColor: AppColors.danger,
-          ),
+        CustomSnackBar.show(
+          context,
+          message: res['message'] ?? 'Failed to update wishlist',
+          type: SnackBarType.error,
         );
       }
     } catch (e) {
       if (!mounted) return;
       Navigator.of(context).pop(); // dismiss loading
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error: $e'), backgroundColor: AppColors.danger),
+      CustomSnackBar.show(
+        context,
+        message: 'Error: $e',
+        type: SnackBarType.error,
       );
     }
   }
@@ -197,8 +200,10 @@ class _WishlistScreenState extends State<WishlistScreen> {
         IconButton(
           icon: const Icon(Icons.notifications_none_rounded, color: AppColors.primary, size: 26),
           onPressed: () {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('No new notifications')),
+            CustomSnackBar.show(
+              context,
+              message: 'No new notifications',
+              type: SnackBarType.info,
             );
           },
         ),
@@ -465,36 +470,35 @@ class _WishlistScreenState extends State<WishlistScreen> {
                           if (res['success'] == true) {
                             await CartManager().syncWithBackend();
                             if (!mounted) return;
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                content: Text('Added "${item['title']}" to cart!'),
-                                backgroundColor: AppColors.success,
-                                action: SnackBarAction(
-                                  label: 'VIEW CART',
-                                  textColor: Colors.white,
-                                  onPressed: () {
-                                    Navigator.of(context).push(
-                                      MaterialPageRoute(
-                                        builder: (context) => const ShoppingCartScreen(),
-                                      ),
-                                    );
-                                  },
-                                ),
+                            CustomSnackBar.show(
+                              context,
+                              message: 'Added "${item['title']}" to cart!',
+                              type: SnackBarType.success,
+                              action: SnackBarAction(
+                                label: 'VIEW CART',
+                                onPressed: () {
+                                  Navigator.of(context).push(
+                                    MaterialPageRoute(
+                                      builder: (context) => const ShoppingCartScreen(),
+                                    ),
+                                  );
+                                },
                               ),
                             );
                           } else {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                content: Text(res['message'] ?? 'Failed to add item to cart.'),
-                                backgroundColor: AppColors.danger,
-                              ),
+                            CustomSnackBar.show(
+                              context,
+                              message: res['message'] ?? 'Failed to add item to cart.',
+                              type: SnackBarType.error,
                             );
                           }
                         } catch (e) {
                           if (!mounted) return;
                           Navigator.of(context).pop();
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(content: Text('Error: $e'), backgroundColor: AppColors.danger),
+                          CustomSnackBar.show(
+                            context,
+                            message: 'Error: $e',
+                            type: SnackBarType.error,
                           );
                         }
                       },

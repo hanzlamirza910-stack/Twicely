@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/utils/cart_manager.dart';
 import '../../../../core/services/api_service.dart';
+import '../../../../core/widgets/custom_snackbar.dart';
 
 class CheckoutScreen extends StatefulWidget {
   final double totalAmount;
@@ -91,11 +92,10 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       _stateController.text = 'SG';
       _postcodeController.text = '018982';
     });
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Form autofilled for demo testing!'),
-        duration: Duration(seconds: 1),
-      ),
+    CustomSnackBar.show(
+      context,
+      message: 'Form autofilled for demo testing!',
+      type: SnackBarType.success,
     );
   }
 
@@ -130,8 +130,10 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         setState(() {
           _isProcessing = false;
         });
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(orderRes['message'] ?? 'Failed to place order.')),
+        CustomSnackBar.show(
+          context,
+          message: orderRes['message'] ?? 'Failed to place order.',
+          type: SnackBarType.error,
         );
       }
       return;
@@ -143,8 +145,10 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         setState(() {
           _isProcessing = false;
         });
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Order placed but failed to retrieve order ID.')),
+        CustomSnackBar.show(
+          context,
+          message: 'Order placed but failed to retrieve order ID.',
+          type: SnackBarType.error,
         );
       }
       return;
@@ -159,8 +163,10 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         setState(() {
           _isProcessing = false;
         });
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(intentRes['message'] ?? 'Failed to create payment intent.')),
+        CustomSnackBar.show(
+          context,
+          message: intentRes['message'] ?? 'Failed to create payment intent.',
+          type: SnackBarType.error,
         );
       }
       return;

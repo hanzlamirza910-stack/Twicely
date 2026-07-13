@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/services/api_service.dart';
+import '../../../../core/widgets/custom_snackbar.dart';
 
 class AddPackageScreen extends StatefulWidget {
   final Function(Map<String, dynamic>)? onPackageAdded;
@@ -280,21 +281,21 @@ class _AddPackageScreenState extends State<AddPackageScreen> {
   void _nextStep() {
     if (_currentStep == 1) {
       if (_selectedMerchant.isEmpty) {
-        _showToast('Please select a merchant');
+        _showToast('Please select a merchant', type: SnackBarType.warning);
         return;
       }
       setState(() => _currentStep = 2);
     } else if (_currentStep == 2) {
       if (_titleController.text.trim().isEmpty) {
-        _showToast('Package title is required');
+        _showToast('Package title is required', type: SnackBarType.warning);
         return;
       }
       if (_descriptionController.text.trim().isEmpty) {
-        _showToast('Package description is required');
+        _showToast('Package description is required', type: SnackBarType.warning);
         return;
       }
       if (_primaryCategory.isEmpty) {
-        _showToast('Please select a primary category');
+        _showToast('Please select a primary category', type: SnackBarType.warning);
         return;
       }
       setState(() => _currentStep = 3);
@@ -309,9 +310,11 @@ class _AddPackageScreenState extends State<AddPackageScreen> {
     }
   }
 
-  void _showToast(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message), duration: const Duration(seconds: 2)),
+  void _showToast(String message, {SnackBarType type = SnackBarType.info}) {
+    CustomSnackBar.show(
+      context,
+      message: message,
+      type: type,
     );
   }
 
@@ -438,7 +441,7 @@ class _AddPackageScreenState extends State<AddPackageScreen> {
         ),
       );
     } else {
-      _showToast('Failed to submit package: ${res['message']}');
+      _showToast('Failed to submit package: ${res['message']}', type: SnackBarType.error);
     }
   }
 
@@ -677,14 +680,14 @@ class _AddPackageScreenState extends State<AddPackageScreen> {
           label: 'Add Image',
           onTap: () {
             if (_galleryImages.length >= 5) {
-              _showToast('Maximum 5 images allowed');
+              _showToast('Maximum 5 images allowed', type: SnackBarType.warning);
               return;
             }
             // Simulate adding a mock image path
             setState(() {
               _galleryImages.add('assets/images/package_spa.jpg');
             });
-            _showToast('Mock image added to gallery');
+            _showToast('Mock image added to gallery', type: SnackBarType.success);
           },
         ),
         if (_galleryImages.isNotEmpty) ...[
@@ -761,7 +764,7 @@ class _AddPackageScreenState extends State<AddPackageScreen> {
             setState(() {
               _receiptFileName = 'receipt_invoice_591.pdf';
             });
-            _showToast('Mock receipt uploaded successfully');
+            _showToast('Mock receipt uploaded successfully', type: SnackBarType.success);
           },
         ),
       ],

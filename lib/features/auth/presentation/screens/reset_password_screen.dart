@@ -3,6 +3,7 @@ import '../../../../core/constants/app_colors.dart';
 import '../../../../core/utils/validators.dart';
 import '../../../../core/widgets/custom_button.dart';
 import '../../../../core/services/api_service.dart';
+import '../../../../core/widgets/custom_snackbar.dart';
 
 class ResetPasswordScreen extends StatefulWidget {
   final String? resetToken;
@@ -34,11 +35,10 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
   void _handleResetPassword() async {
     if (_formKey.currentState?.validate() ?? false) {
       if (_passwordController.text != _confirmPasswordController.text) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Passwords do not match'),
-            backgroundColor: AppColors.danger,
-          ),
+        CustomSnackBar.show(
+          context,
+          message: 'Passwords do not match',
+          type: SnackBarType.warning,
         );
         return;
       }
@@ -65,19 +65,17 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
         });
 
         if (result['success'] == true) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(result['message'] ?? 'Password reset successfully! Please log in.'),
-              backgroundColor: AppColors.success,
-            ),
+          CustomSnackBar.show(
+            context,
+            message: result['message'] ?? 'Password reset successfully! Please log in.',
+            type: SnackBarType.success,
           );
           Navigator.of(context).popUntil((route) => route.isFirst);
         } else {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(result['message'] ?? 'Failed to reset password.'),
-              backgroundColor: AppColors.danger,
-            ),
+          CustomSnackBar.show(
+            context,
+            message: result['message'] ?? 'Failed to reset password.',
+            type: SnackBarType.error,
           );
         }
       }

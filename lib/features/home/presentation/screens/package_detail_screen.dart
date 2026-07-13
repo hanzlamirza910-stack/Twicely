@@ -6,6 +6,7 @@ import '../../../auth/presentation/screens/login_screen.dart';
 import '../../../chat/presentation/screens/conversations_screen.dart';
 import 'shopping_cart_screen.dart';
 import '../../../../core/services/api_service.dart';
+import '../../../../core/widgets/custom_snackbar.dart';
 
 class PackageDetailScreen extends StatefulWidget {
   final Map<String, dynamic> package;
@@ -129,11 +130,10 @@ class _PackageDetailScreenState extends State<PackageDetailScreen> {
       setState(() {
         _isFavorited = !_isFavorited;
       });
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(_isFavorited ? 'Added to Wishlist (Demo)' : 'Removed from Wishlist (Demo)'),
-          duration: const Duration(seconds: 1),
-        ),
+      CustomSnackBar.show(
+        context,
+        message: _isFavorited ? 'Added to Wishlist (Demo)' : 'Removed from Wishlist (Demo)',
+        type: SnackBarType.success,
       );
       return;
     }
@@ -152,21 +152,19 @@ class _PackageDetailScreenState extends State<PackageDetailScreen> {
     if (!mounted) return;
 
     if (res['success'] == true) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(_isFavorited ? 'Added to Wishlist' : 'Removed from Wishlist'),
-          duration: const Duration(seconds: 1),
-        ),
+      CustomSnackBar.show(
+        context,
+        message: _isFavorited ? 'Added to Wishlist' : 'Removed from Wishlist',
+        type: SnackBarType.success,
       );
     } else {
       setState(() {
         _isFavorited = !_isFavorited;
       });
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Failed to update wishlist: ${res['message']}'),
-          duration: const Duration(seconds: 2),
-        ),
+      CustomSnackBar.show(
+        context,
+        message: 'Failed to update wishlist: ${res['message']}',
+        type: SnackBarType.error,
       );
     }
   }
@@ -255,8 +253,10 @@ class _PackageDetailScreenState extends State<PackageDetailScreen> {
           MaterialPageRoute(builder: (context) => const ShoppingCartScreen()),
         );
       } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(res['message'] ?? 'Failed to add item to cart.')),
+        CustomSnackBar.show(
+          context,
+          message: res['message'] ?? 'Failed to add item to cart.',
+          type: SnackBarType.error,
         );
       }
     }
@@ -623,8 +623,10 @@ class _PackageDetailScreenState extends State<PackageDetailScreen> {
                 const SizedBox(height: 2),
                 InkWell(
                   onTap: () {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Viewing seller profile...')),
+                    CustomSnackBar.show(
+                      context,
+                      message: 'Viewing seller profile...',
+                      type: SnackBarType.info,
                     );
                   },
                   child: const Text(

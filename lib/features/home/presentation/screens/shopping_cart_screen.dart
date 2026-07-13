@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/utils/cart_manager.dart';
 import 'checkout_screen.dart';
+import '../../../../core/widgets/custom_snackbar.dart';
 
 class ShoppingCartScreen extends StatefulWidget {
   const ShoppingCartScreen({super.key});
@@ -42,11 +43,10 @@ class _ShoppingCartScreenState extends State<ShoppingCartScreen> {
       setState(() {
         _isRefreshing = false;
       });
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Cart refreshed!'),
-          duration: Duration(seconds: 1),
-        ),
+      CustomSnackBar.show(
+        context,
+        message: 'Cart refreshed!',
+        type: SnackBarType.success,
       );
     }
   }
@@ -275,11 +275,10 @@ class _ShoppingCartScreenState extends State<ShoppingCartScreen> {
                                 setState(() {
                                   _cartManager.removeItem(index);
                                 });
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(
-                                    content: Text('Item removed from cart'),
-                                    duration: Duration(seconds: 1),
-                                  ),
+                                CustomSnackBar.show(
+                                  context,
+                                  message: 'Item removed from cart',
+                                  type: SnackBarType.success,
                                 );
                               },
                               child: Container(

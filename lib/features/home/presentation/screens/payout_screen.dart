@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/services/api_service.dart';
+import '../../../../core/widgets/custom_snackbar.dart';
 
 class PayoutScreen extends StatefulWidget {
   const PayoutScreen({super.key});
@@ -87,23 +88,30 @@ class _PayoutScreenState extends State<PayoutScreen> with SingleTickerProviderSt
     final res = await ApiService.updatePayoutSettings(_selectedMethod, _selectedSchedule);
     if (!mounted) return;
     setState(() => _isSavingSettings = false);
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content: Text(res['success'] == true ? 'Payout settings saved!' : res['message'] ?? 'Failed to save'),
-      backgroundColor: res['success'] == true ? const Color(0xFF22C55E) : Colors.red,
-    ));
+    CustomSnackBar.show(
+      context,
+      message: res['success'] == true ? 'Payout settings saved!' : res['message'] ?? 'Failed to save settings.',
+      type: res['success'] == true ? SnackBarType.success : SnackBarType.error,
+    );
   }
 
   Future<void> _requestPayout() async {
     final amtText = _amountController.text.trim();
     final amount = double.tryParse(amtText);
     if (amount == null || amount <= 0) {
-      ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Please enter a valid amount')));
+      CustomSnackBar.show(
+        context,
+        message: 'Please enter a valid amount',
+        type: SnackBarType.warning,
+      );
       return;
     }
     if (amount > _availableBalance) {
-      ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Amount exceeds available balance')));
+      CustomSnackBar.show(
+        context,
+        message: 'Amount exceeds available balance',
+        type: SnackBarType.warning,
+      );
       return;
     }
     setState(() => _isRequestingPayout = true);
@@ -112,13 +120,19 @@ class _PayoutScreenState extends State<PayoutScreen> with SingleTickerProviderSt
     setState(() => _isRequestingPayout = false);
     if (res['success'] == true) {
       _amountController.clear();
-      ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Payout request submitted!'), backgroundColor: Color(0xFF22C55E)));
+      CustomSnackBar.show(
+        context,
+        message: 'Payout request submitted!',
+        type: SnackBarType.success,
+      );
       _fetchRequests();
       _fetchWallet();
     } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(res['message'] ?? 'Failed to request payout'), backgroundColor: Colors.red));
+      CustomSnackBar.show(
+        context,
+        message: res['message'] ?? 'Failed to request payout',
+        type: SnackBarType.error,
+      );
     }
   }
 

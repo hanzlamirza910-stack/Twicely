@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../../../core/constants/app_colors.dart';
+import '../../../../core/widgets/custom_snackbar.dart';
 
 class NotificationModel {
   final String id;
@@ -68,8 +69,10 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         n.isRead = true;
       }
     });
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('All notifications marked as read')),
+    CustomSnackBar.show(
+      context,
+      message: 'All notifications marked as read',
+      type: SnackBarType.success,
     );
   }
 
@@ -77,8 +80,10 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     setState(() {
       _notifications.removeWhere((n) => n.id == id);
     });
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Notification deleted')),
+    CustomSnackBar.show(
+      context,
+      message: 'Notification deleted',
+      type: SnackBarType.success,
     );
   }
 

@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import '../../../../core/constants/app_colors.dart';
+import '../../../../core/widgets/custom_snackbar.dart';
 
 class ChatDetailScreen extends StatefulWidget {
   final String name;
@@ -315,8 +316,10 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
             ),
             GestureDetector(
               onTap: () {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Viewing item details...')),
+                CustomSnackBar.show(
+                  context,
+                  message: 'Viewing item details...',
+                  type: SnackBarType.info,
                 );
               },
               child: Container(

@@ -9,6 +9,44 @@ class ApiService {
   // Global callback set by main.dart or UI to force redirect to login
   static void Function()? onUnauthorized;
 
+  static http.Response _handleException(dynamic e, Uri url) {
+    debugPrint('\n[API Error Exception Caught] ========================');
+    debugPrint('URL: $url');
+    debugPrint('Exception: $e');
+    debugPrint('======================================================\n');
+
+    String errorMsg = 'Failed to connect to the server. Please check if the server is down or try again later.';
+    String code = 'server_connection_error';
+
+    final errStr = e.toString().toLowerCase();
+    if (errStr.contains('socketexception') || 
+        errStr.contains('failed host lookup') || 
+        errStr.contains('os error') || 
+        errStr.contains('network is unreachable') ||
+        errStr.contains('clientexception')) {
+      errorMsg = 'No internet connection. Please check your network and try again.';
+      code = 'no_internet';
+    } else if (errStr.contains('timeoutexception') || errStr.contains('timeout')) {
+      errorMsg = 'Connection timed out. The server might be offline or slow.';
+      code = 'timeout';
+    } else if (errStr.contains('handshakeexception') || errStr.contains('certpathvalidator')) {
+      errorMsg = 'Secure SSL connection could not be established with the server.';
+      code = 'ssl_error';
+    }
+
+    return http.Response(
+      jsonEncode({
+        'success': false,
+        'code': code,
+        'message': errorMsg,
+      }),
+      503, // Service Unavailable
+      headers: {
+        'content-type': 'application/json; charset=utf-8',
+      },
+    );
+  }
+
   static Map<String, String> _getHeaders({bool authenticated = true}) {
     final headers = {
       'Content-Type': 'application/json',
@@ -47,11 +85,7 @@ class ApiService {
       debugPrint('Body: ${response.body}');
       debugPrint('======================================================\n');
     } catch (e) {
-      debugPrint('\n[API Error] ==========================================');
-      debugPrint('URL: $url');
-      debugPrint('Exception: $e');
-      debugPrint('======================================================\n');
-      rethrow;
+      response = _handleException(e, url);
     }
 
     if (response.statusCode == 401 && authenticated) {
@@ -115,11 +149,7 @@ class ApiService {
       debugPrint('Body: ${response.body}');
       debugPrint('======================================================\n');
     } catch (e) {
-      debugPrint('\n[API Error] ==========================================');
-      debugPrint('URL: $url');
-      debugPrint('Exception: $e');
-      debugPrint('======================================================\n');
-      rethrow;
+      response = _handleException(e, url);
     }
 
     if (response.statusCode == 401 && authenticated) {
@@ -179,11 +209,7 @@ class ApiService {
       debugPrint('Body: ${response.body}');
       debugPrint('======================================================\n');
     } catch (e) {
-      debugPrint('\n[API Error] ==========================================');
-      debugPrint('URL: $url');
-      debugPrint('Exception: $e');
-      debugPrint('======================================================\n');
-      rethrow;
+      response = _handleException(e, url);
     }
 
     if (response.statusCode == 401 && authenticated) {
@@ -246,11 +272,7 @@ class ApiService {
       debugPrint('Body: ${response.body}');
       debugPrint('======================================================\n');
     } catch (e) {
-      debugPrint('\n[API Error] ==========================================');
-      debugPrint('URL: $url');
-      debugPrint('Exception: $e');
-      debugPrint('======================================================\n');
-      rethrow;
+      response = _handleException(e, url);
     }
 
     if (response.statusCode == 401 && authenticated) {
@@ -339,10 +361,52 @@ class ApiService {
     }
   }
 
+  static String _cleanHtml(String htmlString) {
+    // Replace HTML paragraph/break/link tags with spaces or newlines to avoid run-on sentences
+    String clean = htmlString
+        .replaceAll(RegExp(r'<!--.*?-->'), '') // Comments
+        .replaceAll(RegExp(r'</?(p|br|div|h[1-6])[^>]*>'), '\n') // Block tags to newlines
+        .replaceAll(RegExp(r'<[^>]*>'), ''); // Any other tag
+
+    // Decode some common HTML entities
+    clean = clean
+        .replaceAll('&amp;', '&')
+        .replaceAll('&lt;', '<')
+        .replaceAll('&gt;', '>')
+        .replaceAll('&quot;', '"')
+        .replaceAll('&#39;', "'")
+        .replaceAll('&#039;', "'")
+        .replaceAll('&nbsp;', ' ');
+
+    // Normalize multiple newlines and trim
+    clean = clean.split('\n')
+        .map((s) => s.trim())
+        .where((s) => s.isNotEmpty)
+        .join('\n');
+        
+    return clean.trim();
+  }
+
   static String _getMessage(Map<String, dynamic> decoded, String defaultMsg) {
-    if (decoded['message'] != null) return decoded['message'] as String;
-    if (decoded['data'] is Map && decoded['data']['message'] != null) {
-      return decoded['data']['message'] as String;
+    String? rawMsg;
+    if (decoded['message'] != null) {
+      rawMsg = decoded['message'] as String;
+    } else if (decoded['data'] is Map && decoded['data']['message'] != null) {
+      rawMsg = decoded['data']['message'] as String;
+    }
+    if (rawMsg != null) {
+      final cleaned = _cleanHtml(rawMsg);
+      final lowercaseCleaned = cleaned.toLowerCase();
+      // Check if it's a critical WordPress error, database error, or internal server error
+      if (lowercaseCleaned.contains('critical error') ||
+          lowercaseCleaned.contains('wordpress') ||
+          lowercaseCleaned.contains('database error') ||
+          lowercaseCleaned.contains('wpdberror') ||
+          decoded['code'] == 'internal_server_error' ||
+          decoded['code'] == 'database_error') {
+        return 'We are experiencing technical difficulties. Please try again later.';
+      }
+      return cleaned;
     }
     return defaultMsg;
   }
@@ -354,9 +418,9 @@ class ApiService {
     if (bodyClean.contains('wpdberror')) {
       final reg = RegExp(r'WordPress database error:<\/strong>\s*\[(.*?)\]');
       final match = reg.firstMatch(bodyClean);
-      String dbErrorMsg = 'Server Database Error: The backend database encountered an execution issue.';
+      String dbErrorMsg = 'We are experiencing technical difficulties. Please try again later.';
       if (match != null && match.groupCount >= 1) {
-        dbErrorMsg = 'Database Error: ${match.group(1)!.replaceAll('&#039;', "'") }';
+        debugPrint('[Database Error Log] Database Error: ${match.group(1)!.replaceAll("&#039;", "'") }');
       }
       
       // Let's check if the JSON part exists after the database error block
@@ -366,7 +430,6 @@ class ApiService {
           final jsonPart = bodyClean.substring(jsonIndex);
           final decoded = jsonDecode(jsonPart);
           if (decoded is Map<String, dynamic>) {
-            // Include database error message in metadata but return decoded body
             decoded['db_error'] = dbErrorMsg;
             return decoded;
           }
@@ -388,16 +451,11 @@ class ApiService {
       return {
         'success': false,
         'code': 'invalid_response',
-        'message': defaultErrorMsg,
+        'message': 'We are experiencing technical difficulties. Please try again later.',
       };
     } catch (e) {
       debugPrint('[API Error] JSON Decode failed: $e. Body was: ${response.body}');
-      String msg = defaultErrorMsg;
-      if (bodyClean.startsWith('<') || bodyClean.contains('<!DOCTYPE html>') || bodyClean.contains('</html>')) {
-        msg = 'Server Error (${response.statusCode}): The backend returned an invalid response page. Please check server logs.';
-      } else {
-        msg = '$defaultErrorMsg ($e)';
-      }
+      String msg = 'We are experiencing technical difficulties. Please try again later.';
       return {
         'success': false,
         'code': 'format_exception',
@@ -680,7 +738,7 @@ class ApiService {
       return {
         'success': false,
         'code': decoded['code'] ?? 'error',
-        'message': decoded['message'] ?? _getMessage(decoded, 'Failed to initialize Singpass login.'),
+        'message': _getMessage(decoded, 'Failed to initialize Singpass login.'),
       };
     }
   }
@@ -706,7 +764,7 @@ class ApiService {
       return {
         'success': false,
         'code': decoded['code'] ?? 'error',
-        'message': decoded['message'] ?? _getMessage(decoded, 'Singpass login failed.'),
+        'message': _getMessage(decoded, 'Singpass login failed.'),
       };
     }
   }

@@ -17,6 +17,7 @@ import 'notifications_screen.dart';
 import 'packages_list_screen.dart';
 import '../../../../core/services/api_service.dart';
 import 'merchant_dashboard.dart';
+import '../../../../core/widgets/custom_snackbar.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -2117,11 +2118,17 @@ class _HomeScreenState extends State<HomeScreen> {
                         if (!mounted) return;
                         if (res['success'] == true) {
                           _loadProfile();
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('Profile updated!'), backgroundColor: Color(0xFF22C55E)));
+                          CustomSnackBar.show(
+                            context,
+                            message: 'Profile updated!',
+                            type: SnackBarType.success,
+                          );
                         } else {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(content: Text(res['message'] ?? 'Update failed'), backgroundColor: Colors.red));
+                          CustomSnackBar.show(
+                            context,
+                            message: res['message'] ?? 'Update failed',
+                            type: SnackBarType.error,
+                          );
                         }
                       },
                 style: ElevatedButton.styleFrom(

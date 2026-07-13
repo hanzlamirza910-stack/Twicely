@@ -8,6 +8,7 @@ import 'signup_screen.dart';
 import 'forgot_password_screen.dart';
 import '../../../../core/services/api_service.dart';
 import 'singpass_webview_screen.dart';
+import '../../../../core/widgets/custom_snackbar.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -63,12 +64,10 @@ class _LoginScreenState extends State<LoginScreen> {
 
         // If user selected Merchant tab but account has no merchant role — warn
         if (_isMerchant && !isUserMerchant) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('This account does not have merchant access. Logging in as Buyer.'),
-              backgroundColor: Colors.orange,
-              duration: Duration(seconds: 3),
-            ),
+          CustomSnackBar.show(
+            context,
+            message: 'This account does not have merchant access. Logging in as Buyer.',
+            type: SnackBarType.warning,
           );
         }
 
@@ -83,11 +82,10 @@ class _LoginScreenState extends State<LoginScreen> {
           ),
         );
       } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(result['message'] ?? 'Login failed. Please try again.'),
-            backgroundColor: Colors.redAccent,
-          ),
+        CustomSnackBar.show(
+          context,
+          message: result['message'] ?? 'Login failed. Please try again.',
+          type: SnackBarType.error,
         );
       }
     }
@@ -108,11 +106,10 @@ class _LoginScreenState extends State<LoginScreen> {
         setState(() {
           _isSingPassLoading = false;
         });
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(initRes['message'] ?? 'Singpass initialization failed'),
-            backgroundColor: AppColors.danger,
-          ),
+        CustomSnackBar.show(
+          context,
+          message: initRes['message'] ?? 'Singpass initialization failed',
+          type: SnackBarType.error,
         );
         return;
       }
@@ -132,11 +129,10 @@ class _LoginScreenState extends State<LoginScreen> {
         setState(() {
           _isSingPassLoading = false;
         });
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Singpass authentication cancelled'),
-            backgroundColor: Colors.orange,
-          ),
+        CustomSnackBar.show(
+          context,
+          message: 'Singpass authentication cancelled',
+          type: SnackBarType.warning,
         );
         return;
       }
@@ -157,11 +153,10 @@ class _LoginScreenState extends State<LoginScreen> {
         final isUserMerchant = user['is_merchant'] as bool? ?? false;
         final goToMerchant = _isMerchant && isUserMerchant;
 
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Authenticated successfully via Singpass'),
-            backgroundColor: AppColors.success,
-          ),
+        CustomSnackBar.show(
+          context,
+          message: 'Authenticated successfully via Singpass',
+          type: SnackBarType.success,
         );
 
         // Route to Home or Merchant Dashboard
@@ -174,11 +169,10 @@ class _LoginScreenState extends State<LoginScreen> {
           (route) => false,
         );
       } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(callbackRes['message'] ?? 'Singpass login failed'),
-            backgroundColor: AppColors.danger,
-          ),
+        CustomSnackBar.show(
+          context,
+          message: callbackRes['message'] ?? 'Singpass login failed',
+          type: SnackBarType.error,
         );
       }
     } catch (e) {
@@ -186,11 +180,10 @@ class _LoginScreenState extends State<LoginScreen> {
         setState(() {
           _isSingPassLoading = false;
         });
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('An error occurred during Singpass login: $e'),
-            backgroundColor: AppColors.danger,
-          ),
+        CustomSnackBar.show(
+          context,
+          message: 'An error occurred during Singpass login: $e',
+          type: SnackBarType.error,
         );
       }
     }

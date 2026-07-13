@@ -12,6 +12,7 @@ import 'payout_screen.dart';
 import '../../../../core/services/api_service.dart';
 import '../../../../core/utils/session_manager.dart';
 import 'home_screen.dart';
+import '../../../../core/widgets/custom_snackbar.dart';
 
 class MerchantDashboard extends StatefulWidget {
   const MerchantDashboard({super.key});
@@ -945,18 +946,16 @@ class _MerchantDashboardState extends State<MerchantDashboard> {
                         _merchantEmail = emailCtrl.text.trim();
                         _merchantPhone = phoneCtrl.text.trim();
                       });
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text('Profile updated successfully!'),
-                          backgroundColor: Color(0xFF22C55E),
-                        ),
+                      CustomSnackBar.show(
+                        context,
+                        message: 'Profile updated successfully!',
+                        type: SnackBarType.success,
                       );
                     } else {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text(res['message'] ?? 'Failed to update profile'),
-                          backgroundColor: Colors.red,
-                        ),
+                      CustomSnackBar.show(
+                        context,
+                        message: res['message'] ?? 'Failed to update profile',
+                        type: SnackBarType.error,
                       );
                     }
                   },
@@ -1826,8 +1825,10 @@ class _MerchantDashboardState extends State<MerchantDashboard> {
                                       bgColor: Colors.black.withValues(alpha: 0.03),
                                       iconColor: AppColors.primary,
                                       onTap: () {
-                                        ScaffoldMessenger.of(context).showSnackBar(
-                                          SnackBar(content: Text('Viewing: ${pkg['title']}')),
+                                        CustomSnackBar.show(
+                                          context,
+                                          message: 'Viewing: ${pkg['title']}',
+                                          type: SnackBarType.info,
                                         );
                                       },
                                     ),
@@ -1838,8 +1839,10 @@ class _MerchantDashboardState extends State<MerchantDashboard> {
                                       bgColor: Colors.black.withValues(alpha: 0.03),
                                       iconColor: AppColors.primary,
                                       onTap: () {
-                                        ScaffoldMessenger.of(context).showSnackBar(
-                                          SnackBar(content: Text('Edit flow for: ${pkg['title']}')),
+                                        CustomSnackBar.show(
+                                          context,
+                                          message: 'Edit flow for: ${pkg['title']}',
+                                          type: SnackBarType.info,
                                         );
                                       },
                                     ),
@@ -1933,8 +1936,10 @@ class _MerchantDashboardState extends State<MerchantDashboard> {
                 _merchantPackages.removeWhere((p) => p['id'] == pkg['id']);
               });
               Navigator.of(context).pop();
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Package deleted successfully'), backgroundColor: Colors.red),
+              CustomSnackBar.show(
+                context,
+                message: 'Package deleted successfully',
+                type: SnackBarType.success,
               );
             },
             child: const Text('Delete', style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
