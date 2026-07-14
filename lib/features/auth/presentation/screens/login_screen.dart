@@ -74,12 +74,13 @@ class _LoginScreenState extends State<LoginScreen> {
         // Route by actual server role — merchant wins if account has both
         final goToMerchant = _isMerchant && isUserMerchant;
 
-        Navigator.of(context).pushReplacement(
+        Navigator.of(context).pushAndRemoveUntil(
           MaterialPageRoute(
             builder: (context) => goToMerchant
                 ? const MerchantDashboard()
                 : const HomeScreen(),
           ),
+          (route) => false,
         );
       } else {
         CustomSnackBar.show(
@@ -206,17 +207,25 @@ class _LoginScreenState extends State<LoginScreen> {
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
                       Center(
-                        child: FractionallySizedBox(
-                          widthFactor: 0.45,
-                          child: Image.asset(
-                            'assets/images/logo.webp',
-                            fit: BoxFit.contain,
-                            errorBuilder: (context, error, stackTrace) => const Text(
-                              'twicely',
-                              style: TextStyle(
-                                fontSize: 32,
-                                fontWeight: FontWeight.bold,
-                                color: AppColors.primary,
+                        child: GestureDetector(
+                          onTap: () {
+                            Navigator.of(context).pushAndRemoveUntil(
+                              MaterialPageRoute(builder: (context) => const HomeScreen()),
+                              (route) => false,
+                            );
+                          },
+                          child: FractionallySizedBox(
+                            widthFactor: 0.45,
+                            child: Image.asset(
+                              'assets/images/logo.webp',
+                              fit: BoxFit.contain,
+                              errorBuilder: (context, error, stackTrace) => const Text(
+                                'twicely',
+                                style: TextStyle(
+                                  fontSize: 32,
+                                  fontWeight: FontWeight.bold,
+                                  color: AppColors.primary,
+                                ),
                               ),
                             ),
                           ),

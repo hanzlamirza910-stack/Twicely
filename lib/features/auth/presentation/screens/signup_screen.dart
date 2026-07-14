@@ -263,16 +263,24 @@ class _SignupScreenState extends State<SignupScreen> {
                     ),
                     Expanded(
                       child: Center(
-                        child: Image.asset(
-                          'assets/images/logo.webp',
-                          width: 110,
-                          fit: BoxFit.contain,
-                          errorBuilder: (_, __, ___) => const Text(
-                            'twicely',
-                            style: TextStyle(
-                              fontSize: 22,
-                              fontWeight: FontWeight.bold,
-                              color: AppColors.primary,
+                        child: GestureDetector(
+                          onTap: () {
+                            Navigator.of(context).pushAndRemoveUntil(
+                              MaterialPageRoute(builder: (context) => const HomeScreen()),
+                              (route) => false,
+                            );
+                          },
+                          child: Image.asset(
+                            'assets/images/logo.webp',
+                            width: 110,
+                            fit: BoxFit.contain,
+                            errorBuilder: (_, __, ___) => const Text(
+                              'twicely',
+                              style: TextStyle(
+                                  fontSize: 22,
+                                  fontWeight: FontWeight.bold,
+                                  color: AppColors.primary,
+                              ),
                             ),
                           ),
                         ),

@@ -143,6 +143,12 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _loadProfile() async {
     if (!mounted) return;
+    if (!SessionManager.isLoggedIn) {
+      setState(() {
+        _isLoadingProfile = false;
+      });
+      return;
+    }
     if (_profileData.isEmpty) {
       setState(() => _isLoadingProfile = true);
     }
