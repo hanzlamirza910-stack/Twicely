@@ -714,7 +714,7 @@ class _PackageDetailScreenState extends State<PackageDetailScreen> {
                                 child: imgUrl.startsWith('http')
                                     ? Image.network(imgUrl, fit: BoxFit.cover, width: double.infinity,
                                         errorBuilder: (_, __, ___) => Container(color: const Color(0xFFE8EFF8), child: const Icon(Icons.image_not_supported_rounded, color: Colors.black26, size: 26)))
-                                    : Image.asset(imgUrl, fit: BoxFit.cover, width: double.infinity,
+                                    : Image.asset(imgUrl.startsWith('assets/') ? imgUrl : 'assets/images/package_spa.jpg', fit: BoxFit.cover, width: double.infinity,
                                         errorBuilder: (_, __, ___) => Container(color: const Color(0xFFE8EFF8), child: const Icon(Icons.image_rounded, color: Colors.black26, size: 26))),
                               ),
                               if (discount != null)

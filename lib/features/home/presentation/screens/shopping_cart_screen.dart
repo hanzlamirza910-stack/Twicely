@@ -225,7 +225,7 @@ class _ShoppingCartScreenState extends State<ShoppingCartScreen> {
                                         },
                                       )
                                     : Image.asset(
-                                        item['imageUrl'] as String,
+                                        (item['imageUrl'] as String).startsWith('assets/') ? (item['imageUrl'] as String) : 'assets/images/package_spa.jpg',
                                         fit: BoxFit.cover,
                                         errorBuilder: (context, error, stackTrace) {
                                           return const Icon(Icons.image, color: AppColors.primary);

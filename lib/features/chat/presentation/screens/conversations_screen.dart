@@ -321,10 +321,15 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
   Widget _buildAvatar(Map<String, dynamic> chat) {
     Widget avatarWidget;
     if (chat['isImage'] as bool) {
+      final avatarStr = chat['avatar'] as String;
       avatarWidget = CircleAvatar(
         radius: 24,
         backgroundColor: Colors.grey.shade100,
-        backgroundImage: AssetImage(chat['avatar'] as String),
+        backgroundImage: avatarStr.startsWith('http')
+            ? NetworkImage(avatarStr)
+            : (avatarStr.startsWith('assets/')
+                ? AssetImage(avatarStr)
+                : const AssetImage('assets/images/package_spa.jpg')) as ImageProvider,
       );
     } else {
       avatarWidget = CircleAvatar(

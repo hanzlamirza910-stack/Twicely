@@ -93,17 +93,21 @@ class _MerchantDashboardState extends State<MerchantDashboard> {
       }
     }
 
-    return {
-      'id': apiPkg['id'],
-      'title': apiPkg['title'] ?? 'Package Listing',
-      'category': category,
-      'price': priceVal.toStringAsFixed(2),
-      'status': (apiPkg['status']?.toString().toUpperCase() ?? 'PUBLISHED'),
-      'badge': (apiPkg['status']?.toString().toUpperCase() ?? 'ACTIVE'),
-      'image': imageUrl,
-      'imageUrl': imageUrl,
-      'createdAt': apiPkg['date_created']?.toString() ?? apiPkg['created_at']?.toString() ?? apiPkg['date']?.toString() ?? '',
-    };
+    final statusStr = apiPkg['status']?.toString().toLowerCase() ?? 'published';
+    final availStatus = apiPkg['availability_status']?.toString().toLowerCase() ?? '';
+
+    final result = Map<String, dynamic>.from(apiPkg);
+    result['id'] = apiPkg['id'];
+    result['title'] = apiPkg['title'] ?? 'Package Listing';
+    result['category'] = category;
+    result['price'] = priceVal.toStringAsFixed(2);
+    result['status'] = statusStr.toUpperCase();          // e.g. PUBLISHED / DRAFT / PENDING
+    result['badge'] = availStatus == 'sold' ? 'SOLD' : null;  // only show if sold
+    result['image'] = imageUrl;
+    result['imageUrl'] = imageUrl;
+    result['createdAt'] = apiPkg['date_created']?.toString() ?? apiPkg['created_at']?.toString() ?? apiPkg['date']?.toString() ?? '';
+    result['is_owner'] = apiPkg['is_owner'] ?? true;
+    return result;
   }
 
   Future<void> _fetchMerchantPackages() async {
@@ -1709,21 +1713,24 @@ class _MerchantDashboardState extends State<MerchantDashboard> {
                             // Badges top row
                             Row(
                               children: [
-                                Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                  decoration: BoxDecoration(
-                                    color: const Color(0xFFE8F5E9), // Light green
-                                    borderRadius: BorderRadius.circular(6),
-                                  ),
-                                  child: Text(
-                                    pkg['status'] as String,
-                                    style: const TextStyle(
-                                      fontSize: 9,
-                                      fontWeight: FontWeight.bold,
-                                      color: Colors.green,
-                                    ),
-                                  ),
-                                ),
+                                Builder(builder: (_) {
+                                  final st = (pkg['status'] as String? ?? '').toUpperCase();
+                                  final Color bg = st == 'PUBLISHED'
+                                      ? const Color(0xFFE8F5E9)
+                                      : st == 'PENDING'
+                                          ? const Color(0xFFFFF8E1)
+                                          : const Color(0xFFF5F5F5);
+                                  final Color fg = st == 'PUBLISHED'
+                                      ? Colors.green
+                                      : st == 'PENDING'
+                                          ? Colors.orange
+                                          : Colors.black45;
+                                  return Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                    decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(6)),
+                                    child: Text(st, style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: fg)),
+                                  );
+                                }),
                                 if (pkg['badge'] != null) ...[
                                   const SizedBox(width: 6),
                                   Container(
@@ -1776,12 +1783,31 @@ class _MerchantDashboardState extends State<MerchantDashboard> {
                                 const SizedBox(width: 12),
                                 ClipRRect(
                                   borderRadius: BorderRadius.circular(10),
-                                  child: Image.asset(
-                                    pkg['image'] as String,
-                                    width: 52,
-                                    height: 52,
-                                    fit: BoxFit.cover,
-                                  ),
+                                  child: (pkg['image'] as String).startsWith('http')
+                                      ? Image.network(
+                                          pkg['image'] as String,
+                                          width: 52,
+                                          height: 52,
+                                          fit: BoxFit.cover,
+                                          errorBuilder: (context, error, stackTrace) => Container(
+                                            width: 52,
+                                            height: 52,
+                                            color: AppColors.primary.withValues(alpha: 0.05),
+                                            child: const Icon(Icons.image, color: AppColors.primary, size: 20),
+                                          ),
+                                        )
+                                      : Image.asset(
+                                          (pkg['image'] as String).startsWith('assets/') ? (pkg['image'] as String) : 'assets/images/package_spa.jpg',
+                                          width: 52,
+                                          height: 52,
+                                          fit: BoxFit.cover,
+                                          errorBuilder: (context, error, stackTrace) => Container(
+                                            width: 52,
+                                            height: 52,
+                                            color: AppColors.primary.withValues(alpha: 0.05),
+                                            child: const Icon(Icons.image, color: AppColors.primary, size: 20),
+                                          ),
+                                        ),
                                 ),
                               ],
                             ),
@@ -1825,37 +1851,31 @@ class _MerchantDashboardState extends State<MerchantDashboard> {
                                       bgColor: Colors.black.withValues(alpha: 0.03),
                                       iconColor: AppColors.primary,
                                       onTap: () {
-                                        CustomSnackBar.show(
-                                          context,
-                                          message: 'Viewing: ${pkg['title']}',
-                                          type: SnackBarType.info,
-                                        );
+                                        _viewPackage(pkg);
                                       },
                                     ),
-                                    const SizedBox(width: 8),
-                                    // Edit
-                                    _buildActionButton(
-                                      icon: Icons.edit_outlined,
-                                      bgColor: Colors.black.withValues(alpha: 0.03),
-                                      iconColor: AppColors.primary,
-                                      onTap: () {
-                                        CustomSnackBar.show(
-                                          context,
-                                          message: 'Edit flow for: ${pkg['title']}',
-                                          type: SnackBarType.info,
-                                        );
-                                      },
-                                    ),
-                                    const SizedBox(width: 8),
-                                    // Delete
-                                    _buildActionButton(
-                                      icon: Icons.delete_outline_rounded,
-                                      bgColor: const Color(0xFFFFEBEE),
-                                      iconColor: Colors.red,
-                                      onTap: () {
-                                        _showDeleteConfirmation(pkg);
-                                      },
-                                    ),
+                                    if (pkg['is_owner'] == true) ...[
+                                      const SizedBox(width: 8),
+                                      // Edit
+                                      _buildActionButton(
+                                        icon: Icons.edit_outlined,
+                                        bgColor: Colors.black.withValues(alpha: 0.03),
+                                        iconColor: AppColors.primary,
+                                        onTap: () {
+                                          _editPackage(pkg);
+                                        },
+                                      ),
+                                      const SizedBox(width: 8),
+                                      // Delete
+                                      _buildActionButton(
+                                        icon: Icons.delete_outline_rounded,
+                                        bgColor: const Color(0xFFFFEBEE),
+                                        iconColor: Colors.red,
+                                        onTap: () {
+                                          _showDeleteConfirmation(pkg);
+                                        },
+                                      ),
+                                    ],
                                   ],
                                 ),
                               ],
@@ -1919,6 +1939,410 @@ class _MerchantDashboardState extends State<MerchantDashboard> {
     );
   }
 
+  // Edit package flow
+  void _editPackage(Map<String, dynamic> pkg) async {
+    debugPrint('[DEBUG] _editPackage triggered. Payload from list: $pkg');
+    final localContext = context;
+    showDialog(
+      context: localContext,
+      barrierDismissible: false,
+      builder: (context) => const Center(
+        child: CircularProgressIndicator(valueColor: AlwaysStoppedAnimation<Color>(AppColors.primary)),
+      ),
+    );
+
+    final packageId = pkg['id'] is int ? pkg['id'] : int.tryParse(pkg['id']?.toString() ?? '');
+    debugPrint('[DEBUG] _editPackage packageId: $packageId');
+    if (packageId == null) {
+      debugPrint('[DEBUG] _editPackage failed: packageId is null');
+      Navigator.of(localContext).pop();
+      CustomSnackBar.show(localContext, message: 'Invalid package ID.', type: SnackBarType.error);
+      return;
+    }
+
+    final res = await ApiService.getPackageById(packageId);
+    debugPrint('[DEBUG] ApiService.getPackageById response: $res');
+    if (!localContext.mounted) {
+      debugPrint('[DEBUG] _editPackage context not mounted after fetching package.');
+      return;
+    }
+    Navigator.of(localContext).pop(); // dismiss loading spinner
+
+    if (res['success'] == true && res['data'] != null) {
+      final fullPkg = res['data'] as Map<String, dynamic>;
+      debugPrint('[DEBUG] Navigating to AddPackageScreen with packageToEdit: $fullPkg');
+      
+      final result = await Navigator.push(
+        localContext,
+        MaterialPageRoute(
+          builder: (context) => AddPackageScreen(
+            packageToEdit: fullPkg,
+            onPackageUpdated: (updatedPkg) {
+              debugPrint('[DEBUG] AddPackageScreen onPackageUpdated callback triggered with: $updatedPkg');
+              setState(() {
+                final index = _merchantPackages.indexWhere((p) => p['id'] == updatedPkg['id']);
+                if (index != -1) {
+                  _merchantPackages[index] = updatedPkg;
+                  debugPrint('[DEBUG] Local list package updated at index: $index');
+                } else {
+                  debugPrint('[DEBUG] Warning: package ID ${updatedPkg['id']} not found in local _merchantPackages list');
+                }
+              });
+            },
+          ),
+        ),
+      );
+      debugPrint('[DEBUG] Returned from AddPackageScreen. Navigation result: $result');
+
+      if (result == true) {
+        debugPrint('[DEBUG] Refreshing package list via _fetchMerchantPackages()');
+        _fetchMerchantPackages();
+      }
+    } else {
+      debugPrint('[DEBUG] _editPackage error: Failed to fetch package details. API message: ${res['message']}');
+      CustomSnackBar.show(
+        localContext,
+        message: res['message'] ?? 'Failed to load package details for editing.',
+        type: SnackBarType.error,
+      );
+    }
+  }
+
+  // View package details flow
+  void _viewPackage(Map<String, dynamic> pkg) async {
+    debugPrint('[DEBUG] _viewPackage triggered. Payload from list: $pkg');
+    final localContext = context;
+    showDialog(
+      context: localContext,
+      barrierDismissible: false,
+      builder: (context) => const Center(
+        child: CircularProgressIndicator(valueColor: AlwaysStoppedAnimation<Color>(AppColors.primary)),
+      ),
+    );
+
+    final packageId = pkg['id'] is int ? pkg['id'] : int.tryParse(pkg['id']?.toString() ?? '');
+    debugPrint('[DEBUG] _viewPackage packageId: $packageId');
+    if (packageId == null) {
+      debugPrint('[DEBUG] _viewPackage failed: packageId is null');
+      Navigator.of(localContext).pop();
+      CustomSnackBar.show(localContext, message: 'Invalid package ID.', type: SnackBarType.error);
+      return;
+    }
+
+    final res = await ApiService.getPackageById(packageId);
+    debugPrint('[DEBUG] _viewPackage ApiService.getPackageById response: $res');
+    if (!localContext.mounted) {
+      debugPrint('[DEBUG] _viewPackage context not mounted after fetching package.');
+      return;
+    }
+    Navigator.of(localContext).pop(); // dismiss loading spinner
+
+    if (res['success'] == true && res['data'] != null) {
+      final fullPkg = res['data'] as Map<String, dynamic>;
+      debugPrint('[DEBUG] Showing PackageDetailsDialog with fullPkg: $fullPkg');
+      _showPackageDetailsDialog(fullPkg);
+    } else {
+      debugPrint('[DEBUG] _viewPackage error: Failed to fetch package details. API message: ${res['message']}');
+      CustomSnackBar.show(
+        localContext,
+        message: res['message'] ?? 'Failed to load package details.',
+        type: SnackBarType.error,
+      );
+    }
+  }
+
+  void _showPackageDetailsDialog(Map<String, dynamic> pkg) {
+    final title = pkg['title'] ?? 'Package Details';
+    final status = (pkg['status']?.toString() ?? 'Published').toUpperCase();
+    final price = pkg['resale_price'] ?? pkg['price'] ?? 0.0;
+    
+    String expiryStr = '—';
+    if (pkg['expiry_date'] != null) {
+      try {
+        final date = DateTime.parse(pkg['expiry_date'].toString());
+        expiryStr = '${date.month.toString().padLeft(2, '0')}/${date.day.toString().padLeft(2, '0')}/${date.year}';
+      } catch (_) {
+        expiryStr = pkg['expiry_date'].toString();
+      }
+    }
+
+    List<String> categories = [];
+    if (pkg['category'] != null) {
+      if (pkg['category'] is Map) {
+        categories.add(pkg['category']['name']?.toString() ?? '');
+      } else {
+        categories.add(pkg['category'].toString());
+      }
+    }
+    if (pkg['secondary_category'] != null) {
+      if (pkg['secondary_category'] is Map) {
+        categories.add(pkg['secondary_category']['name']?.toString() ?? '');
+      } else {
+        categories.add(pkg['secondary_category'].toString());
+      }
+    }
+    categories.removeWhere((c) => c.isEmpty);
+    final categoriesStr = categories.isNotEmpty ? categories.join(', ') : 'General';
+
+    final description = pkg['description'] ?? 'No description provided.';
+    final location = _merchantAddress.isNotEmpty ? _merchantAddress : '—';
+
+    showDialog(
+      context: context,
+      builder: (context) => Dialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+        child: SingleChildScrollView(
+          child: Padding(
+            padding: const EdgeInsets.all(24.0),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: Text(
+                        title,
+                        style: const TextStyle(
+                          fontFamily: 'Recoleta Alt',
+                          fontSize: 22,
+                          fontWeight: FontWeight.bold,
+                          color: AppColors.primary,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    IconButton(
+                      icon: const Icon(Icons.close, color: AppColors.primary),
+                      onPressed: () => Navigator.of(context).pop(),
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: status == 'PUBLISHED' ? const Color(0xFFE8F5E9) : const Color(0xFFFFF8E1),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    status,
+                    style: TextStyle(
+                      color: status == 'PUBLISHED' ? Colors.green : Colors.amber[800],
+                      fontSize: 10,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 24),
+
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'Status',
+                            style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.bold,
+                              color: AppColors.primary,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: status == 'PUBLISHED' ? const Color(0xFFE8F5E9) : const Color(0xFFFFF8E1),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Text(
+                              status,
+                              style: TextStyle(
+                                color: status == 'PUBLISHED' ? Colors.green : Colors.amber[800],
+                                fontSize: 10,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'Price',
+                            style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.bold,
+                              color: AppColors.primary,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            'SGD $price',
+                            style: const TextStyle(
+                              fontSize: 14,
+                              color: Colors.black54,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'Availability',
+                            style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.bold,
+                              color: AppColors.primary,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            '— → $expiryStr',
+                            style: const TextStyle(
+                              fontSize: 14,
+                              color: Colors.black54,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'Location',
+                            style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.bold,
+                              color: AppColors.primary,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            location,
+                            style: const TextStyle(
+                              fontSize: 14,
+                              color: Colors.black54,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 24),
+
+                const Text(
+                  'Categories',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.bold,
+                    color: AppColors.primary,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  categoriesStr,
+                  style: const TextStyle(
+                    fontSize: 14,
+                    color: Colors.black54,
+                  ),
+                ),
+                const SizedBox(height: 24),
+
+                const Text(
+                  'DESCRIPTION',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.black38,
+                    letterSpacing: 0.5,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  description,
+                  style: const TextStyle(
+                    fontSize: 14,
+                    color: Colors.black87,
+                    height: 1.4,
+                  ),
+                ),
+                const SizedBox(height: 24),
+
+                Text(
+                  "Need to make changes? Switch to the edit view to update package details.",
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: Colors.black.withValues(alpha: 0.4),
+                  ),
+                ),
+                const SizedBox(height: 16),
+
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    OutlinedButton(
+                      onPressed: () => Navigator.of(context).pop(),
+                      style: OutlinedButton.styleFrom(
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                        side: const BorderSide(color: Colors.black12),
+                        minimumSize: Size.zero,
+                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      ),
+                      child: const Text('Close', style: TextStyle(color: Colors.black87, fontSize: 13, fontWeight: FontWeight.bold)),
+                    ),
+                    if (pkg['is_owner'] == true) ...[
+                      const SizedBox(width: 8),
+                      ElevatedButton(
+                        onPressed: () {
+                          Navigator.of(context).pop();
+                          _editPackage(pkg);
+                        },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFFFBBD03),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                          minimumSize: Size.zero,
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        ),
+                        child: const Text('Edit package', style: TextStyle(color: AppColors.primary, fontSize: 13, fontWeight: FontWeight.bold)),
+                      ),
+                    ],
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   void _showDeleteConfirmation(Map<String, dynamic> pkg) {
     showDialog(
       context: context,
@@ -1931,16 +2355,49 @@ class _MerchantDashboardState extends State<MerchantDashboard> {
             child: const Text('Cancel', style: TextStyle(color: Colors.grey)),
           ),
           TextButton(
-            onPressed: () {
-              setState(() {
-                _merchantPackages.removeWhere((p) => p['id'] == pkg['id']);
-              });
+            onPressed: () async {
               Navigator.of(context).pop();
-              CustomSnackBar.show(
-                context,
-                message: 'Package deleted successfully',
-                type: SnackBarType.success,
+              
+              // Show a loading spinner
+              showDialog(
+                context: context,
+                barrierDismissible: false,
+                builder: (context) => const Center(
+                  child: CircularProgressIndicator(valueColor: AlwaysStoppedAnimation<Color>(AppColors.primary)),
+                ),
               );
+              
+              final packageId = pkg['id'] is int ? pkg['id'] : int.tryParse(pkg['id']?.toString() ?? '');
+              if (packageId != null) {
+                final res = await ApiService.deletePackage(packageId);
+                if (!context.mounted) return;
+                Navigator.of(context).pop(); // pop loading spinner
+                
+                if (res['success'] == true) {
+                  setState(() {
+                    _merchantPackages.removeWhere((p) => p['id'] == pkg['id']);
+                  });
+                  CustomSnackBar.show(
+                    context,
+                    message: 'Package deleted successfully',
+                    type: SnackBarType.success,
+                  );
+                } else {
+                  CustomSnackBar.show(
+                    context,
+                    message: res['message'] ?? 'Failed to delete package.',
+                    type: SnackBarType.error,
+                  );
+                }
+              } else {
+                if (!context.mounted) return;
+                Navigator.of(context).pop(); // pop loading spinner
+                CustomSnackBar.show(
+                  context,
+                  message: 'Invalid Package ID.',
+                  type: SnackBarType.error,
+                );
+              }
             },
             child: const Text('Delete', style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
           ),

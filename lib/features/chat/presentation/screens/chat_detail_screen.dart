@@ -246,9 +246,14 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
 
   Widget _buildAvatarWidget() {
     if (widget.isImage) {
+      final avatarStr = widget.avatar;
       return CircleAvatar(
         radius: 18,
-        backgroundImage: AssetImage(widget.avatar),
+        backgroundImage: avatarStr.startsWith('http')
+            ? NetworkImage(avatarStr)
+            : (avatarStr.startsWith('assets/')
+                ? AssetImage(avatarStr)
+                : const AssetImage('assets/images/package_spa.jpg')) as ImageProvider,
       );
     } else {
       return CircleAvatar(

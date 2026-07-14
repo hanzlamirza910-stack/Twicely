@@ -1026,7 +1026,15 @@ class ApiService {
       
       List<dynamic> combinedList = [];
       if (ownDecoded['success'] == true && ownDecoded['data'] is List) {
-        combinedList.addAll(ownDecoded['data']);
+        for (var item in ownDecoded['data']) {
+          if (item is Map) {
+            final mapped = Map<String, dynamic>.from(item);
+            mapped['is_owner'] = true;
+            combinedList.add(mapped);
+          } else {
+            combinedList.add(item);
+          }
+        }
       }
       
       // 2. Fetch assigned packages where merchant is selected
@@ -1049,7 +1057,13 @@ class ApiService {
           for (var item in assignedList) {
             final bool alreadyExists = combinedList.any((e) => e['id'] == item['id']);
             if (!alreadyExists) {
-              combinedList.add(item);
+              if (item is Map) {
+                final mapped = Map<String, dynamic>.from(item);
+                mapped['is_owner'] = false;
+                combinedList.add(mapped);
+              } else {
+                combinedList.add(item);
+              }
             }
           }
         }

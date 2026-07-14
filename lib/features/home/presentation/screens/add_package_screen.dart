@@ -4,9 +4,16 @@ import '../../../../core/services/api_service.dart';
 import '../../../../core/widgets/custom_snackbar.dart';
 
 class AddPackageScreen extends StatefulWidget {
+  final Map<String, dynamic>? packageToEdit;
   final Function(Map<String, dynamic>)? onPackageAdded;
+  final Function(Map<String, dynamic>)? onPackageUpdated;
 
-  const AddPackageScreen({super.key, this.onPackageAdded});
+  const AddPackageScreen({
+    super.key,
+    this.packageToEdit,
+    this.onPackageAdded,
+    this.onPackageUpdated,
+  });
 
   @override
   State<AddPackageScreen> createState() => _AddPackageScreenState();
@@ -22,10 +29,12 @@ class _AddPackageScreenState extends State<AddPackageScreen> {
   String _receiptFileName = '';
   
   final TextEditingController _titleController = TextEditingController();
+  final TextEditingController _shortDescriptionController = TextEditingController();
   final TextEditingController _descriptionController = TextEditingController();
   final List<String> _keyPoints = [];
   String _primaryCategory = '';
   String _secondaryCategory = '';
+  String _packageStatus = 'draft'; // draft | pending | published
 
   final TextEditingController _originalPriceController = TextEditingController();
   final TextEditingController _sellingPriceController = TextEditingController();
@@ -70,6 +79,91 @@ class _AddPackageScreenState extends State<AddPackageScreen> {
   void initState() {
     super.initState();
     _loadMerchantsAndCategories();
+    if (widget.packageToEdit != null) {
+      final pkg = widget.packageToEdit!;
+      _titleController.text = pkg['title']?.toString() ?? '';
+      _shortDescriptionController.text = pkg['short_description']?.toString() ?? '';
+      _descriptionController.text = pkg['content']?.toString() ?? pkg['description']?.toString() ?? '';
+      _packageStatus = pkg['status']?.toString().toLowerCase() == 'published' ? 'published'
+          : pkg['status']?.toString().toLowerCase() == 'pending' ? 'pending'
+          : 'draft';
+      
+      final origPrice = pkg['original_purchase_price'] ?? pkg['original_price'] ?? pkg['originalPrice'];
+      final resPrice = pkg['resale_price'] ?? pkg['price'] ?? pkg['resalePrice'];
+      
+      _originalPriceController.text = origPrice?.toString() ?? '';
+      _sellingPriceController.text = resPrice?.toString() ?? '';
+      _sessionsToSellController.text = pkg['sessions_to_sell']?.toString() ?? '';
+      _totalSessionsController.text = pkg['total_sessions']?.toString() ?? '';
+      _validityDaysController.text = pkg['total_validity_days']?.toString() ?? pkg['validity_days']?.toString() ?? '365';
+      _remainingDaysController.text = pkg['remaining_validity_days']?.toString() ?? pkg['remaining_days']?.toString() ?? '180';
+
+      if (pkg['availability_end'] != null) {
+        try {
+          _expiryDate = DateTime.tryParse(pkg['availability_end'].toString()) ?? _expiryDate;
+        } catch (_) {}
+      } else if (pkg['expiry_date'] != null) {
+        try {
+          _expiryDate = DateTime.tryParse(pkg['expiry_date'].toString()) ?? _expiryDate;
+        } catch (_) {}
+      }
+
+      if (pkg['category'] != null) {
+        if (pkg['category'] is Map) {
+          _primaryCategory = pkg['category']['slug']?.toString() ?? '';
+        } else {
+          _primaryCategory = pkg['category'].toString();
+        }
+      } else if (pkg['categories'] != null && pkg['categories'] is List) {
+        for (var cat in pkg['categories']) {
+          if (cat is Map) {
+            final slug = cat['slug']?.toString() ?? '';
+            if (slug == 'for-her' || slug == 'for-him' || slug == 'general' || slug == 'biz') {
+              _primaryCategory = slug;
+              break;
+            }
+          }
+        }
+      }
+      
+      if (pkg['secondary_category'] != null) {
+        if (pkg['secondary_category'] is Map) {
+          _secondaryCategory = pkg['secondary_category']['slug']?.toString() ?? '';
+        } else {
+          _secondaryCategory = pkg['secondary_category'].toString();
+        }
+      } else if (pkg['categories'] != null && pkg['categories'] is List) {
+        for (var cat in pkg['categories']) {
+          if (cat is Map) {
+            final slug = cat['slug']?.toString() ?? '';
+            if (slug == 'yoga-pilates' || slug == 'spa-massage' || slug == 'beauty-nails' || slug == 'gym-fitness' || slug == 'lifestyle-classes') {
+              _secondaryCategory = slug;
+              break;
+            }
+          }
+        }
+      }
+
+      _selectedMerchant = pkg['merchant_name']?.toString() ?? pkg['merchant']?.toString() ?? '';
+
+      if (pkg['key_points'] != null) {
+        try {
+          _keyPoints.addAll(List<String>.from(pkg['key_points'] as List));
+        } catch (_) {}
+      }
+
+      if (pkg['images'] != null && pkg['images'] is List) {
+        for (var img in pkg['images']) {
+          if (img is Map && img['url'] != null) {
+            _galleryImages.add(img['url']);
+          } else if (img is String) {
+            _galleryImages.add(img);
+          }
+        }
+      } else if (pkg['cover_url'] != null) {
+        _galleryImages.add(pkg['cover_url']);
+      }
+    }
   }
 
   Future<void> _loadMerchantsAndCategories() async {
@@ -86,7 +180,6 @@ class _AddPackageScreenState extends State<AddPackageScreen> {
         final List<dynamic> list = merchantRes['data'];
         loadedMerchants = list
             .map((item) => Map<String, dynamic>.from(item))
-            .where((m) => m['merchant_tier'] != 'biz_plus')
             .toList();
       }
 
@@ -100,6 +193,24 @@ class _AddPackageScreenState extends State<AddPackageScreen> {
         _apiMerchants = loadedMerchants;
         _apiCategories = loadedCategories;
         _isLoadingData = false;
+
+        // If we are editing, map merchant_id to merchant name if _selectedMerchant is empty
+        if (widget.packageToEdit != null && (_selectedMerchant.isEmpty || _selectedMerchant == 'null')) {
+          final editPkg = widget.packageToEdit!;
+          final editMerchantId = editPkg['merchant_id'] is int
+              ? editPkg['merchant_id']
+              : int.tryParse(editPkg['merchant_id']?.toString() ?? '');
+          if (editMerchantId != null) {
+            final matchedMerchant = loadedMerchants.firstWhere(
+              (m) => (m['id'] is int ? m['id'] : int.tryParse(m['id']?.toString() ?? '')) == editMerchantId,
+              orElse: () => <String, dynamic>{},
+            );
+            if (matchedMerchant.isNotEmpty) {
+              _selectedMerchant = matchedMerchant['business_name']?.toString() ?? matchedMerchant['name']?.toString() ?? '';
+              debugPrint('[DEBUG] Mapped merchant_id $editMerchantId to merchant name: $_selectedMerchant');
+            }
+          }
+        }
         
         // Populate primary/secondary lists based on slugs
         _primaryCategories = _apiCategories.where((cat) {
@@ -261,6 +372,7 @@ class _AddPackageScreenState extends State<AddPackageScreen> {
   @override
   void dispose() {
     _titleController.dispose();
+    _shortDescriptionController.dispose();
     _descriptionController.dispose();
     _originalPriceController.dispose();
     _sellingPriceController.dispose();
@@ -288,10 +400,6 @@ class _AddPackageScreenState extends State<AddPackageScreen> {
     } else if (_currentStep == 2) {
       if (_titleController.text.trim().isEmpty) {
         _showToast('Package title is required', type: SnackBarType.warning);
-        return;
-      }
-      if (_descriptionController.text.trim().isEmpty) {
-        _showToast('Package description is required', type: SnackBarType.warning);
         return;
       }
       if (_primaryCategory.isEmpty) {
@@ -322,8 +430,8 @@ class _AddPackageScreenState extends State<AddPackageScreen> {
     final originalPriceStr = _originalPriceController.text;
     final sellingPriceStr = _sellingPriceController.text;
 
-    if (originalPriceStr.isEmpty || sellingPriceStr.isEmpty) {
-      _showToast('Please fill out the pricing details');
+    if (sellingPriceStr.isEmpty) {
+      _showToast('Please enter the selling price', type: SnackBarType.warning);
       return;
     }
 
@@ -335,114 +443,191 @@ class _AddPackageScreenState extends State<AddPackageScreen> {
       ),
     );
 
-    final payload = {
-      'title': _titleController.text.trim(),
-      'description': _descriptionController.text.trim(),
-      'original_price': double.tryParse(originalPriceStr) ?? 0.0,
-      'resale_price': double.tryParse(sellingPriceStr) ?? 0.0,
-      'price': double.tryParse(sellingPriceStr) ?? 0.0,
-      'sessions_to_sell': int.tryParse(_sessionsToSellController.text) ?? 1,
-      'total_sessions': int.tryParse(_totalSessionsController.text) ?? 1,
-      'validity_days': int.tryParse(_validityDaysController.text) ?? 365,
-      'remaining_days': int.tryParse(_remainingDaysController.text) ?? 180,
-      'expiry_date': _expiryDate.toIso8601String(),
-      'category': _primaryCategory,
-      'secondary_category': _secondaryCategory.isNotEmpty ? _secondaryCategory : null,
-      'merchant_name': _selectedMerchant,
+    // Build categories list from primary + secondary slugs
+    final List<String> categoryList = [];
+    if (_primaryCategory.isNotEmpty) categoryList.add(_primaryCategory);
+    if (_secondaryCategory.isNotEmpty) categoryList.add(_secondaryCategory);
+
+    // Build payload using correct API field names
+    final payload = <String, dynamic>{
+      'package_title': _titleController.text.trim(),
+      'short_description': _shortDescriptionController.text.trim(),
+      'package_price': double.tryParse(sellingPriceStr) ?? 0.0,
+      'discounted_price': double.tryParse(sellingPriceStr) ?? 0.0,
+      'currency': 'SGD',
+      'availability_end': '${_expiryDate.year}-${_expiryDate.month.toString().padLeft(2,'0')}-${_expiryDate.day.toString().padLeft(2,'0')}',
       'key_points': _keyPoints,
+      'status': _packageStatus,
     };
 
-    final res = await ApiService.createPackage(payload);
+    // Optional fields — only include when non-empty
+    if (_descriptionController.text.trim().isNotEmpty) {
+      payload['content'] = _descriptionController.text.trim();
+    }
+    if (originalPriceStr.isNotEmpty) {
+      payload['original_purchase_price'] = double.tryParse(originalPriceStr) ?? 0.0;
+    }
+    if (categoryList.isNotEmpty) {
+      payload['categories'] = categoryList;
+    }
+    if (_secondaryCategory.isNotEmpty) {
+      payload['secondary_category'] = _secondaryCategory;
+    }
+    if (_sessionsToSellController.text.isNotEmpty) {
+      payload['sessions_to_sell'] = int.tryParse(_sessionsToSellController.text);
+    }
+    if (_totalSessionsController.text.isNotEmpty) {
+      payload['total_sessions'] = int.tryParse(_totalSessionsController.text);
+    }
+    if (_validityDaysController.text.isNotEmpty) {
+      payload['total_validity_days'] = int.tryParse(_validityDaysController.text);
+    }
+    if (_remainingDaysController.text.isNotEmpty) {
+      payload['remaining_validity_days'] = int.tryParse(_remainingDaysController.text);
+    }
+    // Resolve merchant_id from name
+    final matchedMerchant = _apiMerchants.firstWhere(
+      (m) => m['business_name']?.toString() == _selectedMerchant || m['name']?.toString() == _selectedMerchant,
+      orElse: () => <String, dynamic>{},
+    );
+    if (matchedMerchant.isNotEmpty && matchedMerchant['id'] != null) {
+      payload['merchant_id'] = matchedMerchant['id'] is int
+          ? matchedMerchant['id']
+          : int.tryParse(matchedMerchant['id'].toString());
+    }
+
+    final isEditing = widget.packageToEdit != null;
+    final res = isEditing
+        ? await ApiService.updatePackage(
+            widget.packageToEdit!['id'] is int ? widget.packageToEdit!['id'] : int.parse(widget.packageToEdit!['id'].toString()),
+            payload,
+          )
+        : await ApiService.createPackage(payload);
 
     if (!mounted) return;
     Navigator.of(context).pop(); // pop spinner
 
     if (res['success'] == true) {
       final createdPkg = res['data'] ?? {};
-      final localPkg = {
-        'id': createdPkg['id']?.toString() ?? DateTime.now().millisecondsSinceEpoch.toString(),
-        'title': createdPkg['title'] ?? _titleController.text,
-        'category': _primaryCategory,
-        'price': double.tryParse(sellingPriceStr)?.toStringAsFixed(2) ?? '0.00',
-        'status': 'PENDING',
-        'badge': 'NEW',
-        'image': _galleryImages.isNotEmpty ? _galleryImages.first : 'assets/images/package_spa.jpg',
-        'isSold': false,
-      };
+      final localPkg = _mapApiPackageForLocal(createdPkg, sellingPriceStr);
 
-      if (widget.onPackageAdded != null) {
-        widget.onPackageAdded!(localPkg);
-      }
+      if (isEditing) {
+        if (widget.onPackageUpdated != null) {
+          widget.onPackageUpdated!(localPkg);
+        }
+        CustomSnackBar.show(
+          context,
+          message: 'Package updated successfully',
+          type: SnackBarType.success,
+        );
+        Navigator.of(context).pop(true);
+      } else {
+        if (widget.onPackageAdded != null) {
+          widget.onPackageAdded!(localPkg);
+        }
 
-      showModalBottomSheet(
-        context: context,
-        isDismissible: false,
-        enableDrag: false,
-        shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(30)),
-        ),
-        backgroundColor: Colors.white,
-        builder: (context) => SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.all(28.0),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(16),
-                  decoration: const BoxDecoration(
-                    color: Color(0xFFE8F5E9),
-                    shape: BoxShape.circle,
-                  ),
-                  child: const Icon(Icons.check_circle_rounded, color: Colors.green, size: 48),
-                ),
-                const SizedBox(height: 20),
-                const Text(
-                  'Package Submitted!',
-                  style: TextStyle(
-                    fontFamily: 'Recoleta Alt',
-                    fontSize: 22,
-                    fontWeight: FontWeight.bold,
-                    color: AppColors.primary,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  'Your package is currently pending admin verification. You can track its status under My Packages.',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontSize: 13,
-                    color: AppColors.primary.withValues(alpha: 0.6),
-                    height: 1.4,
-                  ),
-                ),
-                const SizedBox(height: 28),
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton(
-                    onPressed: () {
-                      Navigator.of(context).pop(); // close bottom sheet
-                      Navigator.of(context).pop(true); // return true to refresh
-                    },
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF1F2E4E),
-                      padding: const EdgeInsets.symmetric(vertical: 15),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
+        showModalBottomSheet(
+          context: context,
+          isDismissible: false,
+          enableDrag: false,
+          shape: const RoundedRectangleBorder(
+            borderRadius: BorderRadius.vertical(top: Radius.circular(30)),
+          ),
+          backgroundColor: Colors.white,
+          builder: (context) => SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.all(28.0),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: const BoxDecoration(
+                      color: Color(0xFFE8F5E9),
+                      shape: BoxShape.circle,
                     ),
-                    child: const Text(
-                      'Back to Dashboard',
-                      style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                    child: const Icon(Icons.check_circle_rounded, color: Colors.green, size: 48),
+                  ),
+                  const SizedBox(height: 20),
+                  const Text(
+                    'Package Submitted!',
+                    style: TextStyle(
+                      fontFamily: 'Recoleta Alt',
+                      fontSize: 22,
+                      fontWeight: FontWeight.bold,
+                      color: AppColors.primary,
                     ),
                   ),
-                ),
-              ],
+                  const SizedBox(height: 8),
+                  Text(
+                    'Your package is currently pending admin verification. You can track its status under My Packages.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: AppColors.primary.withValues(alpha: 0.6),
+                      height: 1.4,
+                    ),
+                  ),
+                  const SizedBox(height: 28),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton(
+                      onPressed: () {
+                        Navigator.of(context).pop(); // close bottom sheet
+                        Navigator.of(context).pop(true); // return true to refresh
+                      },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF1F2E4E),
+                        padding: const EdgeInsets.symmetric(vertical: 15),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
+                      ),
+                      child: const Text(
+                        'Back to Dashboard',
+                        style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
-        ),
-      );
+        );
+      }
     } else {
-      _showToast('Failed to submit package: ${res['message']}', type: SnackBarType.error);
+      _showToast('Failed to save package: ${res['message']}', type: SnackBarType.error);
     }
+  }
+
+  Map<String, dynamic> _mapApiPackageForLocal(Map<String, dynamic> apiPkg, String fallbackSellingPrice) {
+    String imageUrl = 'assets/images/package_spa.jpg';
+    if (apiPkg['cover_url'] != null && apiPkg['cover_url'].toString().isNotEmpty) {
+      imageUrl = apiPkg['cover_url'];
+    } else if (apiPkg['images'] != null && (apiPkg['images'] as List).isNotEmpty) {
+      imageUrl = apiPkg['images'][0]['url'] ?? 'assets/images/package_spa.jpg';
+    }
+
+    final double priceVal = double.tryParse(apiPkg['price']?.toString() ?? '') ?? double.tryParse(fallbackSellingPrice) ?? 0.0;
+
+    String category = 'General';
+    if (apiPkg['category'] != null) {
+      if (apiPkg['category'] is Map) {
+        category = apiPkg['category']['name']?.toString() ?? 'General';
+      } else {
+        category = apiPkg['category'].toString();
+      }
+    }
+
+    final result = Map<String, dynamic>.from(apiPkg);
+    result['id'] = apiPkg['id'] ?? widget.packageToEdit?['id'];
+    result['title'] = apiPkg['title'] ?? _titleController.text;
+    result['category'] = category;
+    result['price'] = priceVal.toStringAsFixed(2);
+    result['status'] = (apiPkg['status']?.toString().toUpperCase() ?? 'PUBLISHED');
+    result['badge'] = (apiPkg['status']?.toString().toUpperCase() ?? 'ACTIVE');
+    result['image'] = imageUrl;
+    result['imageUrl'] = imageUrl;
+    result['createdAt'] = apiPkg['date_created']?.toString() ?? apiPkg['created_at']?.toString() ?? apiPkg['date']?.toString() ?? '';
+    return result;
   }
 
   @override
@@ -463,9 +648,9 @@ class _AddPackageScreenState extends State<AddPackageScreen> {
         icon: const Icon(Icons.arrow_back_rounded, color: AppColors.primary),
         onPressed: _prevStep,
       ),
-      title: const Text(
-        'Add New Package',
-        style: TextStyle(
+      title: Text(
+        widget.packageToEdit != null ? 'Edit Package' : 'Add New Package',
+        style: const TextStyle(
           color: AppColors.primary,
           fontFamily: 'Recoleta Alt',
           fontWeight: FontWeight.bold,
@@ -609,7 +794,10 @@ class _AddPackageScreenState extends State<AddPackageScreen> {
             child: DropdownButtonFormField<String>(
               isExpanded: true,
               key: ValueKey(_selectedMerchant),
-              initialValue: _selectedMerchant.isEmpty ? null : _selectedMerchant,
+              // ignore: deprecated_member_use
+              value: (_apiMerchants.any((m) => (m['business_name'] == _selectedMerchant || m['name'] == _selectedMerchant)) || _fallbackMerchants.contains(_selectedMerchant))
+                  ? (_selectedMerchant.isEmpty ? null : _selectedMerchant)
+                  : null,
               hint: Text(
                 _isLoadingData ? 'Loading merchants...' : 'Select a merchant...',
                 style: TextStyle(color: AppColors.primary.withValues(alpha: 0.4), fontSize: 14),
@@ -785,8 +973,17 @@ class _AddPackageScreenState extends State<AddPackageScreen> {
         ),
         const SizedBox(height: 20),
 
-        // Description Input
-        _buildSectionHeader('Package Description *'),
+        // Short Description Input
+        _buildSectionHeader('Short Description'),
+        _buildInputField(
+          controller: _shortDescriptionController,
+          hintText: 'Brief summary (shown in listing cards)...',
+          maxLines: 2,
+        ),
+        const SizedBox(height: 20),
+
+        // Package Description Input
+        _buildSectionHeader('Package Description'),
         _buildInputField(
           controller: _descriptionController,
           hintText: 'Describe the experience, value proposition, and unique features...',
@@ -877,7 +1074,10 @@ class _AddPackageScreenState extends State<AddPackageScreen> {
           child: DropdownButtonHideUnderline(
             child: DropdownButtonFormField<String>(
               key: ValueKey(_primaryCategory),
-              initialValue: _primaryCategory.isEmpty ? null : _primaryCategory,
+              // ignore: deprecated_member_use
+              value: (_primaryCategories.any((c) => c['slug'] == _primaryCategory) || _primaryFallback.any((c) => c['slug'] == _primaryCategory))
+                  ? (_primaryCategory.isEmpty ? null : _primaryCategory)
+                  : null,
               hint: const Text('Primary Category', style: TextStyle(fontSize: 13, color: Colors.black38)),
               decoration: const InputDecoration(
                 border: InputBorder.none,
@@ -916,7 +1116,10 @@ class _AddPackageScreenState extends State<AddPackageScreen> {
           child: DropdownButtonHideUnderline(
             child: DropdownButtonFormField<String>(
               key: ValueKey(_secondaryCategory),
-              initialValue: _secondaryCategory.isEmpty ? null : _secondaryCategory,
+              // ignore: deprecated_member_use
+              value: (_secondaryCategories.any((c) => c['slug'] == _secondaryCategory) || _secondaryFallback.any((c) => c['slug'] == _secondaryCategory))
+                  ? (_secondaryCategory.isEmpty ? null : _secondaryCategory)
+                  : null,
               hint: const Text('Secondary Category (Optional)', style: TextStyle(fontSize: 13, color: Colors.black38)),
               decoration: const InputDecoration(
                 border: InputBorder.none,
@@ -996,7 +1199,7 @@ class _AddPackageScreenState extends State<AddPackageScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _buildLabel('Original Purchase Price *'),
+              _buildLabel('Original Purchase Price'),
               _buildPriceInputField(controller: _originalPriceController),
               const SizedBox(height: 16),
               _buildLabel('Selling Price Per Session *'),
@@ -1159,6 +1362,31 @@ class _AddPackageScreenState extends State<AddPackageScreen> {
                 ),
               ),
             ],
+          ),
+        ),
+        const SizedBox(height: 24),
+
+        // Status Dropdown
+        _buildSectionHeader('Status'),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: AppColors.primary.withValues(alpha: 0.1)),
+          ),
+          child: DropdownButtonHideUnderline(
+            child: DropdownButton<String>(
+              isExpanded: true,
+              value: _packageStatus,
+              style: const TextStyle(fontSize: 13, color: AppColors.primary, fontWeight: FontWeight.w500),
+              items: const [
+                DropdownMenuItem(value: 'draft', child: Text('Draft')),
+                DropdownMenuItem(value: 'pending', child: Text('Pending Review')),
+                DropdownMenuItem(value: 'published', child: Text('Published')),
+              ],
+              onChanged: (val) => setState(() => _packageStatus = val ?? 'draft'),
+            ),
           ),
         ),
       ],
@@ -1344,7 +1572,7 @@ class _AddPackageScreenState extends State<AddPackageScreen> {
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     Text(
-                      _currentStep == 3 ? 'Submit Package' : 'Next Step',
+                      _currentStep == 3 ? (widget.packageToEdit != null ? 'Save Changes' : 'Submit Package') : 'Next Step',
                       style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.white),
                     ),
                     const SizedBox(width: 6),
