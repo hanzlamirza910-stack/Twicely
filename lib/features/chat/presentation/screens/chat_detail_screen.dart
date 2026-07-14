@@ -310,7 +310,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
                   ),
                   SizedBox(height: 3),
                   Text(
-                    'Sustainable Edit • \$125.00',
+                    'Sustainable Edit > \$125.00',
                     style: TextStyle(
                       fontSize: 11,
                       color: Colors.black54,

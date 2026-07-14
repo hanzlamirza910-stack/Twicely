@@ -65,13 +65,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   List<Map<String, dynamic>> get _displayRecentlyViewed {
-    if (_recentlyViewedPackages.isNotEmpty) {
-      return _recentlyViewedPackages;
-    }
-    if (_apiPackages.isNotEmpty) {
-      return _apiPackages.take(2).toList();
-    }
-    return _allPackages.take(2).toList();
+    return _recentlyViewedPackages;
   }
 
   String _determineFilterCategory(Map<String, dynamic> apiPkg) {
@@ -188,25 +182,134 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _fetchPackages({String? filter}) async {
     if (mounted) setState(() => _isLoadingPackages = true);
-    final slug = _filterToSlug[filter ?? _selectedFilter];
-    final res = await ApiService.getPackages(
-      perPage: 20,
-      category: slug,
-    );
-    if (res['success'] == true && res['data'] != null) {
-      final List<dynamic> pkgs = res['data'];
-      if (mounted) {
-        setState(() {
-          _apiPackages = pkgs.map((p) => _mapApiPackage(p as Map<String, dynamic>)).toList();
-          _isLoadingPackages = false;
-        });
+    try {
+      final slug = _filterToSlug[filter ?? _selectedFilter];
+      final res = await ApiService.getPackages(
+        perPage: 20,
+        category: slug,
+      );
+      if (res['success'] == true && res['data'] != null) {
+        final List<dynamic> pkgs = res['data'];
+        if (mounted) {
+          setState(() {
+            _apiPackages = pkgs
+                .map((p) {
+                  try {
+                    return _mapApiPackage(p as Map<String, dynamic>, selectedFilter: _selectedFilter);
+                  } catch (e) {
+                    debugPrint('Error mapping package: $e');
+                    return null;
+                  }
+                })
+                .where((p) => p != null)
+                .cast<Map<String, dynamic>>()
+                .toList();
+            _isLoadingPackages = false;
+          });
+        }
+      } else {
+        if (mounted) setState(() => _isLoadingPackages = false);
       }
-    } else {
+    } catch (e) {
+      debugPrint('Error fetching packages: $e');
       if (mounted) setState(() => _isLoadingPackages = false);
     }
   }
 
-  Map<String, dynamic> _mapApiPackage(Map<String, dynamic> apiPkg) {
+  String _buildDynamicTag(Map<String, dynamic> apiPkg, {String? selectedFilter}) {
+    final List<String> mainCats = [];
+    
+    // Normalize filter casing if needed
+    String? normalizedFilter = selectedFilter;
+    if (normalizedFilter != null) {
+      if (normalizedFilter.toLowerCase() == 'for her') {
+        normalizedFilter = 'For Her';
+      } else if (normalizedFilter.toLowerCase() == 'for him') {
+        normalizedFilter = 'For Him';
+      } else if (normalizedFilter.toLowerCase() == 'general') {
+        normalizedFilter = 'General';
+      } else if (normalizedFilter.toLowerCase() == 'biz+') {
+        normalizedFilter = 'Biz+';
+      }
+    }
+
+    if (normalizedFilter != null && normalizedFilter != 'All') {
+      mainCats.add(normalizedFilter);
+    } else {
+      final int idVal = int.tryParse(apiPkg['id']?.toString() ?? '') ?? 0;
+      if (idVal != 0 && ApiService.packageCategoriesCache.containsKey(idVal)) {
+        final cached = List<String>.from(ApiService.packageCategoriesCache[idVal]!);
+        if (cached.isNotEmpty) {
+          const priority = ['For Her', 'For Him', 'Biz+', 'General'];
+          cached.sort((a, b) {
+            final ia = priority.indexOf(a);
+            final ib = priority.indexOf(b);
+            return (ia == -1 ? 99 : ia).compareTo(ib == -1 ? 99 : ib);
+          });
+          mainCats.add(cached.first);
+        }
+      }
+
+      if (mainCats.isEmpty && apiPkg['categories'] is List) {
+        for (final cat in apiPkg['categories']) {
+          if (cat is Map) {
+            final slug = (cat['slug']?.toString() ?? '').toLowerCase();
+            if (slug.contains('her') || slug.contains('women')) {
+              if (!mainCats.contains('For Her')) mainCats.add('For Her');
+            } else if (slug.contains('him') || slug.contains('men')) {
+              if (!mainCats.contains('For Him')) mainCats.add('For Him');
+            } else if (slug.contains('biz') || slug.contains('corporate')) {
+              if (!mainCats.contains('Biz+')) mainCats.add('Biz+');
+            } else if (slug.contains('general')) {
+              if (!mainCats.contains('General')) mainCats.add('General');
+            }
+          }
+        }
+      }
+      
+      if (mainCats.isEmpty) {
+        mainCats.add(_determineFilterCategory(apiPkg));
+      }
+    }
+
+    final secondarySlug = apiPkg['secondary_category']?.toString() ?? '';
+    String subcatLabel = _subcatLabels[secondarySlug] ?? '';
+
+    if (subcatLabel.isEmpty && apiPkg['categories'] is List) {
+      for (final cat in apiPkg['categories']) {
+        if (cat is Map) {
+          final name = (cat['name']?.toString() ?? '').replaceAll('&amp;', '&');
+          final slug = (cat['slug']?.toString() ?? '').toLowerCase();
+          if (!slug.contains('her') && !slug.contains('women') &&
+              !slug.contains('him') && !slug.contains('men') &&
+              !slug.contains('biz') && !slug.contains('corporate') &&
+              !slug.contains('general')) {
+            subcatLabel = name;
+            break;
+          }
+        }
+      }
+    }
+
+    if (subcatLabel.isNotEmpty) {
+      return '${mainCats.join(' > ')} > $subcatLabel';
+    } else {
+      return mainCats.join(' > ');
+    }
+  }
+
+  String _getPkgTrueCategory(Map<String, dynamic> apiPkg) {
+    final int idVal = int.tryParse(apiPkg['id']?.toString() ?? '') ?? 0;
+    if (idVal != 0 && ApiService.packageCategoriesCache.containsKey(idVal)) {
+      final cached = ApiService.packageCategoriesCache[idVal]!;
+      if (cached.isNotEmpty) {
+        return cached.first;
+      }
+    }
+    return _determineFilterCategory(apiPkg);
+  }
+
+  Map<String, dynamic> _mapApiPackage(Map<String, dynamic> apiPkg, {String? selectedFilter}) {
     String imageUrl = 'assets/images/package_spa.jpg';
     if (apiPkg['cover_url'] != null && apiPkg['cover_url'].toString().isNotEmpty) {
       imageUrl = apiPkg['cover_url'];
@@ -214,36 +317,50 @@ class _HomeScreenState extends State<HomeScreen> {
       imageUrl = apiPkg['images'][0]['url'] ?? 'assets/images/package_spa.jpg';
     }
 
-    final double originalPrice = double.tryParse(apiPkg['original_price']?.toString() ?? '') ?? 
-                                 double.tryParse(apiPkg['price']?.toString() ?? '') ?? 0.0;
-    final double resalePrice = double.tryParse(apiPkg['resale_price']?.toString() ?? '') ?? 
-                               double.tryParse(apiPkg['price']?.toString() ?? '') ?? 0.0;
+    final double basePrice = double.tryParse(apiPkg['price']?.toString() ?? '') ?? 0.0;
+    final double discPrice = double.tryParse(apiPkg['discounted_price']?.toString() ?? '') ?? 0.0;
+    final bool hasDiscount = discPrice > 0 && discPrice < basePrice;
+
+    final double originalPrice = basePrice;
+    final double resalePrice = hasDiscount ? discPrice : basePrice;
 
     String? discountBadge;
-    if (originalPrice > 0 && resalePrice < originalPrice) {
+    if (hasDiscount) {
       final discountPct = ((originalPrice - resalePrice) / originalPrice * 100).round();
       if (discountPct > 0) {
         discountBadge = '$discountPct% OFF';
       }
     }
 
-    final String category = _determineFilterCategory(apiPkg);
-
-    String tag = '${category.toUpperCase()} • ACTIVE';
-    if (apiPkg['location'] != null) {
-      tag = '${category.toUpperCase()} • ${apiPkg['location'].toString().toUpperCase()}';
-    }
+    final String category = (selectedFilter != null && selectedFilter != 'All Categories' && selectedFilter != 'All')
+        ? selectedFilter
+        : _getPkgTrueCategory(apiPkg);
+    String tag = _buildDynamicTag(apiPkg, selectedFilter: selectedFilter);
 
     final secondarySlug = apiPkg['secondary_category']?.toString() ?? '';
     final subcatLabel = _subcatLabels[secondarySlug] ?? '';
 
+    final merchantIdVal = int.tryParse(apiPkg['merchant_id']?.toString() ?? '');
     String merchantName = 'Twicely Merchant';
-    if (apiPkg['merchant'] is Map && apiPkg['merchant']['name'] != null) {
+    String merchantLogo = '';
+    if (merchantIdVal != null && ApiService.merchantsCache.containsKey(merchantIdVal)) {
+      final m = ApiService.merchantsCache[merchantIdVal]!;
+      merchantName = m['business_name']?.toString() ?? 'Twicely Merchant';
+      merchantLogo = m['logo_url']?.toString() ?? '';
+    } else if (apiPkg['merchant'] is Map && apiPkg['merchant']['name'] != null) {
       merchantName = apiPkg['merchant']['name'].toString();
+      merchantLogo = apiPkg['merchant']['logo']?.toString() ?? '';
     } else if (apiPkg['merchant'] is Map && apiPkg['merchant']['display_name'] != null) {
       merchantName = apiPkg['merchant']['display_name'].toString();
     } else if (apiPkg['merchant_name'] != null) {
       merchantName = apiPkg['merchant_name'].toString();
+    }
+
+    int likesCount = int.tryParse(apiPkg['likes_count']?.toString() ?? '') ??
+                     (apiPkg['likes'] != null ? int.tryParse(apiPkg['likes'].toString()) : null) ??
+                     (apiPkg['id'] != null ? (apiPkg['id'].hashCode % 5) : 0);
+    if ((apiPkg['liked'] == true || apiPkg['hasHeart'] == true) && likesCount == 0) {
+      likesCount = 1;
     }
 
     return {
@@ -253,15 +370,23 @@ class _HomeScreenState extends State<HomeScreen> {
       'title': apiPkg['title'] ?? 'Package Listing',
       'originalPrice': 'S\$${originalPrice.toStringAsFixed(2)}',
       'resalePrice': 'S\$${resalePrice.toStringAsFixed(2)}',
+      'originalPriceVal': originalPrice,
+      'resalePriceVal': resalePrice,
       'hasHeart': apiPkg['liked'] == true || apiPkg['hasHeart'] == true,
       'discountBadge': discountBadge,
       'category': category,
       'description': apiPkg['description'] ?? '',
       'validity': apiPkg['validity_date'] ?? apiPkg['valid_until'] ?? '',
-      'merchant': apiPkg['merchant'] ?? {},
+      'merchant': {
+        'name': merchantName,
+        'logo': merchantLogo,
+        'logo_url': merchantLogo,
+      },
       'merchantName': merchantName,
+      'merchantLogo': merchantLogo,
       'secondaryCategory': secondarySlug,
       'secondaryCategoryLabel': subcatLabel,
+      'likesCount': likesCount,
     };
   }
 
@@ -288,13 +413,11 @@ class _HomeScreenState extends State<HomeScreen> {
         set.add(p['merchantName'].toString());
       }
     }
-    for (final p in _allPackages) {
-      if (p['merchant'] is Map && p['merchant']['name'] != null) {
-        set.add(p['merchant']['name'].toString());
+    for (final p in _searchTabPackages) {
+      if (p['merchantName'] != null) {
+        set.add(p['merchantName'].toString());
       }
     }
-    // fallbacks
-    set.addAll(['Active Life', 'Amara Spa', 'Absolute Cycle', 'Rolys', 'Synvolv', 'Tagpools', 'Test Business Ltd']);
     return set.toList();
   }
 
@@ -302,32 +425,48 @@ class _HomeScreenState extends State<HomeScreen> {
     if (!mounted) return;
     setState(() => _isLoadingSearchTab = true);
 
-    String? categorySlug;
-    if (_selectedCategory == 'For her' || _selectedCategory == 'For Her') {
-      categorySlug = 'for-her';
-    } else if (_selectedCategory == 'For him' || _selectedCategory == 'For Him') {
-      categorySlug = 'for-him';
-    } else if (_selectedCategory == 'General') {
-      categorySlug = 'general';
-    } else if (_selectedCategory == 'Biz+') {
-      categorySlug = 'biz';
-    }
+    try {
+      String? categorySlug;
+      if (_selectedCategory == 'For her' || _selectedCategory == 'For Her') {
+        categorySlug = 'for-her';
+      } else if (_selectedCategory == 'For him' || _selectedCategory == 'For Him') {
+        categorySlug = 'for-him';
+      } else if (_selectedCategory == 'General') {
+        categorySlug = 'general';
+      } else if (_selectedCategory == 'Biz+') {
+        categorySlug = 'biz';
+      }
 
-    final res = await ApiService.getPackages(
-      perPage: 100,
-      search: _searchTabQuery.isNotEmpty ? _searchTabQuery : null,
-      category: categorySlug,
-    );
+      final res = await ApiService.getPackages(
+        perPage: 100,
+        search: _searchTabQuery.isNotEmpty ? _searchTabQuery : null,
+        category: categorySlug,
+      );
 
-    if (!mounted) return;
-    if (res['success'] == true && res['data'] != null) {
-      final List<dynamic> raw = res['data'];
-      setState(() {
-        _searchTabPackages = raw.map((p) => _mapApiPackage(p as Map<String, dynamic>)).toList();
-        _isLoadingSearchTab = false;
-      });
-    } else {
-      setState(() => _isLoadingSearchTab = false);
+      if (!mounted) return;
+      if (res['success'] == true && res['data'] != null) {
+        final List<dynamic> raw = res['data'];
+        setState(() {
+          _searchTabPackages = raw
+              .map((p) {
+                try {
+                  return _mapApiPackage(p as Map<String, dynamic>, selectedFilter: _selectedCategory);
+                } catch (e) {
+                  debugPrint('Error mapping search tab package: $e');
+                  return null;
+                }
+              })
+              .where((p) => p != null)
+              .cast<Map<String, dynamic>>()
+              .toList();
+          _isLoadingSearchTab = false;
+        });
+      } else {
+        setState(() => _isLoadingSearchTab = false);
+      }
+    } catch (e) {
+      debugPrint('Error fetching search tab packages: $e');
+      if (mounted) setState(() => _isLoadingSearchTab = false);
     }
   }
 
@@ -635,98 +774,7 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  final List<Map<String, dynamic>> _allPackages = [
-    {
-      'imageUrl': 'assets/images/package_yoga.jpg',
-      'tag': 'FOR HER • YOGA & PILATES',
-      'title': 'A Premium Weekend Yoga & Pilates Pass',
-      'originalPrice': 'S\$99.00',
-      'resalePrice': 'S\$64.00',
-      'hasHeart': true,
-      'discountBadge': null,
-      'category': 'For her',
-    },
-    {
-      'imageUrl': 'assets/images/package_spa.jpg',
-      'tag': 'FOR HER • SPA & MASSAGE',
-      'title': 'Renewal Spa & Body Treatment at Orchard',
-      'originalPrice': 'S\$350.00',
-      'resalePrice': 'S\$100.00',
-      'hasHeart': false,
-      'discountBadge': '72% OFF',
-      'category': 'For her',
-    },
-    {
-      'imageUrl': 'assets/images/package_gym.jpg',
-      'tag': 'GENERAL • GYM & FITNESS',
-      'title': 'Elite Gym Access & Personal Training',
-      'originalPrice': 'S\$200.00',
-      'resalePrice': 'S\$150.00',
-      'hasHeart': false,
-      'discountBadge': '25% OFF',
-      'category': 'General',
-    },
-    {
-      'imageUrl': 'assets/images/package_spa.jpg',
-      'tag': 'FOR HER • BEAUTY & NAILS',
-      'title': 'Luxury Gel Manicure & Custom Nail Art',
-      'originalPrice': 'S\$120.00',
-      'resalePrice': 'S\$85.00',
-      'hasHeart': true,
-      'discountBadge': '30% OFF',
-      'category': 'For her',
-    },
-    {
-      'imageUrl': 'assets/images/package_gym.jpg',
-      'tag': 'FOR HIM • GYM & FITNESS',
-      'title': 'Men\'s Strength Conditioning 3-Session Trial',
-      'originalPrice': 'S\$180.00',
-      'resalePrice': 'S\$90.00',
-      'hasHeart': false,
-      'discountBadge': '50% OFF',
-      'category': 'For him',
-    },
-    {
-      'imageUrl': 'assets/images/package_spa.jpg',
-      'tag': 'FOR HIM • SPA & MASSAGE',
-      'title': 'Deep Tissue Massage & Aromatherapy for Men',
-      'originalPrice': 'S\$210.00',
-      'resalePrice': 'S\$130.00',
-      'hasHeart': true,
-      'discountBadge': '38% OFF',
-      'category': 'For him',
-    },
-    {
-      'imageUrl': 'assets/images/package_yoga.jpg',
-      'tag': 'GENERAL • LIFESTYLE CLASSES',
-      'title': 'Sustainability Craft & Clay Pottery Masterclass',
-      'originalPrice': 'S\$150.00',
-      'resalePrice': 'S\$125.00',
-      'hasHeart': false,
-      'discountBadge': '16% OFF',
-      'category': 'General',
-    },
-    {
-      'imageUrl': 'assets/images/package_yoga.jpg',
-      'tag': 'BIZ+ • CORPORATE YOGA',
-      'title': 'Corporate Team Bonding Yoga Pass (10 Pax)',
-      'originalPrice': 'S\$800.00',
-      'resalePrice': 'S\$550.00',
-      'hasHeart': true,
-      'discountBadge': '31% OFF',
-      'category': 'Biz+',
-    },
-    {
-      'imageUrl': 'assets/images/package_spa.jpg',
-      'tag': 'BIZ+ • WELLNESS RETREAT',
-      'title': 'Executive Team Wellness Day Out Voucher',
-      'originalPrice': 'S\$1200.00',
-      'resalePrice': 'S\$950.00',
-      'hasHeart': false,
-      'discountBadge': '20% OFF',
-      'category': 'Biz+',
-    },
-  ];
+
 
   List<Map<String, dynamic>> get _filteredPackages {
     // API already returns the correct category — just apply optional search filter
@@ -831,11 +879,13 @@ class _HomeScreenState extends State<HomeScreen> {
                 const SizedBox(width: 8),
                 GestureDetector(
                   onTap: () {
-                    if (_checkAuthWithPrompt(
-                      title: 'Please Login',
-                      message: 'Please login to view and edit your profile details.',
-                    )) {
+                    if (SessionManager.isLoggedIn) {
                       setState(() => _currentIndex = 4);
+                    } else {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (_) => const LoginScreen()),
+                      );
                     }
                   },
                   child: Container(
@@ -858,46 +908,43 @@ class _HomeScreenState extends State<HomeScreen> {
           // 2. Search Bar
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 20.0),
-            child: Container(
-              height: 52,
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(30),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.03),
-                    blurRadius: 10,
-                    offset: const Offset(0, 4),
-                  ),
-                ],
-              ),
-              child: TextFormField(
-                controller: _homeSearchController,
-                style: const TextStyle(fontSize: 14, color: AppColors.primary),
-                onChanged: (val) {
-                  setState(() {
-                    _homeSearchQuery = val;
-                  });
-                },
-                decoration: InputDecoration(
-                  hintText: 'Search packages, categories...',
-                  hintStyle: TextStyle(color: AppColors.primary.withValues(alpha: 0.4)),
-                  prefixIcon: const Icon(Icons.search_rounded, color: AppColors.primary, size: 22),
-                  suffixIcon: _homeSearchQuery.isNotEmpty
-                      ? GestureDetector(
-                          onTap: () {
-                            setState(() {
-                              _homeSearchController.clear();
-                              _homeSearchQuery = '';
-                            });
-                          },
-                          child: const Icon(Icons.cancel_rounded, color: AppColors.primary, size: 20),
-                        )
-                      : Icon(Icons.cancel_outlined, color: AppColors.primary.withValues(alpha: 0.4), size: 20),
-                  border: InputBorder.none,
-                  enabledBorder: InputBorder.none,
-                  focusedBorder: InputBorder.none,
-                  contentPadding: const EdgeInsets.symmetric(vertical: 15),
+            child: TextFormField(
+              controller: _homeSearchController,
+              style: const TextStyle(fontSize: 14, color: AppColors.primary),
+              onChanged: (val) {
+                setState(() {
+                  _homeSearchQuery = val;
+                });
+              },
+              decoration: InputDecoration(
+                filled: true,
+                fillColor: Colors.white,
+                hintText: 'Search packages, categories...',
+                hintStyle: TextStyle(color: AppColors.primary.withValues(alpha: 0.4)),
+                prefixIcon: const Icon(Icons.search_rounded, color: AppColors.primary, size: 22),
+                suffixIcon: _homeSearchQuery.isNotEmpty
+                    ? GestureDetector(
+                        onTap: () {
+                          setState(() {
+                            _homeSearchController.clear();
+                            _homeSearchQuery = '';
+                          });
+                        },
+                        child: const Icon(Icons.cancel_rounded, color: AppColors.primary, size: 20),
+                      )
+                    : null,
+                contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(30),
+                  borderSide: const BorderSide(color: Color(0xFF273DB7), width: 1.0),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(30),
+                  borderSide: const BorderSide(color: Color(0xFF273DB7), width: 1.0),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(30),
+                  borderSide: const BorderSide(color: Color(0xFF273DB7), width: 1.5),
                 ),
               ),
             ),
@@ -1174,6 +1221,11 @@ class _HomeScreenState extends State<HomeScreen> {
                               resalePrice: pkg['resalePrice'] as String,
                               hasHeart: pkg['hasHeart'] as bool,
                               discountBadge: pkg['discountBadge'] as String?,
+                              originalPriceVal: pkg['originalPriceVal'] as double?,
+                              resalePriceVal: pkg['resalePriceVal'] as double?,
+                              merchantName: pkg['merchantName'] as String?,
+                              merchantLogo: pkg['merchantLogo'] as String?,
+                              likesCount: pkg['likesCount'] as int?,
                             ),
                           );
                         },
@@ -1242,10 +1294,10 @@ class _HomeScreenState extends State<HomeScreen> {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
         decoration: BoxDecoration(
-          color: isSelected ? const Color(0xFFF27B6E) : Colors.white.withValues(alpha: 0.6),
+          color: isSelected ? const Color(0xFFF776AD) : const Color(0xFFFFF9F9),
           borderRadius: BorderRadius.circular(30),
           border: Border.all(
-            color: isSelected ? const Color(0xFFF27B6E) : AppColors.primary.withValues(alpha: 0.05),
+            color: Colors.transparent,
           ),
         ),
         child: Text(
@@ -1253,10 +1305,40 @@ class _HomeScreenState extends State<HomeScreen> {
           style: TextStyle(
             fontSize: 12,
             fontWeight: FontWeight.bold,
-            color: isSelected ? Colors.white : AppColors.primary,
+            color: isSelected ? Colors.white : const Color(0xFF232D52),
           ),
         ),
       ),
+    );
+  }
+
+  Widget _buildCategoryRichText(String tag) {
+    final parts = tag.split('>');
+    final List<InlineSpan> spans = [];
+    for (int i = 0; i < parts.length; i++) {
+      final part = parts[i].trim();
+      Color textColor = const Color(0xFF111111);
+      if (i == 0) {
+        textColor = const Color(0xFFFF014E);
+      } else if (i < parts.length - 1) {
+        textColor = const Color(0xFF0691D7);
+      }
+      spans.add(TextSpan(text: part, style: TextStyle(color: textColor)));
+      if (i < parts.length - 1) {
+        spans.add(const TextSpan(text: ' > ', style: TextStyle(color: Color(0xFF111111))));
+      }
+    }
+    return RichText(
+      text: TextSpan(
+        style: const TextStyle(
+          fontSize: 9,
+          fontWeight: FontWeight.bold,
+          fontFamily: 'Recoleta Alt',
+        ),
+        children: spans,
+      ),
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
     );
   }
 
@@ -1269,7 +1351,13 @@ class _HomeScreenState extends State<HomeScreen> {
     bool hasHeart = false,
     String? discountBadge,
     dynamic id,
+    double? originalPriceVal,
+    double? resalePriceVal,
+    String? merchantName,
+    String? merchantLogo,
+    int? likesCount,
   }) {
+    final bool isDiscounted = originalPriceVal != null && resalePriceVal != null && originalPriceVal > resalePriceVal;
     return GestureDetector(
       onTap: () {
         _showPackageDetails({
@@ -1280,7 +1368,11 @@ class _HomeScreenState extends State<HomeScreen> {
           'originalPrice': originalPrice,
           'resalePrice': resalePrice,
           'hasHeart': hasHeart,
-          'discountBadge': discountBadge,
+          'discountBadge': isDiscounted ? discountBadge : null,
+          'originalPriceVal': originalPriceVal,
+          'resalePriceVal': resalePriceVal,
+          'merchantName': merchantName,
+          'merchantLogo': merchantLogo,
         });
       },
       child: Container(
@@ -1288,6 +1380,7 @@ class _HomeScreenState extends State<HomeScreen> {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.black.withValues(alpha: 0.08), width: 1.0),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withValues(alpha: 0.03),
@@ -1303,7 +1396,7 @@ class _HomeScreenState extends State<HomeScreen> {
           SizedBox(
             height: 120,
             child: ClipRRect(
-              borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(14.5)),
               child: Stack(
                 children: [
                   imageUrl.startsWith('assets/')
@@ -1340,26 +1433,26 @@ class _HomeScreenState extends State<HomeScreen> {
                           shape: BoxShape.circle,
                         ),
                         alignment: Alignment.center,
-                        child: const Icon(Icons.favorite_rounded, color: Color(0xFFB3261E), size: 16),
+                        child: const Icon(Icons.favorite_rounded, color: Color(0xFFFBBD03), size: 16),
                       ),
                     ),
                   // Discount badge
-                  if (discountBadge != null)
+                  if (isDiscounted && discountBadge != null)
                     Positioned(
                       top: 8,
                       right: 8,
                       child: Container(
                         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                         decoration: BoxDecoration(
-                          color: const Color(0xFFFFF176), // Bright soft yellow
-                          borderRadius: BorderRadius.circular(8),
+                          color: const Color(0xFFF27B6E),
+                          borderRadius: BorderRadius.circular(20),
                         ),
                         child: Text(
                           discountBadge,
                           style: const TextStyle(
                             fontSize: 9,
                             fontWeight: FontWeight.bold,
-                            color: AppColors.primary,
+                            color: Colors.white,
                           ),
                         ),
                       ),
@@ -1370,19 +1463,12 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
           // Content metadata
           Padding(
-            padding: const EdgeInsets.all(12.0),
+            padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  tag,
-                  style: const TextStyle(
-                    fontSize: 8,
-                    fontWeight: FontWeight.bold,
-                    color: Color(0xFFF27B6E),
-                  ),
-                ),
-                const SizedBox(height: 6),
+                _buildCategoryRichText(tag),
+                const SizedBox(height: 4),
                 Text(
                   title,
                   maxLines: 2,
@@ -1390,28 +1476,80 @@ class _HomeScreenState extends State<HomeScreen> {
                   style: const TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.bold,
-                    color: AppColors.primary,
+                    color: Color(0xFF1A1A2E),
                     height: 1.3,
                   ),
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: 6),
                 // Strikethrough original and resale price
-                Text(
-                  originalPrice,
-                  style: TextStyle(
-                    fontSize: 10,
-                    decoration: TextDecoration.lineThrough,
-                    color: AppColors.primary.withValues(alpha: 0.35),
+                if (isDiscounted) ...[
+                  Text(
+                    originalPrice,
+                    style: const TextStyle(
+                      fontSize: 9,
+                      decoration: TextDecoration.lineThrough,
+                      decorationColor: Color(0xFF9E9E9E),
+                      color: Color(0xFF9E9E9E),
+                    ),
                   ),
-                ),
-                const SizedBox(height: 2),
+                  const SizedBox(height: 1),
+                ],
                 Text(
                   resalePrice,
                   style: const TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.bold,
-                    color: AppColors.primary,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w800,
+                    color: Color(0xFF273DB7),
+                    letterSpacing: -0.2,
                   ),
+                ),
+                const SizedBox(height: 6),
+                const Divider(height: 1, color: Colors.black12),
+                const SizedBox(height: 6),
+                Row(
+                  children: [
+                    CircleAvatar(
+                      radius: 7,
+                      backgroundColor: const Color(0xFFD68A84),
+                      backgroundImage: (merchantLogo != null && merchantLogo.isNotEmpty)
+                          ? NetworkImage(merchantLogo)
+                          : null,
+                      child: (merchantLogo != null && merchantLogo.isNotEmpty)
+                          ? null
+                          : Text(
+                              (merchantName != null && merchantName.isNotEmpty) ? merchantName[0].toUpperCase() : 'S',
+                              style: const TextStyle(fontSize: 7, color: Colors.white, fontWeight: FontWeight.bold),
+                            ),
+                    ),
+                    const SizedBox(width: 5),
+                    Expanded(
+                      child: Text(
+                        merchantName ?? 'Twicely Seller',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 9,
+                          color: Colors.black.withValues(alpha: 0.6),
+                          fontWeight: FontWeight.w400,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 4),
+                    Icon(
+                      hasHeart ? Icons.favorite_rounded : Icons.favorite_outline_rounded,
+                      size: 11,
+                      color: hasHeart ? const Color(0xFFFBBD03) : Colors.black38,
+                    ),
+                    const SizedBox(width: 2),
+                    Text(
+                      '${likesCount ?? 0}',
+                      style: TextStyle(
+                        fontSize: 9,
+                        color: Colors.black.withValues(alpha: 0.6),
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),
@@ -1473,11 +1611,13 @@ class _HomeScreenState extends State<HomeScreen> {
                   const SizedBox(width: 8),
                   GestureDetector(
                     onTap: () {
-                      if (_checkAuthWithPrompt(
-                        title: 'Please Login',
-                        message: 'Please login to view and edit your profile details.',
-                      )) {
+                      if (SessionManager.isLoggedIn) {
                         setState(() => _currentIndex = 4);
+                      } else {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(builder: (_) => const LoginScreen()),
+                        );
                       }
                     },
                     child: Container(
@@ -1537,54 +1677,54 @@ class _HomeScreenState extends State<HomeScreen> {
                 // Search Input Box
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 20.0),
-                  child: Container(
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(30),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.02),
-                          blurRadius: 8,
-                          offset: const Offset(0, 4),
-                        ),
-                      ],
-                    ),
-                    child: TextField(
-                      controller: _searchTabController,
-                      textInputAction: TextInputAction.search,
-                      onSubmitted: (val) {
-                        setState(() {
-                          _searchTabQuery = val;
-                        });
+                  child: TextField(
+                    controller: _searchTabController,
+                    textInputAction: TextInputAction.search,
+                    onSubmitted: (val) {
+                      setState(() {
+                        _searchTabQuery = val;
+                      });
+                      _fetchSearchTabPackages();
+                    },
+                    onChanged: (val) {
+                      setState(() {
+                        _searchTabQuery = val;
+                      });
+                      if (val.isEmpty) {
                         _fetchSearchTabPackages();
-                      },
-                      onChanged: (val) {
-                        setState(() {
-                          _searchTabQuery = val;
-                        });
-                        if (val.isEmpty) {
-                          _fetchSearchTabPackages();
-                        }
-                      },
-                      style: const TextStyle(fontSize: 14, color: AppColors.primary),
-                      decoration: InputDecoration(
-                        hintText: 'Search by package name...',
-                        hintStyle: TextStyle(color: AppColors.primary.withValues(alpha: 0.4), fontSize: 13),
-                        prefixIcon: const Icon(Icons.search_rounded, color: AppColors.primary, size: 20),
-                        suffixIcon: _searchTabQuery.isNotEmpty
-                            ? GestureDetector(
-                                onTap: () {
-                                  setState(() {
-                                    _searchTabController.clear();
-                                    _searchTabQuery = '';
-                                  });
-                                  _fetchSearchTabPackages();
-                                },
-                                child: const Icon(Icons.cancel_rounded, color: AppColors.primary, size: 20),
-                              )
-                            : null,
-                        border: InputBorder.none,
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 15),
+                      }
+                    },
+                    style: const TextStyle(fontSize: 14, color: AppColors.primary),
+                    decoration: InputDecoration(
+                      filled: true,
+                      fillColor: Colors.white,
+                      hintText: 'Search by package name...',
+                      hintStyle: TextStyle(color: AppColors.primary.withValues(alpha: 0.4), fontSize: 13),
+                      prefixIcon: const Icon(Icons.search_rounded, color: AppColors.primary, size: 20),
+                      suffixIcon: _searchTabQuery.isNotEmpty
+                          ? GestureDetector(
+                              onTap: () {
+                                setState(() {
+                                  _searchTabController.clear();
+                                  _searchTabQuery = '';
+                                });
+                                _fetchSearchTabPackages();
+                              },
+                              child: const Icon(Icons.cancel_rounded, color: AppColors.primary, size: 20),
+                            )
+                          : null,
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(30),
+                        borderSide: const BorderSide(color: Color(0xFF273DB7), width: 1.0),
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(30),
+                        borderSide: const BorderSide(color: Color(0xFF273DB7), width: 1.0),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(30),
+                        borderSide: const BorderSide(color: Color(0xFF273DB7), width: 1.5),
                       ),
                     ),
                   ),
@@ -1602,22 +1742,23 @@ class _HomeScreenState extends State<HomeScreen> {
                         physics: const BouncingScrollPhysics(),
                         child: Row(
                           children: [
-                            _buildDashedPill(
+                            _buildFilterPill(
                               label: 'Merchant',
                               selectedValue: _selectedMerchant,
-                              placeholder: '+ Merchant',
+                              prefixIcon: Icons.storefront_outlined,
                               onTap: _showMerchantFilter,
                               onClear: () {
                                 setState(() {
                                   _selectedMerchant = 'All Merchants';
                                 });
+                                _fetchSearchTabPackages();
                               },
                             ),
                             const SizedBox(width: 8),
-                            _buildDashedPill(
-                              label: 'Primary Category',
+                            _buildFilterPill(
+                              label: 'Category',
                               selectedValue: _selectedCategory,
-                              placeholder: '+ Category',
+                              prefixIcon: Icons.category_outlined,
                               onTap: _showCategoryFilter,
                               onClear: () {
                                 setState(() {
@@ -1627,15 +1768,16 @@ class _HomeScreenState extends State<HomeScreen> {
                               },
                             ),
                             const SizedBox(width: 8),
-                            _buildDashedPill(
-                              label: 'Secondary Category',
+                            _buildFilterPill(
+                              label: 'Subcategory',
                               selectedValue: _selectedSubcat != null ? _subcatLabels[_selectedSubcat!] : null,
-                              placeholder: '+ Subcategory',
+                              prefixIcon: Icons.layers_outlined,
                               onTap: _showSubcatFilter,
                               onClear: () {
                                 setState(() {
                                   _selectedSubcat = null;
                                 });
+                                _fetchSearchTabPackages();
                               },
                             ),
                           ],
@@ -1718,7 +1860,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                 crossAxisCount: 2,
                                 crossAxisSpacing: 14,
                                 mainAxisSpacing: 14,
-                                childAspectRatio: 0.67,
+                                childAspectRatio: 0.56,
                               ),
                               itemCount: filtered.length,
                               itemBuilder: (context, index) {
@@ -1732,6 +1874,11 @@ class _HomeScreenState extends State<HomeScreen> {
                                   resalePrice: pkg['resalePrice'] as String,
                                   hasHeart: pkg['hasHeart'] as bool,
                                   discountBadge: pkg['discountBadge'] as String?,
+                                  originalPriceVal: pkg['originalPriceVal'] as double?,
+                                  resalePriceVal: pkg['resalePriceVal'] as double?,
+                                  merchantName: pkg['merchantName'] as String?,
+                                  merchantLogo: pkg['merchantLogo'] as String?,
+                                  likesCount: pkg['likesCount'] as int?,
                                 );
                               },
                             ),
@@ -1778,6 +1925,11 @@ class _HomeScreenState extends State<HomeScreen> {
                                 resalePrice: pkg['resalePrice'] as String,
                                 hasHeart: pkg['hasHeart'] as bool? ?? false,
                                 discountBadge: pkg['discountBadge'] as String?,
+                                originalPriceVal: pkg['originalPriceVal'] as double?,
+                                resalePriceVal: pkg['resalePriceVal'] as double?,
+                                merchantName: pkg['merchantName'] as String?,
+                                merchantLogo: pkg['merchantLogo'] as String?,
+                                likesCount: pkg['likesCount'] as int?,
                               ),
                             ),
                           );
@@ -1801,7 +1953,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   List<Map<String, dynamic>> get _searchTabFilteredPackages {
-    final baseList = _searchTabPackages.isNotEmpty ? _searchTabPackages : _allPackages;
+    final baseList = _searchTabPackages;
     List<Map<String, dynamic>> res = List.from(baseList);
 
     if (_searchTabQuery.isNotEmpty) {
@@ -1822,6 +1974,16 @@ class _HomeScreenState extends State<HomeScreen> {
 
     if (_selectedCategory != 'All Categories') {
       res = res.where((pkg) {
+        final int idVal = int.tryParse(pkg['id']?.toString() ?? '') ?? 0;
+        if (idVal != 0 && ApiService.packageCategoriesCache.containsKey(idVal)) {
+          final cached = ApiService.packageCategoriesCache[idVal]!;
+          final normalizedSelected = _selectedCategory.toLowerCase().replaceAll(' ', '');
+          for (final c in cached) {
+            if (c.toLowerCase().replaceAll(' ', '') == normalizedSelected) {
+              return true;
+            }
+          }
+        }
         final cat = pkg['category']?.toString() ?? '';
         return cat.toLowerCase() == _selectedCategory.toLowerCase();
       }).toList();
@@ -2316,15 +2478,23 @@ class _HomeScreenState extends State<HomeScreen> {
         child: InkWell(
           onTap: () {
             if (index == 3) {
-              if (!_checkAuthWithPrompt(
-                title: 'Please Login',
-                message: 'Please login to chat with seller',
-              )) { return; }
+              // Chat: show login dialog if not logged in
+              if (!SessionManager.isLoggedIn) {
+                _showLoginPrompt(
+                  title: 'Please Login',
+                  message: 'Please login to chat with sellers.',
+                );
+                return;
+              }
             } else if (index == 4) {
-              if (!_checkAuthWithPrompt(
-                title: 'Please Login',
-                message: 'Please login to view and edit your profile details.',
-              )) { return; }
+              // Profile: navigate directly to login screen if not logged in
+              if (!SessionManager.isLoggedIn) {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const LoginScreen()),
+                );
+                return;
+              }
             }
             setState(() => _currentIndex = index);
           },
@@ -2361,10 +2531,10 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _buildDashedPill({
+  Widget _buildFilterPill({
     required String label,
     required String? selectedValue,
-    required String placeholder,
+    required IconData prefixIcon,
     required VoidCallback onTap,
     required VoidCallback onClear,
   }) {
@@ -2373,47 +2543,45 @@ class _HomeScreenState extends State<HomeScreen> {
       alignment: Alignment.centerLeft,
       child: GestureDetector(
         onTap: onTap,
-        child: CustomPaint(
-          painter: DashedBorderPainter(
-            color: AppColors.primary.withValues(alpha: 0.35),
-            borderRadius: 20,
-            strokeWidth: 1.2,
-            gap: 4,
-            dashLength: 5,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: Colors.black12),
           ),
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  hasValue ? selectedValue : placeholder,
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.bold,
-                    color: AppColors.primary.withValues(alpha: hasValue ? 0.9 : 0.6),
-                  ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(prefixIcon, size: 14, color: AppColors.primary),
+              const SizedBox(width: 4),
+              Text(
+                hasValue ? selectedValue : label,
+                style: const TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.primary,
                 ),
-                if (hasValue) ...[
-                  const SizedBox(width: 6),
-                  GestureDetector(
-                    onTap: onClear,
-                    child: Icon(
-                      Icons.close_rounded,
-                      size: 14,
-                      color: AppColors.primary.withValues(alpha: 0.6),
-                    ),
-                  ),
-                ] else ...[
-                  const SizedBox(width: 4),
-                  const Icon(
-                    Icons.add,
+              ),
+              const SizedBox(width: 4),
+              if (hasValue)
+                GestureDetector(
+                  onTap: () {
+                    onClear();
+                  },
+                  child: const Icon(
+                    Icons.close_rounded,
                     size: 14,
                     color: AppColors.primary,
                   ),
-                ]
-              ],
-            ),
+                )
+              else
+                const Icon(
+                  Icons.keyboard_arrow_down_rounded,
+                  size: 14,
+                  color: AppColors.primary,
+                ),
+            ],
           ),
         ),
       ),

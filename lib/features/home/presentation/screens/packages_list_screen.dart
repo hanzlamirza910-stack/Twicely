@@ -136,7 +136,7 @@ class _PackagesListScreenState extends State<PackagesListScreen> {
     if (!mounted) return;
     if (res['success'] == true && res['data'] != null) {
       final List<dynamic> raw = res['data'];
-      final mapped = raw.map((p) => _mapPkg(p as Map<String, dynamic>)).toList();
+      final mapped = raw.map((p) => _mapPkg(p as Map<String, dynamic>, selectedFilter: _selectedFilter)).toList();
       setState(() {
         if (reset) {
           _packages = mapped;
@@ -180,7 +180,145 @@ class _PackagesListScreenState extends State<PackagesListScreen> {
     _fetchPackages(reset: true);
   }
 
-  Map<String, dynamic> _mapPkg(Map<String, dynamic> p) {
+  String _determineFilterCategory(Map<String, dynamic> apiPkg) {
+    final title = (apiPkg['title'] ?? '').toString().toLowerCase();
+    final description = (apiPkg['description'] ?? '').toString().toLowerCase();
+    
+    final categoryPart = apiPkg['category'];
+    final secondaryPart = apiPkg['secondary_category'];
+    String combinedCat = '';
+    
+    if (categoryPart != null) {
+      if (categoryPart is Map) {
+        combinedCat += ' ${categoryPart['name']?.toString() ?? ''}';
+      } else {
+        combinedCat += ' ${categoryPart.toString()}';
+      }
+    }
+    if (secondaryPart != null) {
+      combinedCat += ' ${secondaryPart.toString()}';
+    }
+    
+    final catLower = combinedCat.toLowerCase();
+
+    if (title.contains('corporate') || 
+        title.contains('team bonding') || 
+        title.contains('business') || 
+        description.contains('corporate') || 
+        catLower.contains('biz') || 
+        catLower.contains('corporate')) {
+      return 'Biz+';
+    }
+
+    if (title.contains('men') || 
+        title.contains('him') || 
+        title.contains('grooming for men') || 
+        description.contains('for men') || 
+        description.contains('for him')) {
+      return 'For him';
+    }
+
+    if (catLower.contains('beauty') || 
+        catLower.contains('nails') || 
+        catLower.contains('spa') || 
+        catLower.contains('massage') || 
+        catLower.contains('yoga') || 
+        catLower.contains('pilates') || 
+        catLower.contains('her') || 
+        title.contains('her') || 
+        title.contains('women') || 
+        title.contains('yoga') || 
+        title.contains('pilates') || 
+        title.contains('spa') || 
+        title.contains('massage') || 
+        description.contains('for women') || 
+        description.contains('for her')) {
+      return 'For her';
+    }
+
+    return 'General';
+  }
+
+  String _buildDynamicTag(Map<String, dynamic> apiPkg, {String? selectedFilter}) {
+    final List<String> mainCats = [];
+    
+    if (selectedFilter != null && selectedFilter != 'All') {
+      mainCats.add(selectedFilter);
+    } else {
+      final int idVal = int.tryParse(apiPkg['id']?.toString() ?? '') ?? 0;
+      if (idVal != 0 && ApiService.packageCategoriesCache.containsKey(idVal)) {
+        final cached = List<String>.from(ApiService.packageCategoriesCache[idVal]!);
+        if (cached.isNotEmpty) {
+          const priority = ['For Her', 'For Him', 'Biz+', 'General'];
+          cached.sort((a, b) {
+            final ia = priority.indexOf(a);
+            final ib = priority.indexOf(b);
+            return (ia == -1 ? 99 : ia).compareTo(ib == -1 ? 99 : ib);
+          });
+          mainCats.add(cached.first);
+        }
+      }
+
+      if (mainCats.isEmpty && apiPkg['categories'] is List) {
+        for (final cat in apiPkg['categories']) {
+          if (cat is Map) {
+            final slug = (cat['slug']?.toString() ?? '').toLowerCase();
+            if (slug.contains('her') || slug.contains('women')) {
+              if (!mainCats.contains('For Her')) mainCats.add('For Her');
+            } else if (slug.contains('him') || slug.contains('men')) {
+              if (!mainCats.contains('For Him')) mainCats.add('For Him');
+            } else if (slug.contains('biz') || slug.contains('corporate')) {
+              if (!mainCats.contains('Biz+')) mainCats.add('Biz+');
+            } else if (slug.contains('general')) {
+              if (!mainCats.contains('General')) mainCats.add('General');
+            }
+          }
+        }
+      }
+      
+      if (mainCats.isEmpty) {
+        mainCats.add(_determineFilterCategory(apiPkg));
+      }
+    }
+
+    final secondarySlug = apiPkg['secondary_category']?.toString() ?? '';
+    String subcatLabel = _subcatLabels[secondarySlug] ?? '';
+
+    if (subcatLabel.isEmpty && apiPkg['categories'] is List) {
+      for (final cat in apiPkg['categories']) {
+        if (cat is Map) {
+          final name = (cat['name']?.toString() ?? '').replaceAll('&amp;', '&');
+          final slug = (cat['slug']?.toString() ?? '').toLowerCase();
+          if (!slug.contains('her') && !slug.contains('women') &&
+              !slug.contains('him') && !slug.contains('men') &&
+              !slug.contains('biz') && !slug.contains('corporate') &&
+              !slug.contains('general')) {
+            subcatLabel = name;
+            break;
+          }
+        }
+      }
+    }
+
+    if (subcatLabel.isNotEmpty) {
+      return '${mainCats.join(' > ')} > $subcatLabel';
+    } else {
+      return mainCats.join(' > ');
+    }
+  }
+
+  String _getPkgTrueCategory(Map<String, dynamic> apiPkg) {
+    final int idVal = int.tryParse(apiPkg['id']?.toString() ?? '') ?? 0;
+    if (idVal != 0 && ApiService.packageCategoriesCache.containsKey(idVal)) {
+      final cached = ApiService.packageCategoriesCache[idVal]!;
+      if (cached.isNotEmpty) {
+        return cached.first;
+      }
+    }
+    return _determineFilterCategory(apiPkg);
+  }
+
+  Map<String, dynamic> _mapPkg(Map<String, dynamic> p, {String? selectedFilter}) {
     String imageUrl = '';
     if (p['cover_url'] != null && p['cover_url'].toString().isNotEmpty) {
       imageUrl = p['cover_url'];
@@ -188,14 +326,15 @@ class _PackagesListScreenState extends State<PackagesListScreen> {
       imageUrl = (p['images'] as List)[0]['url']?.toString() ?? '';
     }
 
-    final double originalPrice = double.tryParse(p['original_price']?.toString() ?? '') ??
-        double.tryParse(p['price']?.toString() ?? '') ?? 0.0;
-    final double resalePrice = double.tryParse(p['resale_price']?.toString() ?? '') ??
-        double.tryParse(p['discounted_price']?.toString() ?? '') ??
-        double.tryParse(p['price']?.toString() ?? '') ?? 0.0;
+    final double basePrice = double.tryParse(p['price']?.toString() ?? '') ?? 0.0;
+    final double discPrice = double.tryParse(p['discounted_price']?.toString() ?? '') ?? 0.0;
+    final bool hasDiscount = discPrice > 0 && discPrice < basePrice;
+
+    final double originalPrice = basePrice;
+    final double resalePrice = hasDiscount ? discPrice : basePrice;
 
     String? discountBadge;
-    if (originalPrice > 0 && resalePrice < originalPrice) {
+    if (hasDiscount) {
       final pct = ((originalPrice - resalePrice) / originalPrice * 100).round();
       if (pct > 0) { discountBadge = '$pct% OFF'; }
     }
@@ -203,11 +342,25 @@ class _PackagesListScreenState extends State<PackagesListScreen> {
     final secondarySlug = p['secondary_category']?.toString() ?? '';
     final subcatLabel = _subcatLabels[secondarySlug] ?? '';
 
+    final merchantIdVal = int.tryParse(p['merchant_id']?.toString() ?? '');
     String merchantName = 'Twicely Merchant';
-    if (p['merchant'] is Map && p['merchant']['name'] != null) {
+    String merchantLogo = '';
+    if (merchantIdVal != null && ApiService.merchantsCache.containsKey(merchantIdVal)) {
+      final m = ApiService.merchantsCache[merchantIdVal]!;
+      merchantName = m['business_name']?.toString() ?? 'Twicely Merchant';
+      merchantLogo = m['logo_url']?.toString() ?? '';
+    } else if (p['merchant'] is Map && p['merchant']['name'] != null) {
       merchantName = p['merchant']['name'].toString();
+      merchantLogo = p['merchant']['logo']?.toString() ?? '';
     } else if (p['merchant_name'] != null) {
       merchantName = p['merchant_name'].toString();
+    }
+
+    int likesCount = int.tryParse(p['likes_count']?.toString() ?? '') ??
+                     (p['likes'] != null ? int.tryParse(p['likes'].toString()) : null) ??
+                     (p['id'] != null ? (p['id'].hashCode % 5) : 0);
+    if (p['liked'] == true && likesCount == 0) {
+      likesCount = 1;
     }
 
     return {
@@ -220,10 +373,16 @@ class _PackagesListScreenState extends State<PackagesListScreen> {
       'subcategorySlug': secondarySlug,
       'subcategoryLabel': subcatLabel,
       'merchant': merchantName,
+      'merchantLogo': merchantLogo,
       'currency': p['currency'] ?? 'SGD',
       'description': p['description'] ?? '',
       'validity': p['validity_date'] ?? p['valid_until'] ?? '',
       'hasHeart': p['liked'] == true,
+      'likesCount': likesCount,
+      'category': (selectedFilter != null && selectedFilter != 'All Categories' && selectedFilter != 'All')
+          ? selectedFilter
+          : _getPkgTrueCategory(p),
+      'tag': _buildDynamicTag(p, selectedFilter: selectedFilter),
     };
   }
 
@@ -252,13 +411,13 @@ class _PackagesListScreenState extends State<PackagesListScreen> {
       builder: (_) => PackageDetailScreen(package: {
         'id': pkg['id'],
         'imageUrl': (pkg['imageUrl'] as String).isNotEmpty ? pkg['imageUrl'] : 'assets/images/package_spa.jpg',
-        'tag': '${_selectedFilter.toUpperCase()} • ${pkg['subcategoryLabel']}'.toUpperCase(),
+        'tag': pkg['tag'] ?? '${(pkg['category'] ?? _selectedFilter).toUpperCase()} > ${pkg['subcategoryLabel']}',
         'title': pkg['title'],
         'originalPrice': 'S\$${(pkg['originalPrice'] as double).toStringAsFixed(2)}',
         'resalePrice': 'S\$${(pkg['resalePrice'] as double).toStringAsFixed(2)}',
         'hasHeart': pkg['hasHeart'],
         'discountBadge': pkg['discountBadge'],
-        'category': _selectedFilter,
+        'category': pkg['category'],
         'description': pkg['description'],
         'validity': pkg['validity'],
         'merchant': {'name': pkg['merchant']},
@@ -325,37 +484,43 @@ class _PackagesListScreenState extends State<PackagesListScreen> {
             child: Container(
               color: AppColors.bgLight,
               padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
-              child: Container(
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(30),
-                  boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.06), blurRadius: 12, offset: const Offset(0, 4))],
-                ),
-                child: TextField(
-                  controller: _searchController,
-                  style: const TextStyle(fontSize: 13, color: AppColors.primary),
-                  textInputAction: TextInputAction.search,
-                  onSubmitted: _onSearchSubmit,
-                  onChanged: (v) {
-                    setState(() => _searchQuery = v);
-                    if (v.isEmpty) { _fetchPackages(reset: true); }
-                  },
-                  decoration: InputDecoration(
-                    hintText: 'Search packages, merchants...',
-                    hintStyle: TextStyle(color: AppColors.primary.withValues(alpha: 0.35), fontSize: 13),
-                    prefixIcon: const Icon(Icons.search_rounded, color: AppColors.primary, size: 20),
-                    suffixIcon: _searchQuery.isNotEmpty
-                        ? IconButton(
-                            icon: const Icon(Icons.close_rounded, size: 18, color: AppColors.primary),
-                            onPressed: () {
-                              _searchController.clear();
-                              setState(() => _searchQuery = '');
-                              _fetchPackages(reset: true);
-                            },
-                          )
-                        : null,
-                    border: InputBorder.none,
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+              child: TextField(
+                controller: _searchController,
+                style: const TextStyle(fontSize: 13, color: AppColors.primary),
+                textInputAction: TextInputAction.search,
+                onSubmitted: _onSearchSubmit,
+                onChanged: (v) {
+                  setState(() => _searchQuery = v);
+                  if (v.isEmpty) { _fetchPackages(reset: true); }
+                },
+                decoration: InputDecoration(
+                  filled: true,
+                  fillColor: Colors.white,
+                  hintText: 'Search packages, merchants...',
+                  hintStyle: TextStyle(color: AppColors.primary.withValues(alpha: 0.35), fontSize: 13),
+                  prefixIcon: const Icon(Icons.search_rounded, color: AppColors.primary, size: 20),
+                  suffixIcon: _searchQuery.isNotEmpty
+                      ? IconButton(
+                          icon: const Icon(Icons.close_rounded, size: 18, color: AppColors.primary),
+                          onPressed: () {
+                            _searchController.clear();
+                            setState(() => _searchQuery = '');
+                            _fetchPackages(reset: true);
+                          },
+                        )
+                      : null,
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(30),
+                    borderSide: const BorderSide(color: Color(0xFF273DB7), width: 1.0),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(30),
+                    borderSide: const BorderSide(color: Color(0xFF273DB7), width: 1.0),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(30),
+                    borderSide: const BorderSide(color: Color(0xFF273DB7), width: 1.5),
                   ),
                 ),
               ),
@@ -503,7 +668,7 @@ class _PackagesListScreenState extends State<PackagesListScreen> {
                   crossAxisCount: 2,
                   crossAxisSpacing: 12,
                   mainAxisSpacing: 14,
-                  childAspectRatio: 0.67,
+                  childAspectRatio: 0.56,
                 ),
               ),
             ),
@@ -566,6 +731,36 @@ class _PackagesListScreenState extends State<PackagesListScreen> {
     );
   }
 
+  Widget _buildCategoryRichText(String tag) {
+    final parts = tag.split('>');
+    final List<InlineSpan> spans = [];
+    for (int i = 0; i < parts.length; i++) {
+      final part = parts[i].trim();
+      Color textColor = const Color(0xFF111111);
+      if (i == 0) {
+        textColor = const Color(0xFFFF014E);
+      } else if (i < parts.length - 1) {
+        textColor = const Color(0xFF0691D7);
+      }
+      spans.add(TextSpan(text: part, style: TextStyle(color: textColor)));
+      if (i < parts.length - 1) {
+        spans.add(const TextSpan(text: ' > ', style: TextStyle(color: Color(0xFF111111))));
+      }
+    }
+    return RichText(
+      text: TextSpan(
+        style: const TextStyle(
+          fontSize: 9,
+          fontWeight: FontWeight.bold,
+          fontFamily: 'Recoleta Alt',
+        ),
+        children: spans,
+      ),
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+    );
+  }
+
   Widget _buildPkgCard(Map<String, dynamic> pkg) {
     final originalPrice = pkg['originalPrice'] as double;
     final resalePrice = pkg['resalePrice'] as double;
@@ -573,21 +768,24 @@ class _PackagesListScreenState extends State<PackagesListScreen> {
     final imageUrl = pkg['imageUrl'] as String;
     final subcatLabel = pkg['subcategoryLabel'] as String;
 
+    final String mainCategory = _selectedFilter == 'All' ? (pkg['category'] ?? 'General') : _selectedFilter;
+    final String tagString = pkg['tag'] ?? (subcatLabel.isNotEmpty ? '$mainCategory > $subcatLabel' : mainCategory);
+
     return GestureDetector(
       onTap: () => _openPackage(pkg),
       child: Container(
         decoration: BoxDecoration(
           color: Colors.white,
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: AppColors.primary.withValues(alpha: 0.05)),
-          boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 12, offset: const Offset(0, 4))],
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: Colors.black.withValues(alpha: 0.08), width: 1.0),
+          boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.02), blurRadius: 12, offset: const Offset(0, 4))],
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             // IMAGE
             ClipRRect(
-              borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(14.5)),
               child: Stack(
                 children: [
                   SizedBox(
@@ -603,22 +801,20 @@ class _PackagesListScreenState extends State<PackagesListScreen> {
                       top: 10, left: 10,
                       child: Container(
                         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                        decoration: BoxDecoration(color: const Color(0xFFF27B6E), borderRadius: BorderRadius.circular(10)),
-                        child: Text(discount, style: const TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.bold)),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFF27B6E),
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: Text(
+                          discount,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 9,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
                       ),
                     ),
-                  Positioned(
-                    top: 8, right: 8,
-                    child: Container(
-                      padding: const EdgeInsets.all(6),
-                      decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.9), shape: BoxShape.circle),
-                      child: Icon(
-                        pkg['hasHeart'] == true ? Icons.favorite_rounded : Icons.favorite_border_rounded,
-                        size: 14,
-                        color: pkg['hasHeart'] == true ? const Color(0xFFF27B6E) : AppColors.primary,
-                      ),
-                    ),
-                  ),
                 ],
               ),
             ),
@@ -630,43 +826,75 @@ class _PackagesListScreenState extends State<PackagesListScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    if (subcatLabel.isNotEmpty)
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                        decoration: BoxDecoration(color: AppColors.primary.withValues(alpha: 0.07), borderRadius: BorderRadius.circular(6)),
-                        child: Text(subcatLabel, style: TextStyle(fontSize: 8, fontWeight: FontWeight.w700, color: AppColors.primary.withValues(alpha: 0.7))),
-                      ),
-                    const SizedBox(height: 5),
+                    _buildCategoryRichText(tagString),
+                    const SizedBox(height: 4),
                     Text(
                       pkg['title'],
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.primary, height: 1.3),
+                      style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF1A1A2E), height: 1.3),
                     ),
                     const Spacer(),
+                    if (originalPrice > resalePrice) ...[
+                      Text(
+                        'S\$${originalPrice.toStringAsFixed(2)}',
+                        style: const TextStyle(fontSize: 9, color: Color(0xFF9E9E9E), decoration: TextDecoration.lineThrough, decorationColor: Color(0xFF9E9E9E)),
+                      ),
+                      const SizedBox(height: 1),
+                    ],
+                    Text(
+                      'S\$${resalePrice.toStringAsFixed(2)}',
+                      style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: Color(0xFF273DB7), letterSpacing: -0.2),
+                    ),
+                    const SizedBox(height: 6),
+                    const Divider(height: 1, color: Colors.black12),
+                    const SizedBox(height: 6),
                     Row(
                       children: [
-                        Icon(Icons.store_rounded, size: 10, color: AppColors.primary.withValues(alpha: 0.4)),
-                        const SizedBox(width: 3),
+                        CircleAvatar(
+                          radius: 7,
+                          backgroundColor: const Color(0xFFD68A84),
+                          backgroundImage: (pkg['merchantLogo'] != null && (pkg['merchantLogo'] as String).isNotEmpty)
+                              ? NetworkImage(pkg['merchantLogo'] as String)
+                              : null,
+                          child: (pkg['merchantLogo'] != null && (pkg['merchantLogo'] as String).isNotEmpty)
+                              ? null
+                              : Text(
+                                  (pkg['merchant'] != null && (pkg['merchant'] as String).isNotEmpty)
+                                      ? (pkg['merchant'] as String)[0].toUpperCase()
+                                      : 'S',
+                                  style: const TextStyle(fontSize: 7, color: Colors.white, fontWeight: FontWeight.bold),
+                                ),
+                        ),
+                        const SizedBox(width: 5),
                         Expanded(
                           child: Text(
-                            pkg['merchant'],
+                            pkg['merchant'] ?? 'Twicely Seller',
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            style: TextStyle(fontSize: 9, color: AppColors.primary.withValues(alpha: 0.4)),
+                            style: TextStyle(
+                              fontSize: 9,
+                              color: Colors.black.withValues(alpha: 0.6),
+                              fontWeight: FontWeight.w400,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 4),
+                        Icon(
+                          pkg['hasHeart'] == true ? Icons.favorite_rounded : Icons.favorite_outline_rounded,
+                          size: 11,
+                          color: pkg['hasHeart'] == true ? const Color(0xFFFBBD03) : Colors.black38,
+                        ),
+                        const SizedBox(width: 2),
+                        Text(
+                          '${pkg['likesCount'] ?? 0}',
+                          style: TextStyle(
+                            fontSize: 9,
+                            color: Colors.black.withValues(alpha: 0.6),
+                            fontWeight: FontWeight.w500,
                           ),
                         ),
                       ],
-                    ),
-                    const SizedBox(height: 5),
-                    if (originalPrice > resalePrice)
-                      Text(
-                        'S\$${originalPrice.toStringAsFixed(2)}',
-                        style: TextStyle(fontSize: 10, color: AppColors.primary.withValues(alpha: 0.35), decoration: TextDecoration.lineThrough),
-                      ),
-                    Text(
-                      'S\$${resalePrice.toStringAsFixed(2)}',
-                      style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w900, color: AppColors.primary),
                     ),
                   ],
                 ),

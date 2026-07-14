@@ -9,6 +9,59 @@ class ApiService {
   // Global callback set by main.dart or UI to force redirect to login
   static void Function()? onUnauthorized;
 
+  // Merchant Cache
+  static Map<int, Map<String, dynamic>> merchantsCache = {};
+
+  static Future<void> initMerchantsCache() async {
+    try {
+      final res = await getMerchants();
+      if (res['success'] == true && res['data'] != null) {
+        final list = res['data'] as List<dynamic>;
+        merchantsCache.clear();
+        for (final m in list) {
+          if (m is Map && m['id'] != null) {
+            final int id = int.tryParse(m['id'].toString()) ?? 0;
+            merchantsCache[id] = Map<String, dynamic>.from(m);
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint('Error loading merchants cache: $e');
+    }
+  }
+
+  // Package Categories Cache (maps packageId -> list of parent categories it belongs to)
+  static Map<int, List<String>> packageCategoriesCache = {};
+
+  static Future<void> initPackageCategoriesCache() async {
+    try {
+      final slugs = {
+        'for-her': 'For Her',
+        'for-him': 'For Him',
+        'general': 'General',
+        'biz': 'Biz+',
+      };
+      final Map<int, List<String>> temp = {};
+      await Future.wait(slugs.entries.map((entry) async {
+        final res = await getPackages(category: entry.key, page: 1, perPage: 100);
+        if (res['success'] == true && res['data'] != null) {
+          final list = res['data'] as List<dynamic>;
+          for (final p in list) {
+            if (p is Map && p['id'] != null) {
+              final id = int.tryParse(p['id'].toString()) ?? 0;
+              temp.putIfAbsent(id, () => []).add(entry.value);
+            }
+          }
+        }
+      }));
+      if (temp.isNotEmpty) {
+        packageCategoriesCache = temp;
+      }
+    } catch (e) {
+      debugPrint('Error loading package categories cache: $e');
+    }
+  }
+
   static http.Response _handleException(dynamic e, Uri url) {
     debugPrint('\n[API Error Exception Caught] ========================');
     debugPrint('URL: $url');
@@ -809,6 +862,7 @@ class ApiService {
     String? category,
     String? status,
     bool? featured,
+    int? merchantId,
   }) async {
     try {
       final queryParams = <String, String>{
@@ -819,6 +873,7 @@ class ApiService {
       if (category != null && category.isNotEmpty) queryParams['category'] = category;
       if (status != null && status.isNotEmpty) queryParams['status'] = status;
       if (featured == true) queryParams['featured'] = 'true';
+      if (merchantId != null) queryParams['merchant_id'] = merchantId.toString();
 
       final queryString = Uri(queryParameters: queryParams).query;
       final path = '/packages${queryString.isNotEmpty ? '?$queryString' : ''}';

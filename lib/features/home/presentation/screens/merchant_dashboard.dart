@@ -1482,43 +1482,43 @@ class _MerchantDashboardState extends State<MerchantDashboard> {
         // Search Bar
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 20.0),
-          child: Container(
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(30),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.02),
-                  blurRadius: 8,
-                  offset: const Offset(0, 4),
-                ),
-              ],
-            ),
-            child: TextField(
-              controller: _searchController,
-              onChanged: (val) {
-                setState(() {
-                  _searchQuery = val;
-                });
-              },
-              style: const TextStyle(fontSize: 14, color: AppColors.primary),
-              decoration: InputDecoration(
-                hintText: 'Search packages...',
-                hintStyle: TextStyle(color: AppColors.primary.withValues(alpha: 0.4), fontSize: 13),
-                prefixIcon: const Icon(Icons.search_rounded, color: AppColors.primary, size: 20),
-                suffixIcon: _searchQuery.isNotEmpty
-                    ? GestureDetector(
-                        onTap: () {
-                          setState(() {
-                            _searchController.clear();
-                            _searchQuery = '';
-                          });
-                        },
-                        child: const Icon(Icons.cancel_rounded, color: AppColors.primary, size: 20),
-                      )
-                    : null,
-                border: InputBorder.none,
-                contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 15),
+          child: TextField(
+            controller: _searchController,
+            onChanged: (val) {
+              setState(() {
+                _searchQuery = val;
+              });
+            },
+            style: const TextStyle(fontSize: 14, color: AppColors.primary),
+            decoration: InputDecoration(
+              filled: true,
+              fillColor: Colors.white,
+              hintText: 'Search packages...',
+              hintStyle: TextStyle(color: AppColors.primary.withValues(alpha: 0.4), fontSize: 13),
+              prefixIcon: const Icon(Icons.search_rounded, color: AppColors.primary, size: 22),
+              suffixIcon: _searchQuery.isNotEmpty
+                  ? GestureDetector(
+                      onTap: () {
+                        setState(() {
+                          _searchController.clear();
+                          _searchQuery = '';
+                        });
+                      },
+                      child: const Icon(Icons.cancel_rounded, color: AppColors.primary, size: 20),
+                    )
+                  : null,
+              contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(30),
+                borderSide: const BorderSide(color: Color(0xFFE5E7EB), width: 1.5),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(30),
+                borderSide: const BorderSide(color: Color(0xFFE5E7EB), width: 1.5),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(30),
+                borderSide: const BorderSide(color: AppColors.primary, width: 1.5),
               ),
             ),
           ),

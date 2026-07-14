@@ -11,6 +11,8 @@ final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await SessionManager.init();
+  await ApiService.initMerchantsCache();
+  await ApiService.initPackageCategoriesCache();
 
   // Handle automatic redirects on unauthorized/expired tokens
   ApiService.onUnauthorized = () {

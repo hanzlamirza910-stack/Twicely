@@ -11,8 +11,7 @@ class WalletScreen extends StatefulWidget {
 }
 
 class _WalletScreenState extends State<WalletScreen> {
-  bool _isLoadingWallet = true;
-  bool _isLoadingTxns = true;
+  bool _isLoading = true;
   Map<String, dynamic> _wallet = {};
   List<Map<String, dynamic>> _transactions = [];
 
@@ -23,12 +22,14 @@ class _WalletScreenState extends State<WalletScreen> {
   }
 
   Future<void> _fetchAll() async {
+    if (!mounted) return;
+    setState(() => _isLoading = true);
     await Future.wait([_fetchWallet(), _fetchTransactions()]);
+    if (!mounted) return;
+    setState(() => _isLoading = false);
   }
 
   Future<void> _fetchWallet() async {
-    if (!mounted) return;
-    setState(() => _isLoadingWallet = true);
     // Try merchant wallet first if applicable
     final isMerchant = SessionManager.isMerchant;
     final res = isMerchant
@@ -36,32 +37,20 @@ class _WalletScreenState extends State<WalletScreen> {
         : await ApiService.getWallet();
     if (!mounted) return;
     if (res['success'] == true && res['data'] != null) {
-      setState(() {
-        _wallet = Map<String, dynamic>.from(res['data'] as Map);
-        _isLoadingWallet = false;
-      });
-    } else {
-      setState(() => _isLoadingWallet = false);
+      _wallet = Map<String, dynamic>.from(res['data'] as Map);
     }
   }
 
   Future<void> _fetchTransactions() async {
-    if (!mounted) return;
-    setState(() => _isLoadingTxns = true);
     final isMerchant = SessionManager.isMerchant;
     final res = isMerchant
         ? await ApiService.getMerchantTransactions(perPage: 30)
         : await ApiService.getUserTransactions(perPage: 30);
     if (!mounted) return;
     if (res['success'] == true && res['data'] != null) {
-      setState(() {
-        _transactions = (res['data'] as List<dynamic>)
-            .map((e) => Map<String, dynamic>.from(e as Map))
-            .toList();
-        _isLoadingTxns = false;
-      });
-    } else {
-      setState(() => _isLoadingTxns = false);
+      _transactions = (res['data'] as List<dynamic>)
+          .map((e) => Map<String, dynamic>.from(e as Map))
+          .toList();
     }
   }
 
@@ -109,51 +98,42 @@ class _WalletScreenState extends State<WalletScreen> {
           ),
         ],
       ),
-      body: RefreshIndicator(
-        onRefresh: _fetchAll,
-        color: AppColors.primary,
-        child: SingleChildScrollView(
-          physics: const AlwaysScrollableScrollPhysics(),
-          padding: const EdgeInsets.all(20),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              // Balance card
-              _isLoadingWallet
-                  ? const Center(child: Padding(
-                      padding: EdgeInsets.symmetric(vertical: 40),
-                      child: CircularProgressIndicator(valueColor: AlwaysStoppedAnimation<Color>(AppColors.primary)),
-                    ))
-                  : _buildBalanceCard(balance, available, clearing, currency, payoutEnabled),
-
-              const SizedBox(height: 24),
-
-              // Transactions
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  const Text('Transactions',
-                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppColors.primary, fontFamily: 'Recoleta Alt')),
-                  Text('${_transactions.length} entries',
-                      style: TextStyle(fontSize: 11, color: AppColors.primary.withValues(alpha: 0.45))),
-                ],
+      body: _isLoading
+          ? const Center(
+              child: CircularProgressIndicator(
+                valueColor: AlwaysStoppedAnimation<Color>(AppColors.primary),
               ),
-              const SizedBox(height: 12),
-
-              _isLoadingTxns
-                  ? const Center(child: Padding(
-                      padding: EdgeInsets.symmetric(vertical: 30),
-                      child: CircularProgressIndicator(valueColor: AlwaysStoppedAnimation<Color>(AppColors.primary)),
-                    ))
-                  : _transactions.isEmpty
-                      ? _buildEmptyTxns()
-                      : Column(
-                          children: _transactions.map((t) => _buildTxnCard(t)).toList(),
-                        ),
-            ],
-          ),
-        ),
-      ),
+            )
+          : RefreshIndicator(
+              onRefresh: _fetchAll,
+              color: AppColors.primary,
+              child: SingleChildScrollView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                padding: const EdgeInsets.all(20),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    _buildBalanceCard(balance, available, clearing, currency, payoutEnabled),
+                    const SizedBox(height: 24),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text('Transactions',
+                            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppColors.primary, fontFamily: 'Recoleta Alt')),
+                        Text('${_transactions.length} entries',
+                            style: TextStyle(fontSize: 11, color: AppColors.primary.withValues(alpha: 0.45))),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    _transactions.isEmpty
+                        ? _buildEmptyTxns()
+                        : Column(
+                            children: _transactions.map((t) => _buildTxnCard(t)).toList(),
+                          ),
+                  ],
+                ),
+              ),
+            ),
     );
   }
 
