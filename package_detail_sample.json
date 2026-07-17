@@ -1,0 +1,53 @@
+{
+    "success": true,
+    "data": {
+        "id": 1265,
+        "title": "This is new package",
+        "status": "published",
+        "price": 64,
+        "discounted_price": 0,
+        "currency": "SGD",
+        "featured": false,
+        "location": "",
+        "images": [
+            {
+                "id": 1266,
+                "url": "https:\/\/staging.twicely.sg\/wp-content\/uploads\/2026\/04\/truss-overkapping-8x8-1.jpg",
+                "is_cover": true,
+                "sort_order": 0
+            }
+        ],
+        "permalink": "https:\/\/staging.twicely.sg\/packages\/this-is-new-package\/",
+        "created_at": "2026-04-12 11:39:05",
+        "availability_status": "active",
+        "owner_id": 0,
+        "owner_type": "",
+        "merchant_id": 14,
+        "secondary_category": "yoga-pilates",
+        "content": "Package",
+        "short_description": "",
+        "key_points": [],
+        "availability_end": "",
+        "original_purchase_price": 120,
+        "total_sessions": 12,
+        "sessions_to_sell": 8,
+        "selling_price_per_session": 8,
+        "total_validity_days": 0,
+        "remaining_validity_days": 0,
+        "vendor_mode": "verified",
+        "manual_vendor_name": "",
+        "manual_vendor_outlet": "",
+        "categories": [
+            {
+                "id": 3,
+                "name": "For Her",
+                "slug": "for-her"
+            },
+            {
+                "id": 8,
+                "name": "Yoga &amp; Pilates",
+                "slug": "yoga-pilates"
+            }
+        ]
+    }
+}

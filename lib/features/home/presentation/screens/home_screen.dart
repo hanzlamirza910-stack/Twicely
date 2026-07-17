@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import '../../../../core/constants/app_colors.dart';
@@ -18,6 +19,9 @@ import 'packages_list_screen.dart';
 import '../../../../core/services/api_service.dart';
 import 'merchant_dashboard.dart';
 import '../../../../core/widgets/custom_snackbar.dart';
+import '../../../../core/widgets/package_image_carousel.dart';
+import 'package:image_picker/image_picker.dart';
+
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -45,6 +49,8 @@ class _HomeScreenState extends State<HomeScreen> {
   int _wishlistCount = 0;
   int _salesCount = 0;
   int _ordersCount = 0;
+  final ImagePicker _picker = ImagePicker();
+  bool _isUploadingAvatar = false;
 
   // Maps display filter label → API category slug
   static const Map<String, String?> _filterToSlug = {
@@ -134,6 +140,14 @@ class _HomeScreenState extends State<HomeScreen> {
     _loadProfile();
     _fetchSearchTabPackages();
   }
+
+  @override
+  void dispose() {
+    _homeSearchController.dispose();
+    _searchTabController.dispose();
+    super.dispose();
+  }
+
 
   Future<void> _loadProfile() async {
     if (!mounted) return;
@@ -317,6 +331,20 @@ class _HomeScreenState extends State<HomeScreen> {
       imageUrl = apiPkg['images'][0]['url'] ?? 'assets/images/package_spa.jpg';
     }
 
+    final List<String> allImages = [];
+    if (apiPkg['images'] != null && (apiPkg['images'] as List).isNotEmpty) {
+      for (var img in apiPkg['images'] as List) {
+        if (img is Map && img['url'] != null && img['url'].toString().isNotEmpty) {
+          allImages.add(img['url'].toString());
+        } else if (img is String && img.isNotEmpty) {
+          allImages.add(img);
+        }
+      }
+    }
+    if (allImages.isEmpty && imageUrl.isNotEmpty) {
+      allImages.add(imageUrl);
+    }
+
     final double basePrice = double.tryParse(apiPkg['price']?.toString() ?? '') ?? 0.0;
     final double discPrice = double.tryParse(apiPkg['discounted_price']?.toString() ?? '') ?? 0.0;
     final bool hasDiscount = discPrice > 0 && discPrice < basePrice;
@@ -341,19 +369,21 @@ class _HomeScreenState extends State<HomeScreen> {
     final subcatLabel = _subcatLabels[secondarySlug] ?? '';
 
     final merchantIdVal = int.tryParse(apiPkg['merchant_id']?.toString() ?? '');
-    String merchantName = 'Twicely Merchant';
+    String merchantName = 'Twicely';
     String merchantLogo = '';
     if (merchantIdVal != null && ApiService.merchantsCache.containsKey(merchantIdVal)) {
       final m = ApiService.merchantsCache[merchantIdVal]!;
-      merchantName = m['business_name']?.toString() ?? 'Twicely Merchant';
-      merchantLogo = m['logo_url']?.toString() ?? '';
+      merchantName = m['business_name']?.toString() ?? 'Twicely';
+      merchantLogo = ApiService.getMerchantLogo(merchantIdVal, m['logo_url']?.toString());
     } else if (apiPkg['merchant'] is Map && apiPkg['merchant']['name'] != null) {
       merchantName = apiPkg['merchant']['name'].toString();
-      merchantLogo = apiPkg['merchant']['logo']?.toString() ?? '';
+      merchantLogo = ApiService.getMerchantLogo(merchantIdVal, apiPkg['merchant']['logo']?.toString());
     } else if (apiPkg['merchant'] is Map && apiPkg['merchant']['display_name'] != null) {
       merchantName = apiPkg['merchant']['display_name'].toString();
+      merchantLogo = ApiService.getMerchantLogo(merchantIdVal, '');
     } else if (apiPkg['merchant_name'] != null) {
       merchantName = apiPkg['merchant_name'].toString();
+      merchantLogo = ApiService.getMerchantLogo(merchantIdVal, '');
     }
 
     int likesCount = int.tryParse(apiPkg['likes_count']?.toString() ?? '') ??
@@ -366,6 +396,7 @@ class _HomeScreenState extends State<HomeScreen> {
     return {
       'id': apiPkg['id'],
       'imageUrl': imageUrl,
+      'allImages': allImages,
       'tag': tag,
       'title': apiPkg['title'] ?? 'Package Listing',
       'originalPrice': 'S\$${originalPrice.toStringAsFixed(2)}',
@@ -384,6 +415,7 @@ class _HomeScreenState extends State<HomeScreen> {
       },
       'merchantName': merchantName,
       'merchantLogo': merchantLogo,
+      'merchant_id': merchantIdVal,
       'secondaryCategory': secondarySlug,
       'secondaryCategoryLabel': subcatLabel,
       'likesCount': likesCount,
@@ -1189,7 +1221,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
           // Horizontal Packages Scroller
           SizedBox(
-            height: 270,
+            height: 245,
             child: _isLoadingPackages
                 ? const Center(
                     child: CircularProgressIndicator(
@@ -1226,6 +1258,8 @@ class _HomeScreenState extends State<HomeScreen> {
                               merchantName: pkg['merchantName'] as String?,
                               merchantLogo: pkg['merchantLogo'] as String?,
                               likesCount: pkg['likesCount'] as int?,
+                              merchantId: pkg['merchant_id'],
+                              allImages: pkg['allImages'] != null ? List<String>.from(pkg['allImages'] as Iterable) : null,
                             ),
                           );
                         },
@@ -1356,6 +1390,8 @@ class _HomeScreenState extends State<HomeScreen> {
     String? merchantName,
     String? merchantLogo,
     int? likesCount,
+    dynamic merchantId,
+    List<String>? allImages,
   }) {
     final bool isDiscounted = originalPriceVal != null && resalePriceVal != null && originalPriceVal > resalePriceVal;
     return GestureDetector(
@@ -1363,6 +1399,7 @@ class _HomeScreenState extends State<HomeScreen> {
         _showPackageDetails({
           'id': id,
           'imageUrl': imageUrl,
+          'allImages': allImages ?? [imageUrl],
           'tag': tag,
           'title': title,
           'originalPrice': originalPrice,
@@ -1373,190 +1410,229 @@ class _HomeScreenState extends State<HomeScreen> {
           'resalePriceVal': resalePriceVal,
           'merchantName': merchantName,
           'merchantLogo': merchantLogo,
+          'merchant_id': merchantId,
         });
       },
       child: Container(
-      width: 175,
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.black.withValues(alpha: 0.08), width: 1.0),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.03),
-            blurRadius: 8,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          // Image top header
-          SizedBox(
-            height: 120,
-            child: ClipRRect(
-              borderRadius: const BorderRadius.vertical(top: Radius.circular(14.5)),
-              child: Stack(
-                children: [
-                  imageUrl.startsWith('assets/')
-                      ? Image.asset(
-                          imageUrl,
-                          width: double.infinity,
-                          height: double.infinity,
-                          fit: BoxFit.cover,
-                          errorBuilder: (context, error, stackTrace) => Container(
-                            color: AppColors.primary.withValues(alpha: 0.05),
-                            child: const Icon(Icons.image_outlined, color: AppColors.primary),
-                          ),
-                        )
-                      : Image.network(
-                          imageUrl,
-                          width: double.infinity,
-                          height: double.infinity,
-                          fit: BoxFit.cover,
-                          errorBuilder: (context, error, stackTrace) => Container(
-                            color: AppColors.primary.withValues(alpha: 0.05),
-                            child: const Icon(Icons.image_outlined, color: AppColors.primary),
-                          ),
-                        ),
-                  // Heart top right button
-                  if (hasHeart)
-                    Positioned(
-                      top: 8,
-                      right: 8,
-                      child: Container(
-                        width: 28,
-                        height: 28,
-                        decoration: const BoxDecoration(
-                          color: Colors.white,
-                          shape: BoxShape.circle,
-                        ),
-                        alignment: Alignment.center,
-                        child: const Icon(Icons.favorite_rounded, color: Color(0xFFFBBD03), size: 16),
-                      ),
+        width: 175,
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: Colors.black.withValues(alpha: 0.08), width: 1.0),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.03),
+              blurRadius: 8,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            // Image top header
+            Expanded(
+              flex: 50,
+              child: ClipRRect(
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(14.5)),
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    PackageImageCarousel(
+                      images: allImages ?? [imageUrl],
+                      fallbackImage: 'assets/images/package_spa.jpg',
+                      borderRadius: const BorderRadius.vertical(top: Radius.circular(14.5)),
+                      onTap: () {
+                        _showPackageDetails({
+                          'id': id,
+                          'imageUrl': imageUrl,
+                          'allImages': allImages ?? [imageUrl],
+                          'tag': tag,
+                          'title': title,
+                          'originalPrice': originalPrice,
+                          'resalePrice': resalePrice,
+                          'hasHeart': hasHeart,
+                          'discountBadge': isDiscounted ? discountBadge : null,
+                          'originalPriceVal': originalPriceVal,
+                          'resalePriceVal': resalePriceVal,
+                          'merchantName': merchantName,
+                          'merchantLogo': merchantLogo,
+                          'merchant_id': merchantId,
+                        });
+                      },
                     ),
-                  // Discount badge
-                  if (isDiscounted && discountBadge != null)
-                    Positioned(
-                      top: 8,
-                      right: 8,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFF27B6E),
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                        child: Text(
-                          discountBadge,
-                          style: const TextStyle(
-                            fontSize: 9,
-                            fontWeight: FontWeight.bold,
+                    // Heart top right button
+                    if (hasHeart)
+                      Positioned(
+                        top: 8,
+                        right: 8,
+                        child: Container(
+                          width: 28,
+                          height: 28,
+                          decoration: const BoxDecoration(
                             color: Colors.white,
+                            shape: BoxShape.circle,
+                          ),
+                          alignment: Alignment.center,
+                          child: const Icon(Icons.favorite_rounded, color: Color(0xFFFBBD03), size: 16),
+                        ),
+                      ),
+                    // Discount badge
+                    if (isDiscounted && discountBadge != null)
+                      Positioned(
+                        top: 8,
+                        right: 8,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFF27B6E),
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          child: Text(
+                            discountBadge,
+                            style: const TextStyle(
+                              fontSize: 9,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.white,
+                            ),
                           ),
                         ),
                       ),
-                    ),
-                ],
+                  ],
+                ),
               ),
             ),
-          ),
-          // Content metadata
-          Padding(
-            padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _buildCategoryRichText(tag),
-                const SizedBox(height: 4),
-                Text(
-                  title,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.bold,
-                    color: Color(0xFF1A1A2E),
-                    height: 1.3,
-                  ),
-                ),
-                const SizedBox(height: 6),
-                // Strikethrough original and resale price
-                if (isDiscounted) ...[
-                  Text(
-                    originalPrice,
-                    style: const TextStyle(
-                      fontSize: 9,
-                      decoration: TextDecoration.lineThrough,
-                      decorationColor: Color(0xFF9E9E9E),
-                      color: Color(0xFF9E9E9E),
-                    ),
-                  ),
-                  const SizedBox(height: 1),
-                ],
-                Text(
-                  resalePrice,
-                  style: const TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w800,
-                    color: Color(0xFF273DB7),
-                    letterSpacing: -0.2,
-                  ),
-                ),
-                const SizedBox(height: 6),
-                const Divider(height: 1, color: Colors.black12),
-                const SizedBox(height: 6),
-                Row(
+            // Content metadata
+            Expanded(
+              flex: 50,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(10, 6, 10, 8),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    CircleAvatar(
-                      radius: 7,
-                      backgroundColor: const Color(0xFFD68A84),
-                      backgroundImage: (merchantLogo != null && merchantLogo.isNotEmpty)
-                          ? NetworkImage(merchantLogo)
-                          : null,
-                      child: (merchantLogo != null && merchantLogo.isNotEmpty)
-                          ? null
-                          : Text(
-                              (merchantName != null && merchantName.isNotEmpty) ? merchantName[0].toUpperCase() : 'S',
-                              style: const TextStyle(fontSize: 7, color: Colors.white, fontWeight: FontWeight.bold),
-                            ),
-                    ),
-                    const SizedBox(width: 5),
-                    Expanded(
-                      child: Text(
-                        merchantName ?? 'Twicely Seller',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          fontSize: 9,
-                          color: Colors.black.withValues(alpha: 0.6),
-                          fontWeight: FontWeight.w400,
+                    // Top section: category + title
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _buildCategoryRichText(tag),
+                        const SizedBox(height: 3),
+                        Text(
+                          title,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
+                            color: Color(0xFF1A1A2E),
+                            height: 1.3,
+                          ),
                         ),
-                      ),
+                      ],
                     ),
-                    const SizedBox(width: 4),
-                    Icon(
-                      hasHeart ? Icons.favorite_rounded : Icons.favorite_outline_rounded,
-                      size: 11,
-                      color: hasHeart ? const Color(0xFFFBBD03) : Colors.black38,
+                    // Middle section: price
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        if (isDiscounted)
+                          Text(
+                            originalPrice,
+                            style: const TextStyle(
+                              fontSize: 9,
+                              decoration: TextDecoration.lineThrough,
+                              decorationColor: Color(0xFF9E9E9E),
+                              color: Color(0xFF9E9E9E),
+                            ),
+                          ),
+                        Text(
+                          resalePrice,
+                          style: const TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w800,
+                            color: Color(0xFF273DB7),
+                            letterSpacing: -0.2,
+                          ),
+                        ),
+                      ],
                     ),
-                    const SizedBox(width: 2),
-                    Text(
-                      '${likesCount ?? 0}',
-                      style: TextStyle(
-                        fontSize: 9,
-                        color: Colors.black.withValues(alpha: 0.6),
-                        fontWeight: FontWeight.w500,
-                      ),
+                    // Bottom section: merchant row
+                    Row(
+                      children: [
+                        _buildMerchantAvatar(merchantName, merchantLogo, radius: 7),
+                        const SizedBox(width: 5),
+                        Expanded(
+                          child: Text(
+                            merchantName ?? 'Twicely',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 9,
+                              color: Colors.black.withValues(alpha: 0.6),
+                              fontWeight: FontWeight.w400,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 4),
+                        Icon(
+                          hasHeart ? Icons.favorite_rounded : Icons.favorite_outline_rounded,
+                          size: 11,
+                          color: hasHeart ? const Color(0xFFFBBD03) : Colors.black38,
+                        ),
+                        const SizedBox(width: 2),
+                        Text(
+                          '${likesCount ?? 0}',
+                          style: TextStyle(
+                            fontSize: 9,
+                            color: Colors.black.withValues(alpha: 0.6),
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ],
                     ),
                   ],
                 ),
-              ],
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
-    ));
+    );
+  }
+
+  // Builds a merchant avatar: logo image if available, otherwise initials
+  // with a consistent color derived from the merchant name hash.
+  Widget _buildMerchantAvatar(String? name, String? logoUrl, {double radius = 12}) {
+    final hasLogo = logoUrl != null && logoUrl.isNotEmpty;
+    final initial = (name != null && name.isNotEmpty) ? name[0].toUpperCase() : 'T';
+    // Fixed brand color for Twicely, deterministic neutral palette for real merchants
+    const colors = [
+      Color(0xFF4A6FA5), // Navy blue
+      Color(0xFF3D8B5E), // Forest green
+      Color(0xFF7B5EA7), // Soft purple
+      Color(0xFF5B8DB8), // Sky blue
+      Color(0xFF8B6E3C), // Warm brown
+      Color(0xFF4A7C59), // Sage green
+    ];
+    final Color avatarColor = hasLogo
+        ? Colors.grey.shade100
+        : (name?.toLowerCase() == 'twicely'
+            ? const Color(0xFF273DB7)
+            : colors[(name?.hashCode.abs() ?? 0) % colors.length]);
+    return CircleAvatar(
+      radius: radius,
+      backgroundColor: avatarColor,
+      backgroundImage: hasLogo ? NetworkImage(logoUrl) : null,
+      child: hasLogo
+          ? null
+          : Text(
+              initial,
+              style: TextStyle(
+                fontSize: radius * 0.85,
+                color: Colors.white,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+    );
   }
 
   Widget _buildSearchTab() {
@@ -1860,7 +1936,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                 crossAxisCount: 2,
                                 crossAxisSpacing: 14,
                                 mainAxisSpacing: 14,
-                                childAspectRatio: 0.56,
+                                childAspectRatio: 0.70,
                               ),
                               itemCount: filtered.length,
                               itemBuilder: (context, index) {
@@ -1879,6 +1955,8 @@ class _HomeScreenState extends State<HomeScreen> {
                                   merchantName: pkg['merchantName'] as String?,
                                   merchantLogo: pkg['merchantLogo'] as String?,
                                   likesCount: pkg['likesCount'] as int?,
+                                  merchantId: pkg['merchant_id'],
+                                  allImages: pkg['allImages'] != null ? List<String>.from(pkg['allImages'] as Iterable) : null,
                                 );
                               },
                             ),
@@ -1907,33 +1985,38 @@ class _HomeScreenState extends State<HomeScreen> {
                     builder: (context) {
                       final items = _displayRecentlyViewed;
                       if (items.isEmpty) return const SizedBox.shrink();
-                      return Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: List.generate(items.length.clamp(0, 2), (index) {
-                          final pkg = items[index];
-                          return Expanded(
-                            child: Padding(
-                              padding: EdgeInsets.only(
-                                right: index == 0 && items.length > 1 ? 14.0 : 0.0,
+                      return SizedBox(
+                        height: 245,
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: List.generate(items.length.clamp(0, 2), (index) {
+                            final pkg = items[index];
+                            return Expanded(
+                              child: Padding(
+                                padding: EdgeInsets.only(
+                                  right: index == 0 && items.length > 1 ? 14.0 : 0.0,
+                                ),
+                                child: _buildPackageCard(
+                                  id: pkg['id'],
+                                  imageUrl: pkg['imageUrl'] as String,
+                                  tag: pkg['tag'] as String,
+                                  title: pkg['title'] as String,
+                                  originalPrice: pkg['originalPrice'] as String,
+                                  resalePrice: pkg['resalePrice'] as String,
+                                  hasHeart: pkg['hasHeart'] as bool? ?? false,
+                                  discountBadge: pkg['discountBadge'] as String?,
+                                  originalPriceVal: pkg['originalPriceVal'] as double?,
+                                  resalePriceVal: pkg['resalePriceVal'] as double?,
+                                  merchantName: pkg['merchantName'] as String?,
+                                  merchantLogo: pkg['merchantLogo'] as String?,
+                                  likesCount: pkg['likesCount'] as int?,
+                                  merchantId: pkg['merchant_id'],
+                                  allImages: pkg['allImages'] != null ? List<String>.from(pkg['allImages'] as Iterable) : null,
+                                ),
                               ),
-                              child: _buildPackageCard(
-                                id: pkg['id'],
-                                imageUrl: pkg['imageUrl'] as String,
-                                tag: pkg['tag'] as String,
-                                title: pkg['title'] as String,
-                                originalPrice: pkg['originalPrice'] as String,
-                                resalePrice: pkg['resalePrice'] as String,
-                                hasHeart: pkg['hasHeart'] as bool? ?? false,
-                                discountBadge: pkg['discountBadge'] as String?,
-                                originalPriceVal: pkg['originalPriceVal'] as double?,
-                                resalePriceVal: pkg['resalePriceVal'] as double?,
-                                merchantName: pkg['merchantName'] as String?,
-                                merchantLogo: pkg['merchantLogo'] as String?,
-                                likesCount: pkg['likesCount'] as int?,
-                              ),
-                            ),
-                          );
-                        }),
+                            );
+                          }),
+                        ),
                       );
                     }
                   ),
@@ -2026,6 +2109,7 @@ class _HomeScreenState extends State<HomeScreen> {
     final verified = _profileData['verification_status']?.toString() == 'verified';
     final isMerchant = SessionManager.isMerchant;
     final initials = name.split(' ').where((w) => w.isNotEmpty).take(2).map((w) => w[0].toUpperCase()).join();
+    final avatarUrl = _profileData['avatar_url']?.toString() ?? _profileData['photo']?.toString() ?? _profileData['avatar']?.toString() ?? '';
 
     return RefreshIndicator(
       onRefresh: _loadProfile,
@@ -2046,15 +2130,25 @@ class _HomeScreenState extends State<HomeScreen> {
                     height: 96,
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
-                      gradient: const LinearGradient(
-                        colors: [Color(0xFF1F2E4E), Color(0xFF2D4270)],
-                      ),
                       border: Border.all(color: const Color(0xFFF27B6E).withValues(alpha: 0.3), width: 2),
                     ),
-                    alignment: Alignment.center,
-                    child: Text(
-                      initials.isEmpty ? 'T' : initials,
-                      style: const TextStyle(color: Colors.white, fontSize: 32, fontWeight: FontWeight.bold, fontFamily: 'Recoleta Alt'),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(48),
+                      child: _isUploadingAvatar
+                          ? const Center(
+                              child: SizedBox(
+                                width: 24,
+                                height: 24,
+                                child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.primary),
+                              ),
+                            )
+                          : avatarUrl.isNotEmpty
+                              ? Image.network(
+                                  avatarUrl,
+                                  fit: BoxFit.cover,
+                                  errorBuilder: (_, __, ___) => _buildDefaultAvatarCircle(initials),
+                                )
+                              : _buildDefaultAvatarCircle(initials),
                     ),
                   ),
                   Positioned(
@@ -2210,110 +2304,391 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  Widget _buildDefaultAvatarCircle(String initials) {
+    return Container(
+      decoration: const BoxDecoration(
+        shape: BoxShape.circle,
+        gradient: LinearGradient(
+          colors: [Color(0xFF1F2E4E), Color(0xFF2D4270)],
+        ),
+      ),
+      alignment: Alignment.center,
+      child: Text(
+        initials.isEmpty ? 'T' : initials,
+        style: const TextStyle(color: Colors.white, fontSize: 32, fontWeight: FontWeight.bold, fontFamily: 'Recoleta Alt'),
+      ),
+    );
+  }
+
   void _showEditProfileSheet(String currentName, String currentPhone) {
     final nameCtrl = TextEditingController(text: currentName);
     final phoneCtrl = TextEditingController(text: currentPhone);
+    final email = _profileData['email']?.toString() ?? SessionManager.userEmail ?? '';
+    final initials = currentName.split(' ').where((w) => w.isNotEmpty).take(2).map((w) => w[0].toUpperCase()).join();
+    final avatarUrl = _profileData['avatar_url']?.toString() ?? _profileData['photo']?.toString() ?? _profileData['avatar']?.toString() ?? '';
     bool isSaving = false;
+    String? localImagePath;
+
+    debugPrint('[ProfileEdit] Opening Edit Profile bottom sheet.');
 
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (_) => StatefulBuilder(
-        builder: (ctx, setModalState) => Container(
-          padding: EdgeInsets.only(
-            left: 24, right: 24, top: 24,
-            bottom: MediaQuery.of(ctx).viewInsets.bottom + 24,
-          ),
+      builder: (context) => StatefulBuilder(
+        builder: (ctx, setModalState) {
+          final isUploading = _isUploadingAvatar;
+          return Container(
+            padding: EdgeInsets.only(
+              left: 24, right: 24, top: 24,
+              bottom: MediaQuery.of(ctx).viewInsets.bottom + 24,
+            ),
+            decoration: const BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+            ),
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text('Edit Profile',
+                          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppColors.primary, fontFamily: 'Recoleta Alt')),
+                      IconButton(
+                        icon: const Icon(Icons.close),
+                        onPressed: () {
+                          debugPrint('[ProfileEdit] Closing edit sheet via close button.');
+                          Navigator.of(ctx).pop();
+                        },
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  
+                  // Avatar pick option inside sheet
+                  Center(
+                    child: Stack(
+                      children: [
+                        Container(
+                          width: 88,
+                          height: 88,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            border: Border.all(color: const Color(0xFFF9E7C9), width: 1.5),
+                          ),
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(44),
+                            child: isUploading
+                                ? const Center(
+                                    child: SizedBox(
+                                      width: 24,
+                                      height: 24,
+                                      child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.primary),
+                                    ),
+                                  )
+                                : localImagePath != null
+                                    ? Image.file(
+                                        File(localImagePath!),
+                                        fit: BoxFit.cover,
+                                      )
+                                    : avatarUrl.isNotEmpty
+                                        ? Image.network(
+                                            avatarUrl,
+                                            fit: BoxFit.cover,
+                                            errorBuilder: (_, __, ___) => _buildDefaultAvatarCircle(initials),
+                                          )
+                                        : _buildDefaultAvatarCircle(initials),
+                          ),
+                        ),
+                        Positioned(
+                          bottom: 0,
+                          right: 0,
+                          child: GestureDetector(
+                            onTap: () {
+                              _showImageSourceActionSheet(
+                                context,
+                                false,
+                                onImagePicked: (path) {
+                                  setModalState(() {
+                                    localImagePath = path;
+                                  });
+                                  debugPrint('[ProfileEdit] Local image selected: $path');
+                                },
+                              );
+                            },
+                            child: Container(
+                              padding: const EdgeInsets.all(6),
+                              decoration: const BoxDecoration(
+                                color: AppColors.primary,
+                                shape: BoxShape.circle,
+                              ),
+                              child: const Icon(Icons.camera_alt_rounded, color: Colors.white, size: 12),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Center(
+                    child: TextButton(
+                      onPressed: () {
+                        _showImageSourceActionSheet(
+                          context,
+                          false,
+                          onImagePicked: (path) {
+                            setModalState(() {
+                              localImagePath = path;
+                            });
+                            debugPrint('[ProfileEdit] Local image selected: $path');
+                          },
+                        );
+                      },
+                      child: const Text('Change Profile Picture', style: TextStyle(color: AppColors.primary, fontWeight: FontWeight.bold, fontSize: 13)),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  
+                  // Text Fields
+                  TextField(
+                    controller: nameCtrl,
+                    style: const TextStyle(fontSize: 14, color: AppColors.primary),
+                    decoration: InputDecoration(
+                      labelText: 'Full Name *',
+                      labelStyle: TextStyle(color: AppColors.primary.withValues(alpha: 0.6)),
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(14),
+                        borderSide: const BorderSide(color: AppColors.primary, width: 1.5),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: TextEditingController(text: email),
+                    readOnly: true,
+                    style: TextStyle(fontSize: 14, color: AppColors.primary.withValues(alpha: 0.5)),
+                    decoration: InputDecoration(
+                      labelText: 'Email Address',
+                      labelStyle: TextStyle(color: AppColors.primary.withValues(alpha: 0.6)),
+                      filled: true,
+                      fillColor: const Color(0xFFF8FAFC),
+                      helperText: 'Email address cannot be changed.',
+                      helperStyle: const TextStyle(color: Colors.black38, fontSize: 10),
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(14),
+                        borderSide: BorderSide(color: AppColors.primary.withValues(alpha: 0.2)),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: phoneCtrl,
+                    keyboardType: TextInputType.phone,
+                    style: const TextStyle(fontSize: 14, color: AppColors.primary),
+                    decoration: InputDecoration(
+                      labelText: 'Phone Number',
+                      labelStyle: TextStyle(color: AppColors.primary.withValues(alpha: 0.6)),
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(14),
+                        borderSide: const BorderSide(color: AppColors.primary, width: 1.5),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+                  ElevatedButton(
+                    onPressed: isSaving
+                        ? null
+                        : () async {
+                            if (nameCtrl.text.trim().isEmpty) {
+                              CustomSnackBar.show(
+                                context,
+                                message: 'Full Name is required.',
+                                type: SnackBarType.error,
+                              );
+                              return;
+                            }
+                            setModalState(() => isSaving = true);
+                            debugPrint('[ProfileEdit] Save transaction started.');
+
+                            bool success = true;
+                            if (localImagePath != null) {
+                              debugPrint('[ProfileEdit] Uploading local image file to server: $localImagePath');
+                              final uploadRes = await ApiService.uploadUserAvatar(localImagePath!);
+                              if (uploadRes['success'] != true) {
+                                success = false;
+                                debugPrint('[ProfileEdit] Image upload failed: ${uploadRes['message']}');
+                                if (ctx.mounted) {
+                                  CustomSnackBar.show(
+                                    context,
+                                    message: uploadRes['message'] ?? 'Image upload failed',
+                                    type: SnackBarType.error,
+                                  );
+                                }
+                              } else {
+                                debugPrint('[ProfileEdit] Image uploaded successfully.');
+                              }
+                            }
+
+                            if (success) {
+                              debugPrint('[ProfileEdit] Updating profile details: name="${nameCtrl.text.trim()}", phone="${phoneCtrl.text.trim()}"');
+                              final res = await ApiService.updateUserMe({
+                                'name': nameCtrl.text.trim(),
+                                'phone': phoneCtrl.text.trim(),
+                              });
+                              if (!ctx.mounted) return;
+                              if (res['success'] == true) {
+                                debugPrint('[ProfileEdit] Profile details updated successfully.');
+                                _loadProfile();
+                                CustomSnackBar.show(
+                                  context,
+                                  message: 'Profile updated!',
+                                  type: SnackBarType.success,
+                                );
+                                debugPrint('[ProfileEdit] Closing edit sheet (successful save).');
+                                Navigator.of(ctx).pop();
+                              } else {
+                                debugPrint('[ProfileEdit] Profile details update failed: ${res['message']}');
+                                CustomSnackBar.show(
+                                  context,
+                                  message: res['message'] ?? 'Update failed',
+                                  type: SnackBarType.error,
+                                );
+                              }
+                            }
+                            setModalState(() => isSaving = false);
+                          },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFFFBBD03),
+                      foregroundColor: Colors.black,
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                      elevation: 0,
+                    ),
+                    child: isSaving
+                        ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.black))
+                        : const Text('Save Changes', style: TextStyle(fontWeight: FontWeight.bold)),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    ).then((_) {
+      debugPrint('[ProfileEdit] Edit Profile bottom sheet dismissed/closed.');
+    });
+  }
+
+  void _showImageSourceActionSheet(BuildContext context, bool isMerchant, {void Function(String)? onImagePicked}) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (BuildContext ctx) {
+        return Container(
           decoration: const BoxDecoration(
             color: Colors.white,
-            borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+            borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
           ),
+          padding: const EdgeInsets.all(24),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  const Text('Edit Profile',
-                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppColors.primary, fontFamily: 'Recoleta Alt')),
-                  IconButton(icon: const Icon(Icons.close), onPressed: () => Navigator.of(ctx).pop()),
-                ],
-              ),
-              const SizedBox(height: 16),
-              TextField(
-                controller: nameCtrl,
-                style: const TextStyle(fontSize: 14, color: AppColors.primary),
-                decoration: InputDecoration(
-                  labelText: 'Full Name',
-                  labelStyle: TextStyle(color: AppColors.primary.withValues(alpha: 0.6)),
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(14),
-                    borderSide: const BorderSide(color: AppColors.primary, width: 1.5),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: phoneCtrl,
-                keyboardType: TextInputType.phone,
-                style: const TextStyle(fontSize: 14, color: AppColors.primary),
-                decoration: InputDecoration(
-                  labelText: 'Phone Number',
-                  labelStyle: TextStyle(color: AppColors.primary.withValues(alpha: 0.6)),
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(14),
-                    borderSide: const BorderSide(color: AppColors.primary, width: 1.5),
-                  ),
-                ),
+              const Text(
+                'Select Image Source',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppColors.primary, fontFamily: 'Recoleta Alt'),
+                textAlign: TextAlign.center,
               ),
               const SizedBox(height: 20),
-              ElevatedButton(
-                onPressed: isSaving
-                    ? null
-                    : () async {
-                        setModalState(() => isSaving = true);
-                        final res = await ApiService.updateUserMe({
-                          'name': nameCtrl.text.trim(),
-                          'phone': phoneCtrl.text.trim(),
-                        });
-                        if (!ctx.mounted) return;
-                        setModalState(() => isSaving = false);
-                        Navigator.of(ctx).pop();
-                        if (!mounted) return;
-                        if (res['success'] == true) {
-                          _loadProfile();
-                          CustomSnackBar.show(
-                            context,
-                            message: 'Profile updated!',
-                            type: SnackBarType.success,
-                          );
-                        } else {
-                          CustomSnackBar.show(
-                            context,
-                            message: res['message'] ?? 'Update failed',
-                            type: SnackBarType.error,
-                          );
-                        }
-                      },
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppColors.primary,
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                ),
-                child: isSaving
-                    ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                    : const Text('Save Changes', style: TextStyle(fontWeight: FontWeight.bold)),
+              ListTile(
+                leading: const Icon(Icons.camera_alt_outlined, color: AppColors.primary),
+                title: const Text('Camera', style: TextStyle(color: AppColors.primary, fontWeight: FontWeight.w600)),
+                onTap: () async {
+                  Navigator.of(ctx).pop();
+                  if (onImagePicked != null) {
+                    final XFile? picked = await _picker.pickImage(source: ImageSource.camera);
+                    if (picked != null) {
+                      onImagePicked(picked.path);
+                    }
+                  } else {
+                    _pickAndUploadImage(ImageSource.camera, isMerchant);
+                  }
+                },
               ),
+              ListTile(
+                leading: const Icon(Icons.photo_library_outlined, color: AppColors.primary),
+                title: const Text('Gallery', style: TextStyle(color: AppColors.primary, fontWeight: FontWeight.w600)),
+                onTap: () async {
+                  Navigator.of(ctx).pop();
+                  if (onImagePicked != null) {
+                    final XFile? picked = await _picker.pickImage(source: ImageSource.gallery);
+                    if (picked != null) {
+                      onImagePicked(picked.path);
+                    }
+                  } else {
+                    _pickAndUploadImage(ImageSource.gallery, isMerchant);
+                  }
+                },
+              ),
+              const SizedBox(height: 10),
             ],
           ),
-        ),
-      ),
+        );
+      },
     );
+  }
+
+  Future<void> _pickAndUploadImage(ImageSource source, bool isMerchant) async {
+    try {
+      final XFile? picked = await _picker.pickImage(source: source);
+      if (picked == null) return;
+
+      setState(() {
+        _isUploadingAvatar = true;
+      });
+
+      final res = isMerchant 
+          ? await ApiService.uploadMerchantLogo(picked.path)
+          : await ApiService.uploadUserAvatar(picked.path);
+
+      setState(() {
+        _isUploadingAvatar = false;
+      });
+
+      if (!mounted) return;
+
+      if (res['success'] == true) {
+        _loadProfile();
+        CustomSnackBar.show(
+          context,
+          message: 'Profile picture updated successfully!',
+          type: SnackBarType.success,
+        );
+      } else {
+        CustomSnackBar.show(
+          context,
+          message: res['message'] ?? 'Upload failed',
+          type: SnackBarType.error,
+        );
+      }
+    } catch (e) {
+      setState(() {
+        _isUploadingAvatar = false;
+      });
+      if (mounted) {
+        CustomSnackBar.show(
+          context,
+          message: 'Failed to upload: $e',
+          type: SnackBarType.error,
+        );
+      }
+    }
   }
 
   Widget _buildProfileOption({

@@ -8,6 +8,7 @@ import 'shopping_cart_screen.dart';
 import 'seller_profile_screen.dart';
 import '../../../../core/services/api_service.dart';
 import '../../../../core/widgets/custom_snackbar.dart';
+import '../../../../core/widgets/package_image_carousel.dart';
 
 class PackageDetailScreen extends StatefulWidget {
   final Map<String, dynamic> package;
@@ -266,6 +267,21 @@ class _PackageDetailScreenState extends State<PackageDetailScreen> {
     } else if (p['images'] != null && (p['images'] as List).isNotEmpty) {
       imageUrl = (p['images'] as List)[0]['url']?.toString() ?? '';
     }
+
+    final List<String> allImages = [];
+    if (p['images'] != null && (p['images'] as List).isNotEmpty) {
+      for (var img in p['images'] as List) {
+        if (img is Map && img['url'] != null && img['url'].toString().isNotEmpty) {
+          allImages.add(img['url'].toString());
+        } else if (img is String && img.isNotEmpty) {
+          allImages.add(img);
+        }
+      }
+    }
+    if (allImages.isEmpty && imageUrl.isNotEmpty) {
+      allImages.add(imageUrl);
+    }
+
     final double original = double.tryParse(p['original_purchase_price']?.toString() ?? '') ??
                             double.tryParse(p['original_price']?.toString() ?? '') ??
                             double.tryParse(p['price']?.toString() ?? '') ?? 0.0;
@@ -283,17 +299,19 @@ class _PackageDetailScreenState extends State<PackageDetailScreen> {
     if (merchantIdVal != null && ApiService.merchantsCache.containsKey(merchantIdVal)) {
       final m = ApiService.merchantsCache[merchantIdVal]!;
       merchantName = m['business_name']?.toString() ?? 'Twicely Merchant';
-      merchantLogo = m['logo_url']?.toString() ?? '';
+      merchantLogo = ApiService.getMerchantLogo(merchantIdVal, m['logo_url']?.toString());
     } else if (p['merchant'] is Map && p['merchant']['name'] != null) {
       merchantName = p['merchant']['name'].toString();
-      merchantLogo = p['merchant']['logo']?.toString() ?? '';
+      merchantLogo = ApiService.getMerchantLogo(merchantIdVal, p['merchant']['logo']?.toString());
     } else if (p['merchant_name'] != null) {
       merchantName = p['merchant_name'].toString();
+      merchantLogo = ApiService.getMerchantLogo(merchantIdVal, '');
     }
     return {
       'id': p['id'],
       'title': p['title'] ?? 'Package',
       'imageUrl': imageUrl.isNotEmpty ? imageUrl : 'assets/images/package_spa.jpg',
+      'allImages': allImages,
       'originalPrice': 'S\$${original.toStringAsFixed(2)}',
       'resalePrice': 'S\$${resale.toStringAsFixed(2)}',
       'originalPriceVal': original,
@@ -303,6 +321,7 @@ class _PackageDetailScreenState extends State<PackageDetailScreen> {
       'tag': _buildDynamicTag(p),
       'merchant': merchantName,
       'merchantLogo': merchantLogo,
+      'merchant_id': merchantIdVal,
       'category': p['secondary_category'] ?? '',
       'secondary_category': p['secondary_category'] ?? '',
     };
@@ -510,6 +529,34 @@ class _PackageDetailScreenState extends State<PackageDetailScreen> {
       imageUrl = pkg['images'][0]['url'] ?? imageUrl;
     }
 
+    final List<String> allImages = [];
+    if (pkg['allImages'] != null) {
+      try {
+        allImages.addAll(List<String>.from(pkg['allImages'] as Iterable));
+      } catch (_) {}
+    }
+    if (allImages.isEmpty && pkg['images'] != null && pkg['images'] is List) {
+      for (var img in pkg['images']) {
+        if (img is Map && img['url'] != null && img['url'].toString().isNotEmpty) {
+          allImages.add(img['url'].toString());
+        } else if (img is String && img.isNotEmpty) {
+          allImages.add(img);
+        }
+      }
+    }
+    if (allImages.isEmpty && pkg['cover_url'] != null && pkg['cover_url'].toString().isNotEmpty) {
+      allImages.add(pkg['cover_url'].toString());
+    }
+    if (allImages.isEmpty && pkg['imageUrl'] != null && pkg['imageUrl'].toString().isNotEmpty) {
+      allImages.add(pkg['imageUrl'].toString());
+    }
+    if (allImages.isEmpty && pkg['image'] != null && pkg['image'].toString().isNotEmpty) {
+      allImages.add(pkg['image'].toString());
+    }
+    if (allImages.isEmpty) {
+      allImages.add(imageUrl);
+    }
+
     String? discount;
     if (hasDiscount) {
       final int pct = ((rawOriginal - rawResale) / rawOriginal * 100).round();
@@ -563,26 +610,12 @@ class _PackageDetailScreenState extends State<PackageDetailScreen> {
             // 1. Image Card with Tags & Favorites
             Stack(
               children: [
-                ClipRRect(
+                PackageImageCarousel(
+                  images: allImages,
+                  fallbackImage: 'assets/images/package_yoga.jpg',
+                  height: 240,
+                  width: double.infinity,
                   borderRadius: BorderRadius.circular(24),
-                  child: imageUrl.startsWith('assets/')
-                      ? Image.asset(
-                          imageUrl,
-                          height: 240,
-                          width: double.infinity,
-                          fit: BoxFit.cover,
-                        )
-                      : Image.network(
-                          imageUrl,
-                          height: 240,
-                          width: double.infinity,
-                          fit: BoxFit.cover,
-                          errorBuilder: (context, error, stackTrace) => Container(
-                            height: 240,
-                            color: AppColors.primary.withValues(alpha: 0.05),
-                            child: const Icon(Icons.image_outlined, color: AppColors.primary, size: 52),
-                          ),
-                        ),
                 ),
                 Positioned(
                   top: 14,
@@ -851,22 +884,40 @@ class _PackageDetailScreenState extends State<PackageDetailScreen> {
   Widget _buildMerchantCard() {
     final pkg = _detailedPackage ?? widget.package;
     final merchantIdVal = int.tryParse(pkg['merchant_id']?.toString() ?? '');
-    String merchantName = 'Raiyu';
+
+    // Resolution priority:
+    // 1. Pre-resolved merchantName/merchantLogo keys (set by home/list screens)
+    // 2. merchantsCache lookup by merchant_id
+    // 3. Nested pkg['merchant'] map
+    // 4. pkg['merchant_name'] field
+    // 5. Fallback to 'Twicely'
+    String merchantName = 'Twicely';
     String merchantLogo = '';
-    if (merchantIdVal != null && ApiService.merchantsCache.containsKey(merchantIdVal)) {
+
+    if (pkg['merchantName'] != null && pkg['merchantName'].toString().isNotEmpty) {
+      merchantName = pkg['merchantName'].toString();
+      merchantLogo = pkg['merchantLogo']?.toString() ?? '';
+    } else if (merchantIdVal != null && ApiService.merchantsCache.containsKey(merchantIdVal)) {
       final m = ApiService.merchantsCache[merchantIdVal]!;
-      merchantName = m['business_name']?.toString() ?? 'Raiyu';
-      merchantLogo = m['logo_url']?.toString() ?? '';
+      merchantName = m['business_name']?.toString() ?? 'Twicely';
+      merchantLogo = ApiService.getMerchantLogo(merchantIdVal, m['logo_url']?.toString());
     } else if (pkg['merchant'] is Map && pkg['merchant']['name'] != null) {
       merchantName = pkg['merchant']['name'].toString();
-      merchantLogo = pkg['merchant']['logo']?.toString() ?? '';
+      merchantLogo = ApiService.getMerchantLogo(merchantIdVal, pkg['merchant']['logo']?.toString());
+    } else if (pkg['merchant'] is Map && pkg['merchant']['display_name'] != null) {
+      merchantName = pkg['merchant']['display_name'].toString();
+      merchantLogo = ApiService.getMerchantLogo(merchantIdVal, '');
     } else if (pkg['merchant_name'] != null) {
       merchantName = pkg['merchant_name'].toString();
-    } else if (pkg['merchant']?.toString() != null && pkg['merchant'] is String) {
-      merchantName = pkg['merchant'].toString();
+      merchantLogo = ApiService.getMerchantLogo(merchantIdVal, '');
+    } else if (merchantIdVal != null) {
+      // merchant_id exists but not in cache — look up directly from API cache
+      merchantLogo = ApiService.getMerchantLogo(merchantIdVal, '');
     }
 
-    return Container(
+    final bool isRealMerchant = merchantIdVal != null;
+
+    final Widget cardContent = Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
       decoration: BoxDecoration(
         color: Colors.white,
@@ -882,97 +933,83 @@ class _PackageDetailScreenState extends State<PackageDetailScreen> {
       ),
       child: Row(
         children: [
-          // Avatar
-          Container(
-            width: 48,
-            height: 48,
-            decoration: BoxDecoration(
-              color: const Color(0xFFD68A84),
-              shape: BoxShape.circle,
-              image: (merchantLogo.isNotEmpty)
-                  ? DecorationImage(image: NetworkImage(merchantLogo), fit: BoxFit.cover)
-                  : null,
-            ),
-            alignment: Alignment.center,
-            child: merchantLogo.isEmpty
-                ? Text(
-                    merchantName.isNotEmpty ? merchantName[0].toUpperCase() : 'S',
-                    style: const TextStyle(fontSize: 16, color: Colors.white, fontWeight: FontWeight.bold),
-                  )
-                : null,
-          ),
+          // Avatar — uses the same _buildMerchantAvatar helper as all other screens
+          _buildMerchantAvatar(merchantName, merchantLogo, radius: 24),
           const SizedBox(width: 14),
-          // Name and Link
+          // Name and info
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Row(
                   children: [
-                    Text(
-                      merchantName,
-                      style: const TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 14,
-                        color: Color(0xFF1A1A2E),
+                    Flexible(
+                      child: Text(
+                        merchantName,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 14,
+                          color: Color(0xFF1A1A2E),
+                        ),
                       ),
                     ),
-                    const SizedBox(width: 6),
-                    // Verified Pill
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFE8F5E9),
-                        borderRadius: BorderRadius.circular(20),
+                    if (isRealMerchant) ...[
+                      const SizedBox(width: 6),
+                      // Verified Pill — only for real merchants
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFE8F5E9),
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: const Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.star_rounded, size: 10, color: Color(0xFF2E7D32)),
+                            SizedBox(width: 2),
+                            Text(
+                              'Verified',
+                              style: TextStyle(fontSize: 9, color: Color(0xFF2E7D32), fontWeight: FontWeight.bold),
+                            ),
+                          ],
+                        ),
                       ),
-                      child: const Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(Icons.star_rounded, size: 10, color: Color(0xFF2E7D32)),
-                          SizedBox(width: 2),
-                          Text(
-                            'Verified',
-                            style: TextStyle(fontSize: 9, color: Color(0xFF2E7D32), fontWeight: FontWeight.bold),
-                          ),
-                        ],
-                      ),
-                    ),
+                    ],
                   ],
                 ),
                 const SizedBox(height: 4),
-                InkWell(
-                  onTap: () {
-                    if (merchantIdVal != null) {
-                      Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (context) => SellerProfileScreen(
-                            merchantId: merchantIdVal,
-                            merchantName: merchantName,
-                            merchantLogo: merchantLogo,
-                          ),
-                        ),
-                      );
-                    }
-                  },
-                  child: const Text(
-                    'View Profile',
-                    style: TextStyle(
-                      fontSize: 11,
-                      color: Color(0xFFF27B6E),
-                      fontWeight: FontWeight.bold,
-                    ),
+                Text(
+                  isRealMerchant ? 'View Profile' : 'Official Twicely Package',
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: isRealMerchant ? const Color(0xFFF27B6E) : Colors.black38,
+                    fontWeight: isRealMerchant ? FontWeight.bold : FontWeight.normal,
                   ),
                 ),
               ],
             ),
           ),
-          const Icon(
-            Icons.chevron_right_rounded,
-            color: Colors.black38,
-            size: 20,
-          ),
+          if (isRealMerchant)
+            const Icon(Icons.chevron_right_rounded, color: Colors.black38, size: 20),
         ],
       ),
+    );
+
+    if (!isRealMerchant) return cardContent;
+    return GestureDetector(
+      onTap: () {
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (context) => SellerProfileScreen(
+              merchantId: merchantIdVal,
+              merchantName: merchantName,
+              merchantLogo: merchantLogo,
+            ),
+          ),
+        );
+      },
+      child: cardContent,
     );
   }
 
@@ -1009,7 +1046,7 @@ class _PackageDetailScreenState extends State<PackageDetailScreen> {
           )
         else
           SizedBox(
-            height: 270,
+            height: 245,
             child: ListView.builder(
               scrollDirection: Axis.horizontal,
               physics: const BouncingScrollPhysics(),
@@ -1054,33 +1091,21 @@ class _PackageDetailScreenState extends State<PackageDetailScreen> {
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
                         // Image Top Header
-                        SizedBox(
-                          height: 120,
+                        Expanded(
+                          flex: 55,
                           child: ClipRRect(
                             borderRadius: const BorderRadius.vertical(top: Radius.circular(14.5)),
                             child: Stack(
+                              fit: StackFit.expand,
                               children: [
-                                imgUrl.startsWith('assets/')
-                                    ? Image.asset(
-                                        imgUrl,
-                                        width: double.infinity,
-                                        height: double.infinity,
-                                        fit: BoxFit.cover,
-                                        errorBuilder: (_, __, ___) => Container(
-                                          color: AppColors.primary.withValues(alpha: 0.05),
-                                          child: const Icon(Icons.image_outlined, color: AppColors.primary),
-                                        ),
-                                      )
-                                    : Image.network(
-                                        imgUrl,
-                                        width: double.infinity,
-                                        height: double.infinity,
-                                        fit: BoxFit.cover,
-                                        errorBuilder: (_, __, ___) => Container(
-                                          color: AppColors.primary.withValues(alpha: 0.05),
-                                          child: const Icon(Icons.image_outlined, color: AppColors.primary),
-                                        ),
-                                      ),
+                                PackageImageCarousel(
+                                  images: item['allImages'] != null ? List<String>.from(item['allImages'] as Iterable) : [imgUrl],
+                                  fallbackImage: 'assets/images/package_spa.jpg',
+                                  borderRadius: const BorderRadius.vertical(top: Radius.circular(14.5)),
+                                  onTap: () => Navigator.of(context).push(
+                                    MaterialPageRoute(builder: (_) => PackageDetailScreen(package: item)),
+                                  ),
+                                ),
                                 // Heart top right button
                                 if (hasHeart)
                                   Positioned(
@@ -1123,96 +1148,94 @@ class _PackageDetailScreenState extends State<PackageDetailScreen> {
                           ),
                         ),
                         // Content metadata
-                        Padding(
-                          padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              _buildCategoryRichText(tag),
-                              const SizedBox(height: 4),
-                              Text(
-                                title,
-                                maxLines: 2,
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.bold,
-                                  color: Color(0xFF1A1A2E),
-                                  height: 1.3,
-                                ),
-                              ),
-                              const SizedBox(height: 6),
-                              // Strikethrough original and resale price
-                              if (isDiscounted) ...[
-                                Text(
-                                  originalPrice,
-                                  style: const TextStyle(
-                                    fontSize: 9,
-                                    decoration: TextDecoration.lineThrough,
-                                    decorationColor: Color(0xFF9E9E9E),
-                                    color: Color(0xFF9E9E9E),
-                                  ),
-                                ),
-                                const SizedBox(height: 1),
-                              ],
-                              Text(
-                                resalePrice,
-                                style: const TextStyle(
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w800,
-                                  color: Color(0xFF273DB7),
-                                  letterSpacing: -0.2,
-                                ),
-                              ),
-                              const SizedBox(height: 6),
-                              const Divider(height: 1, color: Colors.black12),
-                              const SizedBox(height: 6),
-                              Row(
-                                children: [
-                                  CircleAvatar(
-                                    radius: 7,
-                                    backgroundColor: const Color(0xFFD68A84),
-                                    backgroundImage: (merchantLogo != null && merchantLogo.isNotEmpty)
-                                        ? NetworkImage(merchantLogo)
-                                        : null,
-                                    child: (merchantLogo != null && merchantLogo.isNotEmpty)
-                                        ? null
-                                        : Text(
-                                            (merchantName != null && merchantName.isNotEmpty) ? merchantName[0].toUpperCase() : 'S',
-                                            style: const TextStyle(fontSize: 7, color: Colors.white, fontWeight: FontWeight.bold),
-                                          ),
-                                  ),
-                                  const SizedBox(width: 5),
-                                  Expanded(
-                                    child: Text(
-                                      merchantName ?? 'Twicely Seller',
+                        Expanded(
+                          flex: 45,
+                          child: Padding(
+                            padding: const EdgeInsets.fromLTRB(10, 6, 10, 8),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                // Top: tag + title
+                                Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    _buildCategoryRichText(tag),
+                                    const SizedBox(height: 3),
+                                    Text(
+                                      title,
                                       maxLines: 1,
                                       overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.bold,
+                                        color: Color(0xFF1A1A2E),
+                                        height: 1.3,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                // Middle: price
+                                Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    if (isDiscounted)
+                                      Text(
+                                        originalPrice,
+                                        style: const TextStyle(
+                                          fontSize: 9,
+                                          decoration: TextDecoration.lineThrough,
+                                          decorationColor: Color(0xFF9E9E9E),
+                                          color: Color(0xFF9E9E9E),
+                                        ),
+                                      ),
+                                    Text(
+                                      resalePrice,
+                                      style: const TextStyle(
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.w800,
+                                        color: Color(0xFF273DB7),
+                                        letterSpacing: -0.2,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                // Bottom: merchant row
+                                Row(
+                                  children: [
+                                    _buildMerchantAvatar(merchantName, merchantLogo, radius: 7),
+                                    const SizedBox(width: 5),
+                                    Expanded(
+                                      child: Text(
+                                        merchantName ?? 'Twicely',
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: TextStyle(
+                                          fontSize: 9,
+                                          color: Colors.black.withValues(alpha: 0.6),
+                                          fontWeight: FontWeight.w400,
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 4),
+                                    Icon(
+                                      hasHeart ? Icons.favorite_rounded : Icons.favorite_outline_rounded,
+                                      size: 11,
+                                      color: hasHeart ? const Color(0xFFFBBD03) : Colors.black38,
+                                    ),
+                                    const SizedBox(width: 2),
+                                    Text(
+                                      '$likesCount',
                                       style: TextStyle(
                                         fontSize: 9,
                                         color: Colors.black.withValues(alpha: 0.6),
-                                        fontWeight: FontWeight.w400,
+                                        fontWeight: FontWeight.w500,
                                       ),
                                     ),
-                                  ),
-                                  const SizedBox(width: 4),
-                                  Icon(
-                                    hasHeart ? Icons.favorite_rounded : Icons.favorite_outline_rounded,
-                                    size: 11,
-                                    color: hasHeart ? const Color(0xFFFBBD03) : Colors.black38,
-                                  ),
-                                  const SizedBox(width: 2),
-                                  Text(
-                                    '$likesCount',
-                                    style: TextStyle(
-                                      fontSize: 9,
-                                      color: Colors.black.withValues(alpha: 0.6),
-                                      fontWeight: FontWeight.w500,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ],
+                                  ],
+                                ),
+                              ],
+                            ),
                           ),
                         ),
                       ],
@@ -1272,6 +1295,37 @@ class _PackageDetailScreenState extends State<PackageDetailScreen> {
           ],
         ),
       ),
+    );
+  }
+
+  Color _merchantAvatarColor(String name) {
+    // Fixed brand color for Twicely internal packages
+    if (name.toLowerCase() == 'twicely') return const Color(0xFF273DB7);
+    const colors = [
+      Color(0xFF4A6FA5),
+      Color(0xFF3D8B5E),
+      Color(0xFF7B5EA7),
+      Color(0xFF5B8DB8),
+      Color(0xFF8B6E3C),
+      Color(0xFF4A7C59),
+    ];
+    return colors[name.hashCode.abs() % colors.length];
+  }
+
+  Widget _buildMerchantAvatar(String? name, String? logoUrl, {double radius = 12}) {
+    final hasLogo = logoUrl != null && logoUrl.isNotEmpty;
+    final initial = (name != null && name.isNotEmpty) ? name[0].toUpperCase() : 'T';
+    final avatarColor = hasLogo ? Colors.grey.shade100 : _merchantAvatarColor(name ?? '');
+    return CircleAvatar(
+      radius: radius,
+      backgroundColor: avatarColor,
+      backgroundImage: hasLogo ? NetworkImage(logoUrl) : null,
+      child: hasLogo
+          ? null
+          : Text(
+              initial,
+              style: TextStyle(fontSize: radius * 0.85, color: Colors.white, fontWeight: FontWeight.bold),
+            ),
     );
   }
 }

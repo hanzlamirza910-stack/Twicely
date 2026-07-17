@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/services/api_service.dart';
 import '../../../../core/utils/cart_manager.dart';
+import '../../../../core/widgets/package_image_carousel.dart';
 import 'shopping_cart_screen.dart';
+import 'package_detail_screen.dart';
 import '../../../../core/widgets/custom_snackbar.dart';
 
 class WishlistScreen extends StatefulWidget {
@@ -87,9 +89,36 @@ class _WishlistScreenState extends State<WishlistScreen> {
       imageUrl = apiPkg['images'][0]['url'] ?? 'assets/images/package_spa.jpg';
     }
 
+    final List<String> allImages = [];
+    if (apiPkg['images'] != null && (apiPkg['images'] as List).isNotEmpty) {
+      for (var img in apiPkg['images'] as List) {
+        if (img is Map && img['url'] != null && img['url'].toString().isNotEmpty) {
+          allImages.add(img['url'].toString());
+        } else if (img is String && img.isNotEmpty) {
+          allImages.add(img);
+        }
+      }
+    }
+    if (allImages.isEmpty && imageUrl.isNotEmpty) {
+      allImages.add(imageUrl);
+    }
+
     final double priceVal = (apiPkg['price'] is num)
         ? (apiPkg['price'] as num).toDouble()
         : double.tryParse(apiPkg['price']?.toString() ?? '') ?? 0.0;
+
+    final double original = double.tryParse(apiPkg['original_purchase_price']?.toString() ?? '') ??
+                            double.tryParse(apiPkg['original_price']?.toString() ?? '') ??
+                            priceVal;
+    final double resale = double.tryParse(apiPkg['resale_price']?.toString() ?? '') ??
+                          double.tryParse(apiPkg['discounted_price']?.toString() ?? '') ??
+                          priceVal;
+
+    String? discountBadge;
+    if (original > 0 && resale < original) {
+      final pct = ((original - resale) / original * 100).round();
+      if (pct > 0) discountBadge = '$pct% OFF';
+    }
 
     String category = 'General';
     if (apiPkg['category'] != null) {
@@ -102,6 +131,26 @@ class _WishlistScreenState extends State<WishlistScreen> {
 
     final colors = _getCategoryColors(category);
 
+    final merchantIdVal = int.tryParse(apiPkg['merchant_id']?.toString() ?? '');
+    String merchantName = 'Twicely Merchant';
+    String merchantLogo = '';
+    if (merchantIdVal != null && ApiService.merchantsCache.containsKey(merchantIdVal)) {
+      final m = ApiService.merchantsCache[merchantIdVal]!;
+      merchantName = m['business_name']?.toString() ?? 'Twicely Merchant';
+      merchantLogo = ApiService.getMerchantLogo(merchantIdVal, m['logo_url']?.toString());
+    } else if (apiPkg['merchant'] is Map && apiPkg['merchant']['name'] != null) {
+      merchantName = apiPkg['merchant']['name'].toString();
+      merchantLogo = ApiService.getMerchantLogo(merchantIdVal, apiPkg['merchant']['logo']?.toString());
+    } else if (apiPkg['merchant_name'] != null) {
+      merchantName = apiPkg['merchant_name'].toString();
+      merchantLogo = ApiService.getMerchantLogo(merchantIdVal, '');
+    }
+
+    // Build the dynamic tag path (e.g. category > subcategory)
+    final secondarySlug = apiPkg['secondary_category']?.toString() ?? '';
+    final subcatLabel = secondarySlug.isNotEmpty ? secondarySlug.replaceAll('-', ' ') : '';
+    final tag = subcatLabel.isNotEmpty ? '$category > $subcatLabel' : category;
+
     return {
       'id': apiPkg['id']?.toString() ?? '',
       'title': apiPkg['title'] ?? 'Package Listing',
@@ -109,8 +158,20 @@ class _WishlistScreenState extends State<WishlistScreen> {
       'category': category,
       'price': priceVal,
       'imageUrl': imageUrl,
+      'allImages': allImages,
       'pillColor': colors['bg'],
       'pillTextColor': colors['text'],
+      'originalPrice': 'S\$${original.toStringAsFixed(2)}',
+      'resalePrice': 'S\$${resale.toStringAsFixed(2)}',
+      'originalPriceVal': original,
+      'resalePriceVal': resale,
+      'discountBadge': discountBadge,
+      'hasHeart': true,
+      'merchant_id': merchantIdVal,
+      'merchantName': merchantName,
+      'merchantLogo': merchantLogo,
+      'merchant': merchantName,
+      'tag': tag,
     };
   }
 
@@ -170,60 +231,29 @@ class _WishlistScreenState extends State<WishlistScreen> {
               color: AppColors.primary,
               child: _buildBody(),
             ),
-      bottomNavigationBar: _buildCustomBottomNavBar(),
     );
   }
 
   PreferredSizeWidget _buildAppBar() {
     return AppBar(
-      backgroundColor: Colors.transparent,
+      backgroundColor: Colors.white,
       elevation: 0,
+      scrolledUnderElevation: 0.5,
+      shadowColor: Colors.black12,
       leading: IconButton(
         icon: const Icon(Icons.arrow_back_rounded, color: AppColors.primary),
         onPressed: () => Navigator.of(context).pop(),
       ),
-      title: Image.asset(
-        'assets/images/logo.webp',
-        height: 34,
-        fit: BoxFit.contain,
-        errorBuilder: (context, error, stackTrace) => const Text(
-          'twicely',
-          style: TextStyle(
-            fontSize: 22,
-            fontWeight: FontWeight.bold,
-            color: AppColors.primary,
-          ),
+      title: const Text(
+        'Wishlist',
+        style: TextStyle(
+          color: AppColors.primary,
+          fontWeight: FontWeight.bold,
+          fontFamily: 'Recoleta Alt',
+          fontSize: 18,
         ),
       ),
-      centerTitle: false,
-      actions: [
-        IconButton(
-          icon: const Icon(Icons.notifications_none_rounded, color: AppColors.primary, size: 26),
-          onPressed: () {
-            CustomSnackBar.show(
-              context,
-              message: 'No new notifications',
-              type: SnackBarType.info,
-            );
-          },
-        ),
-        GestureDetector(
-          onTap: () {
-            Navigator.of(context).pop(4);
-          },
-          child: Container(
-            margin: const EdgeInsets.only(right: 16, left: 4),
-            width: 32,
-            height: 32,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: AppColors.primary.withValues(alpha: 0.1),
-              border: Border.all(color: AppColors.primary.withValues(alpha: 0.2)),
-            ),
-            child: const Icon(Icons.person_outline_rounded, color: AppColors.primary, size: 18),
-          ),
-        ),
-      ],
+      centerTitle: true,
     );
   }
 
@@ -316,289 +346,219 @@ class _WishlistScreenState extends State<WishlistScreen> {
   }
 
   Widget _buildWishlistItemCard(Map<String, dynamic> item) {
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: AppColors.primary.withValues(alpha: 0.05)),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.015),
-            blurRadius: 8,
-            offset: const Offset(0, 4),
+    return GestureDetector(
+      onTap: () {
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (context) => PackageDetailScreen(package: item),
           ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          // Image Section with Floating Heart and Category Pill
-          Expanded(
-            child: Stack(
-              children: [
-                ClipRRect(
-                  borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-                  child: SizedBox(
-                    width: double.infinity,
-                    height: double.infinity,
-                    child: item['imageUrl'].toString().startsWith('assets/')
-                        ? Image.asset(
-                            item['imageUrl'] as String,
-                            fit: BoxFit.cover,
-                            errorBuilder: (context, error, stackTrace) => Container(
-                              color: AppColors.primary.withValues(alpha: 0.05),
-                              child: const Icon(Icons.image, color: AppColors.primary),
-                            ),
-                          )
-                        : Image.network(
-                            item['imageUrl'] as String,
-                            fit: BoxFit.cover,
-                            errorBuilder: (context, error, stackTrace) => Container(
-                              color: AppColors.primary.withValues(alpha: 0.05),
-                              child: const Icon(Icons.image, color: AppColors.primary),
-                            ),
-                          ),
-                  ),
-                ),
-                // Category Pill floating on top of image
-                Positioned(
-                  left: 10,
-                  bottom: 10,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: item['pillColor'] as Color? ?? const Color(0xFFF3F4F6),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Text(
-                      item['category'] as String,
-                      style: TextStyle(
-                        fontSize: 9,
-                        fontWeight: FontWeight.bold,
-                        color: item['pillTextColor'] as Color? ?? const Color(0xFF374151),
-                      ),
-                    ),
-                  ),
-                ),
-                // Floating Heart Icon Button (Active Wishlist)
-                Positioned(
-                  right: 8,
-                  top: 8,
-                  child: GestureDetector(
-                    onTap: () => _toggleWishlist(item),
-                    child: Container(
-                      padding: const EdgeInsets.all(6),
-                      decoration: const BoxDecoration(
-                        color: Colors.white,
-                        shape: BoxShape.circle,
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black12,
-                            blurRadius: 4,
-                            offset: Offset(0, 2),
-                          ),
-                        ],
-                      ),
-                      child: const Icon(
-                        Icons.favorite_rounded,
-                        color: Color(0xFF1F2E4E),
-                        size: 16,
-                      ),
-                    ),
-                  ),
-                ),
-              ],
+        );
+      },
+      child: Container(
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: AppColors.primary.withValues(alpha: 0.05)),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.015),
+              blurRadius: 8,
+              offset: const Offset(0, 4),
             ),
-          ),
-
-          // Details Section
-          Padding(
-            padding: const EdgeInsets.all(12.0),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  item['title'] as String,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.bold,
-                    color: AppColors.primary,
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            // Image Section with Floating Heart and Category Pill
+            Expanded(
+              child: Stack(
+                children: [
+                  PackageImageCarousel(
+                    images: item['allImages'] != null ? List<String>.from(item['allImages'] as Iterable) : [item['imageUrl'] as String],
+                    fallbackImage: 'assets/images/package_spa.jpg',
+                    borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+                    onTap: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (context) => PackageDetailScreen(package: item),
+                        ),
+                      );
+                    },
                   ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  item['description'] as String,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontSize: 10,
-                    color: AppColors.primary.withValues(alpha: 0.5),
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      'SGD ${(item['price'] as double).toStringAsFixed(0)}',
-                      style: const TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w900,
-                        color: AppColors.primary,
+                  // Category Pill floating on top of image
+                  Positioned(
+                    left: 10,
+                    bottom: 10,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: item['pillColor'] as Color? ?? const Color(0xFFF3F4F6),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Text(
+                        item['category'] as String,
+                        style: TextStyle(
+                          fontSize: 9,
+                          fontWeight: FontWeight.bold,
+                          color: item['pillTextColor'] as Color? ?? const Color(0xFF374151),
+                        ),
                       ),
                     ),
-                    // Shopping Bag/Cart Icon Button
-                    GestureDetector(
-                      onTap: () async {
-                        final int? pkgId = int.tryParse(item['id'].toString());
-                        if (pkgId == null) return;
-                        
-                        showDialog(
-                          context: context,
-                          barrierDismissible: false,
-                          builder: (context) => const Center(
-                            child: CircularProgressIndicator(valueColor: AlwaysStoppedAnimation<Color>(AppColors.primary)),
-                          ),
-                        );
-
-                        try {
-                          final res = await ApiService.addToCart(pkgId);
-                          if (!mounted) return;
-                          Navigator.of(context).pop(); // dismiss loading
-                          if (res['success'] == true) {
-                            await CartManager().syncWithBackend();
-                            if (!mounted) return;
-                            CustomSnackBar.show(
-                              context,
-                              message: 'Added "${item['title']}" to cart!',
-                              type: SnackBarType.success,
-                              action: SnackBarAction(
-                                label: 'VIEW CART',
-                                onPressed: () {
-                                  Navigator.of(context).push(
-                                    MaterialPageRoute(
-                                      builder: (context) => const ShoppingCartScreen(),
-                                    ),
-                                  );
-                                },
-                              ),
-                            );
-                          } else {
-                            CustomSnackBar.show(
-                              context,
-                              message: res['message'] ?? 'Failed to add item to cart.',
-                              type: SnackBarType.error,
-                            );
-                          }
-                        } catch (e) {
-                          if (!mounted) return;
-                          Navigator.of(context).pop();
-                          CustomSnackBar.show(
-                            context,
-                            message: 'Error: $e',
-                            type: SnackBarType.error,
-                          );
-                        }
-                      },
+                  ),
+                  // Floating Heart Icon Button (Active Wishlist)
+                  Positioned(
+                    right: 8,
+                    top: 8,
+                    child: GestureDetector(
+                      onTap: () => _toggleWishlist(item),
                       child: Container(
-                        padding: const EdgeInsets.all(4),
-                        decoration: BoxDecoration(
+                        padding: const EdgeInsets.all(6),
+                        decoration: const BoxDecoration(
+                          color: Colors.white,
                           shape: BoxShape.circle,
-                          border: Border.all(color: AppColors.primary.withValues(alpha: 0.12)),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black12,
+                              blurRadius: 4,
+                              offset: Offset(0, 2),
+                            ),
+                          ],
                         ),
                         child: const Icon(
-                          Icons.shopping_bag_outlined,
-                          color: AppColors.primary,
-                          size: 14,
+                          Icons.favorite_rounded,
+                          color: Color(0xFF1F2E4E),
+                          size: 16,
                         ),
                       ),
                     ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildCustomBottomNavBar() {
-    return Container(
-      decoration: BoxDecoration(
-        color: const Color(0xFFFFF8EA),
-        border: Border(
-          top: BorderSide(
-            color: AppColors.primary.withValues(alpha: 0.08),
-            width: 1.2,
-          ),
-        ),
-      ),
-      padding: const EdgeInsets.symmetric(vertical: 8),
-      child: SafeArea(
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceAround,
-          children: [
-            _buildNavBarItem(0, Icons.home_rounded, 'Home'),
-            _buildNavBarItem(1, Icons.search_rounded, 'Search'),
-            GestureDetector(
-              onTap: () {
-                Navigator.of(context).pop(2);
-              },
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Container(
-                    width: 48,
-                    height: 48,
-                    decoration: const BoxDecoration(
-                      color: Color(0xFF1F2E4E),
-                      shape: BoxShape.circle,
-                    ),
-                    alignment: Alignment.center,
-                    child: const Icon(Icons.add, color: Colors.white, size: 24),
                   ),
                 ],
               ),
             ),
-            _buildNavBarItem(3, Icons.chat_bubble_outline_rounded, 'Chat'),
-            _buildNavBarItem(4, Icons.person_rounded, 'Profile'),
-          ],
+
+            // Details Section
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(12, 6, 12, 8),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    // Top: title + description
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          item['title'] as String,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.bold,
+                            color: AppColors.primary,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          item['description'] as String,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 10,
+                            color: AppColors.primary.withValues(alpha: 0.5),
+                          ),
+                        ),
+                      ],
+                    ),
+                    // Bottom: price + cart button
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          'SGD ${(item['price'] as double).toStringAsFixed(0)}',
+                          style: const TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w900,
+                            color: Color(0xFF273DB7),
+                          ),
+                        ),
+                        // Shopping Bag/Cart Icon Button
+                        GestureDetector(
+                          onTap: () async {
+                            final int? pkgId = int.tryParse(item['id'].toString());
+                            if (pkgId == null) return;
+                            
+                            showDialog(
+                              context: context,
+                              barrierDismissible: false,
+                              builder: (context) => const Center(
+                                child: CircularProgressIndicator(valueColor: AlwaysStoppedAnimation<Color>(AppColors.primary)),
+                              ),
+                            );
+
+                            try {
+                              final res = await ApiService.addToCart(pkgId);
+                              if (!mounted) return;
+                              Navigator.of(context).pop(); // dismiss loading
+                              if (res['success'] == true) {
+                                await CartManager().syncWithBackend();
+                                if (!mounted) return;
+                                CustomSnackBar.show(
+                                  context,
+                                  message: 'Added "${item['title']}" to cart!',
+                                  type: SnackBarType.success,
+                                  action: SnackBarAction(
+                                    label: 'VIEW CART',
+                                    onPressed: () {
+                                      Navigator.of(context).push(
+                                        MaterialPageRoute(
+                                          builder: (context) => const ShoppingCartScreen(),
+                                        ),
+                                      );
+                                    },
+                                  ),
+                                );
+                              } else {
+                                CustomSnackBar.show(
+                                  context,
+                                  message: res['message'] ?? 'Failed to add item to cart.',
+                                  type: SnackBarType.error,
+                                  );
+                                }
+                              } catch (e) {
+                                if (!mounted) return;
+                                Navigator.of(context).pop();
+                                CustomSnackBar.show(
+                                  context,
+                                  message: 'Error: $e',
+                                  type: SnackBarType.error,
+                                );
+                              }
+                            },
+                            child: Container(
+                              padding: const EdgeInsets.all(4),
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                border: Border.all(color: AppColors.primary.withValues(alpha: 0.12)),
+                              ),
+                              child: const Icon(
+                                Icons.shopping_bag_outlined,
+                                color: AppColors.primary,
+                                size: 14,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
-      ),
     );
   }
 
-  Widget _buildNavBarItem(int index, IconData icon, String label) {
-    final isSelected = index == 4;
-    final activeColor = const Color(0xFF1F2E4E);
-    final inactiveColor = const Color(0xFF1F2E4E).withValues(alpha: 0.4);
-
-    return GestureDetector(
-      onTap: () {
-        Navigator.of(context).pop(index);
-      },
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(
-            icon,
-            color: isSelected ? activeColor : inactiveColor,
-            size: 26,
-          ),
-          const SizedBox(height: 4),
-          Text(
-            label,
-            style: TextStyle(
-              fontSize: 11,
-              fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-              color: isSelected ? activeColor : inactiveColor,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
 }

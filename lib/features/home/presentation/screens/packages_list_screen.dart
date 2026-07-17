@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/services/api_service.dart';
+import '../../../../core/widgets/package_image_carousel.dart';
 import 'package_detail_screen.dart';
 
 class PackagesListScreen extends StatefulWidget {
@@ -326,6 +327,20 @@ class _PackagesListScreenState extends State<PackagesListScreen> {
       imageUrl = (p['images'] as List)[0]['url']?.toString() ?? '';
     }
 
+    final List<String> allImages = [];
+    if (p['images'] != null && (p['images'] as List).isNotEmpty) {
+      for (var img in p['images'] as List) {
+        if (img is Map && img['url'] != null && img['url'].toString().isNotEmpty) {
+          allImages.add(img['url'].toString());
+        } else if (img is String && img.isNotEmpty) {
+          allImages.add(img);
+        }
+      }
+    }
+    if (allImages.isEmpty && imageUrl.isNotEmpty) {
+      allImages.add(imageUrl);
+    }
+
     final double basePrice = double.tryParse(p['price']?.toString() ?? '') ?? 0.0;
     final double discPrice = double.tryParse(p['discounted_price']?.toString() ?? '') ?? 0.0;
     final bool hasDiscount = discPrice > 0 && discPrice < basePrice;
@@ -348,12 +363,13 @@ class _PackagesListScreenState extends State<PackagesListScreen> {
     if (merchantIdVal != null && ApiService.merchantsCache.containsKey(merchantIdVal)) {
       final m = ApiService.merchantsCache[merchantIdVal]!;
       merchantName = m['business_name']?.toString() ?? 'Twicely Merchant';
-      merchantLogo = m['logo_url']?.toString() ?? '';
+      merchantLogo = ApiService.getMerchantLogo(merchantIdVal, m['logo_url']?.toString());
     } else if (p['merchant'] is Map && p['merchant']['name'] != null) {
       merchantName = p['merchant']['name'].toString();
-      merchantLogo = p['merchant']['logo']?.toString() ?? '';
+      merchantLogo = ApiService.getMerchantLogo(merchantIdVal, p['merchant']['logo']?.toString());
     } else if (p['merchant_name'] != null) {
       merchantName = p['merchant_name'].toString();
+      merchantLogo = ApiService.getMerchantLogo(merchantIdVal, '');
     }
 
     int likesCount = int.tryParse(p['likes_count']?.toString() ?? '') ??
@@ -367,6 +383,7 @@ class _PackagesListScreenState extends State<PackagesListScreen> {
       'id': p['id'],
       'title': p['title'] ?? 'Package',
       'imageUrl': imageUrl,
+      'allImages': allImages,
       'originalPrice': originalPrice,
       'resalePrice': resalePrice,
       'discountBadge': discountBadge,
@@ -379,6 +396,7 @@ class _PackagesListScreenState extends State<PackagesListScreen> {
       'validity': p['validity_date'] ?? p['valid_until'] ?? '',
       'hasHeart': p['liked'] == true,
       'likesCount': likesCount,
+      'merchant_id': merchantIdVal,
       'category': (selectedFilter != null && selectedFilter != 'All Categories' && selectedFilter != 'All')
           ? selectedFilter
           : _getPkgTrueCategory(p),
@@ -411,6 +429,7 @@ class _PackagesListScreenState extends State<PackagesListScreen> {
       builder: (_) => PackageDetailScreen(package: {
         'id': pkg['id'],
         'imageUrl': (pkg['imageUrl'] as String).isNotEmpty ? pkg['imageUrl'] : 'assets/images/package_spa.jpg',
+        'allImages': pkg['allImages'] != null ? List<String>.from(pkg['allImages'] as Iterable) : null,
         'tag': pkg['tag'] ?? '${(pkg['category'] ?? _selectedFilter).toUpperCase()} > ${pkg['subcategoryLabel']}',
         'title': pkg['title'],
         'originalPrice': 'S\$${(pkg['originalPrice'] as double).toStringAsFixed(2)}',
@@ -668,7 +687,7 @@ class _PackagesListScreenState extends State<PackagesListScreen> {
                   crossAxisCount: 2,
                   crossAxisSpacing: 12,
                   mainAxisSpacing: 14,
-                  childAspectRatio: 0.56,
+                  childAspectRatio: 0.70,
                 ),
               ),
             ),
@@ -781,95 +800,93 @@ class _PackagesListScreenState extends State<PackagesListScreen> {
           boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.02), blurRadius: 12, offset: const Offset(0, 4))],
         ),
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             // IMAGE
-            ClipRRect(
-              borderRadius: const BorderRadius.vertical(top: Radius.circular(14.5)),
-              child: Stack(
-                children: [
-                  SizedBox(
-                    height: 130,
-                    width: double.infinity,
-                    child: imageUrl.startsWith('http')
-                        ? Image.network(imageUrl, fit: BoxFit.cover,
-                            errorBuilder: (_, __, ___) => Container(color: const Color(0xFFE8EFF8), child: const Icon(Icons.image_not_supported_rounded, color: Colors.black26, size: 32)))
-                        : Container(color: const Color(0xFFE8EFF8), child: const Icon(Icons.image_rounded, color: Colors.black26, size: 32)),
-                  ),
-                  if (discount != null)
-                    Positioned(
-                      top: 10, left: 10,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFF27B6E),
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                        child: Text(
-                          discount,
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 9,
-                            fontWeight: FontWeight.bold,
+            Expanded(
+              flex: 50,
+              child: ClipRRect(
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(14.5)),
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    PackageImageCarousel(
+                      images: pkg['allImages'] != null ? List<String>.from(pkg['allImages'] as Iterable) : [imageUrl],
+                      fallbackImage: 'assets/images/package_spa.jpg',
+                      borderRadius: const BorderRadius.vertical(top: Radius.circular(14.5)),
+                      onTap: () => _openPackage(pkg),
+                    ),
+                    if (discount != null)
+                      Positioned(
+                        top: 10,
+                        left: 10,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFF27B6E),
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          child: Text(
+                            discount,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 9,
+                              fontWeight: FontWeight.bold,
+                            ),
                           ),
                         ),
                       ),
-                    ),
-                ],
+                  ],
+                ),
               ),
             ),
 
             // CONTENT
             Expanded(
+              flex: 50,
               child: Padding(
-                padding: const EdgeInsets.fromLTRB(10, 8, 10, 10),
+                padding: const EdgeInsets.fromLTRB(10, 6, 10, 8),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    _buildCategoryRichText(tagString),
-                    const SizedBox(height: 4),
-                    Text(
-                      pkg['title'],
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF1A1A2E), height: 1.3),
+                    // Top: category tag + title
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _buildCategoryRichText(tagString),
+                        const SizedBox(height: 3),
+                        Text(
+                          pkg['title'],
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF1A1A2E), height: 1.3),
+                        ),
+                      ],
                     ),
-                    const Spacer(),
-                    if (originalPrice > resalePrice) ...[
-                      Text(
-                        'S\$${originalPrice.toStringAsFixed(2)}',
-                        style: const TextStyle(fontSize: 9, color: Color(0xFF9E9E9E), decoration: TextDecoration.lineThrough, decorationColor: Color(0xFF9E9E9E)),
-                      ),
-                      const SizedBox(height: 1),
-                    ],
-                    Text(
-                      'S\$${resalePrice.toStringAsFixed(2)}',
-                      style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: Color(0xFF273DB7), letterSpacing: -0.2),
+                    // Middle: price
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        if (originalPrice > resalePrice)
+                          Text(
+                            'S\$${originalPrice.toStringAsFixed(2)}',
+                            style: const TextStyle(fontSize: 9, color: Color(0xFF9E9E9E), decoration: TextDecoration.lineThrough, decorationColor: Color(0xFF9E9E9E)),
+                          ),
+                        Text(
+                          'S\$${resalePrice.toStringAsFixed(2)}',
+                          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: Color(0xFF273DB7), letterSpacing: -0.2),
+                        ),
+                      ],
                     ),
-                    const SizedBox(height: 6),
-                    const Divider(height: 1, color: Colors.black12),
-                    const SizedBox(height: 6),
+                    // Bottom: merchant row
                     Row(
                       children: [
-                        CircleAvatar(
-                          radius: 7,
-                          backgroundColor: const Color(0xFFD68A84),
-                          backgroundImage: (pkg['merchantLogo'] != null && (pkg['merchantLogo'] as String).isNotEmpty)
-                              ? NetworkImage(pkg['merchantLogo'] as String)
-                              : null,
-                          child: (pkg['merchantLogo'] != null && (pkg['merchantLogo'] as String).isNotEmpty)
-                              ? null
-                              : Text(
-                                  (pkg['merchant'] != null && (pkg['merchant'] as String).isNotEmpty)
-                                      ? (pkg['merchant'] as String)[0].toUpperCase()
-                                      : 'S',
-                                  style: const TextStyle(fontSize: 7, color: Colors.white, fontWeight: FontWeight.bold),
-                                ),
-                        ),
+                        _buildMerchantAvatar(pkg['merchant']?.toString(), pkg['merchantLogo']?.toString(), radius: 7),
                         const SizedBox(width: 5),
                         Expanded(
                           child: Text(
-                            pkg['merchant'] ?? 'Twicely Seller',
+                            pkg['merchant'] ?? 'Twicely',
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: TextStyle(
@@ -903,6 +920,38 @@ class _PackagesListScreenState extends State<PackagesListScreen> {
           ],
         ),
       ),
+    );
+  }
+
+  // Builds a merchant avatar: logo image if available, otherwise initials with
+  // a consistent color derived from the merchant name hash (no pink/bright colors).
+  Widget _buildMerchantAvatar(String? name, String? logoUrl, {double radius = 12}) {
+    final hasLogo = logoUrl != null && logoUrl.isNotEmpty;
+    final initial = (name != null && name.isNotEmpty) ? name[0].toUpperCase() : 'T';
+    // Fixed brand color for Twicely, deterministic neutral palette for real merchants
+    const colors = [
+      Color(0xFF4A6FA5),
+      Color(0xFF3D8B5E),
+      Color(0xFF7B5EA7),
+      Color(0xFF5B8DB8),
+      Color(0xFF8B6E3C),
+      Color(0xFF4A7C59),
+    ];
+    final Color avatarColor = hasLogo
+        ? Colors.grey.shade100
+        : (name?.toLowerCase() == 'twicely'
+            ? const Color(0xFF273DB7)
+            : colors[(name?.hashCode.abs() ?? 0) % colors.length]);
+    return CircleAvatar(
+      radius: radius,
+      backgroundColor: avatarColor,
+      backgroundImage: hasLogo ? NetworkImage(logoUrl) : null,
+      child: hasLogo
+          ? null
+          : Text(
+              initial,
+              style: TextStyle(fontSize: radius * 0.85, color: Colors.white, fontWeight: FontWeight.bold),
+            ),
     );
   }
 }

@@ -62,17 +62,20 @@ class _MySalesScreenState extends State<MySalesScreen> {
     return Scaffold(
       backgroundColor: AppColors.bgLight,
       appBar: AppBar(
-        backgroundColor: AppColors.primary,
+        backgroundColor: Colors.white,
         elevation: 0,
+        scrolledUnderElevation: 0.5,
+        shadowColor: Colors.black12,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back_rounded, color: Colors.white),
+          icon: const Icon(Icons.arrow_back_rounded, color: AppColors.primary),
           onPressed: () => Navigator.of(context).pop(),
         ),
         title: const Text('My Sales',
-            style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontFamily: 'Recoleta Alt')),
+            style: TextStyle(color: AppColors.primary, fontWeight: FontWeight.bold, fontFamily: 'Recoleta Alt', fontSize: 18)),
+        centerTitle: true,
         actions: [
           IconButton(
-            icon: const Icon(Icons.refresh_rounded, color: Colors.white),
+            icon: const Icon(Icons.refresh_rounded, color: AppColors.primary),
             onPressed: _fetchSales,
           ),
         ],
@@ -115,16 +118,16 @@ class _MySalesScreenState extends State<MySalesScreen> {
         .fold<double>(0, (sum, s) => sum + (double.tryParse(s['seller_amount']?.toString() ?? s['total']?.toString() ?? '0') ?? 0));
 
     return Container(
-      color: AppColors.primary,
-      padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+      color: Colors.white,
+      padding: const EdgeInsets.fromLTRB(20, 12, 20, 16),
       child: Row(
         children: [
           _buildStat('Total Sales', '$total', Icons.receipt_long_rounded),
-          const SizedBox(width: 12),
+          const SizedBox(width: 10),
           _buildStat('Completed', '$completed', Icons.check_circle_rounded),
-          const SizedBox(width: 12),
+          const SizedBox(width: 10),
           _buildStat('Pending', '$pending', Icons.schedule_rounded),
-          const SizedBox(width: 12),
+          const SizedBox(width: 10),
           _buildStat('Earnings', 'S\$${totalEarnings.toStringAsFixed(0)}', Icons.account_balance_wallet_rounded),
         ],
       ),
@@ -134,18 +137,19 @@ class _MySalesScreenState extends State<MySalesScreen> {
   Widget _buildStat(String label, String value, IconData icon) {
     return Expanded(
       child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
+        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 6),
         decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.1),
+          color: const Color(0xFFFFFDF9), // Clean soft warm cream
           borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: Colors.white.withValues(alpha: 0.15)),
+          border: Border.all(color: const Color(0xFFF9E7C9), width: 1.2),
         ),
         child: Column(
           children: [
-            Icon(icon, color: Colors.white, size: 18),
-            const SizedBox(height: 4),
-            Text(value, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13)),
-            Text(label, style: TextStyle(color: Colors.white.withValues(alpha: 0.7), fontSize: 8), textAlign: TextAlign.center),
+            Icon(icon, color: const Color(0xFFF57C00), size: 18),
+            const SizedBox(height: 6),
+            Text(value, style: const TextStyle(color: AppColors.primary, fontWeight: FontWeight.bold, fontSize: 13)),
+            const SizedBox(height: 2),
+            Text(label, style: TextStyle(color: AppColors.primary.withValues(alpha: 0.6), fontSize: 8), textAlign: TextAlign.center),
           ],
         ),
       ),

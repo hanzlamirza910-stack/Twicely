@@ -12,6 +12,16 @@ class ApiService {
   // Merchant Cache
   static Map<int, Map<String, dynamic>> merchantsCache = {};
 
+  static String getMerchantLogo(int? id, String? logoUrl) {
+    if (logoUrl != null && logoUrl.isNotEmpty) return logoUrl;
+    // Staging merchants with known logo overrides (API returns empty logo_url)
+    if (id == 3) return 'https://staging.twicely.sg/wp-content/uploads/2025/11/sysnvolv-1-150x150.png'; // Synvolv
+    if (id == 13) return 'https://staging.twicely.sg/wp-content/uploads/2026/03/cropped-favicon-removebg-preview-150x150.webp'; // Tagpools
+    if (id == 14) return 'https://staging.twicely.sg/wp-content/uploads/2026/03/images-150x150.jpeg'; // test test dfrnt
+    // id=12 (Rolys) and id=21/23 (Test Business Ltd) have no known logo — return empty to use initial avatar
+    return '';
+  }
+
   static Future<void> initMerchantsCache() async {
     try {
       final res = await getMerchants();
@@ -21,7 +31,12 @@ class ApiService {
         for (final m in list) {
           if (m is Map && m['id'] != null) {
             final int id = int.tryParse(m['id'].toString()) ?? 0;
-            merchantsCache[id] = Map<String, dynamic>.from(m);
+            final map = Map<String, dynamic>.from(m);
+            final String logo = map['logo_url']?.toString() ?? '';
+            if (logo.isEmpty) {
+              map['logo_url'] = getMerchantLogo(id, logo);
+            }
+            merchantsCache[id] = map;
           }
         }
       }
@@ -1319,15 +1334,22 @@ class ApiService {
     }
   }
 
+  // Get Payout Settings
+  static Future<Map<String, dynamic>> getPayoutSettings() async {
+    try {
+      final response = await get('/users/me/payout-settings', authenticated: true);
+      return _safeDecode(response, 'Failed to fetch payout settings.');
+    } catch (e) {
+      return {'success': false, 'message': 'Failed to fetch payout settings: $e'};
+    }
+  }
+
   // Update Payout Settings
-  static Future<Map<String, dynamic>> updatePayoutSettings(String method, String schedule) async {
+  static Future<Map<String, dynamic>> updatePayoutSettings(Map<String, dynamic> data) async {
     try {
       final response = await put(
         '/users/me/payout-settings',
-        {
-          'payout_method': method,
-          'payout_schedule': schedule,
-        },
+        data,
         authenticated: true,
       );
       return _safeDecode(response, 'Failed to update payout settings.');
@@ -1335,6 +1357,7 @@ class ApiService {
       return {'success': false, 'message': 'Failed to update payout settings: $e'};
     }
   }
+
 
   // ── User Profile ────────────────────────────────────────────
   static Future<Map<String, dynamic>> getUserMe() async {
@@ -1352,6 +1375,34 @@ class ApiService {
       return _safeDecode(response, 'Failed to update user profile.');
     } catch (e) {
       return {'success': false, 'message': 'Failed to update profile: $e'};
+    }
+  }
+
+  static Future<Map<String, dynamic>> uploadUserAvatar(String filePath) async {
+    try {
+      final url = Uri.parse('$baseUrl/users/me/avatar');
+      final request = http.MultipartRequest('POST', url);
+      if (SessionManager.accessToken != null) {
+        request.headers['Authorization'] = 'Bearer ${SessionManager.accessToken}';
+      }
+      request.files.add(await http.MultipartFile.fromPath('avatar', filePath));
+      
+      debugPrint('\n[API Multipart Request] =================================');
+      debugPrint('METHOD: POST (User Avatar)');
+      debugPrint('URL: $url');
+      debugPrint('======================================================');
+      
+      final streamedResponse = await request.send();
+      final response = await http.Response.fromStream(streamedResponse);
+      
+      debugPrint('\n[API Response] =======================================');
+      debugPrint('Status Code: ${response.statusCode}');
+      debugPrint('Body: ${response.body}');
+      debugPrint('======================================================\n');
+      
+      return _safeDecode(response, 'Failed to upload user avatar.');
+    } catch (e) {
+      return {'success': false, 'message': 'Failed to upload avatar: $e'};
     }
   }
 
@@ -1373,6 +1424,35 @@ class ApiService {
       return {'success': false, 'message': 'Failed to update merchant profile: $e'};
     }
   }
+
+  static Future<Map<String, dynamic>> uploadMerchantLogo(String filePath) async {
+    try {
+      final url = Uri.parse('$baseUrl/merchants/me/logo');
+      final request = http.MultipartRequest('POST', url);
+      if (SessionManager.accessToken != null) {
+        request.headers['Authorization'] = 'Bearer ${SessionManager.accessToken}';
+      }
+      request.files.add(await http.MultipartFile.fromPath('logo', filePath));
+      
+      debugPrint('\n[API Multipart Request] =================================');
+      debugPrint('METHOD: POST (Merchant Logo)');
+      debugPrint('URL: $url');
+      debugPrint('======================================================');
+      
+      final streamedResponse = await request.send();
+      final response = await http.Response.fromStream(streamedResponse);
+      
+      debugPrint('\n[API Response] =======================================');
+      debugPrint('Status Code: ${response.statusCode}');
+      debugPrint('Body: ${response.body}');
+      debugPrint('======================================================\n');
+      
+      return _safeDecode(response, 'Failed to upload merchant logo.');
+    } catch (e) {
+      return {'success': false, 'message': 'Failed to upload logo: $e'};
+    }
+  }
+
 
   // ── C2C Sales ────────────────────────────────────────────────
   static Future<Map<String, dynamic>> getMySales({int page = 1, int perPage = 20}) async {

@@ -74,26 +74,35 @@ class _WalletScreenState extends State<WalletScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final balance = double.tryParse(_wallet['balance']?.toString() ?? '0') ?? 0.0;
-    final available = double.tryParse(_wallet['available_balance']?.toString() ?? '0') ?? 0.0;
-    final clearing = double.tryParse(_wallet['clearing_balance']?.toString() ?? '0') ?? 0.0;
+    final isMerchant = SessionManager.isMerchant;
+    final balanceRaw = double.tryParse(_wallet['balance']?.toString() ?? '0') ?? 0.0;
+    final availableRaw = double.tryParse(_wallet['available_balance']?.toString() ?? '0') ?? 0.0;
+    final clearingRaw = double.tryParse(_wallet['clearing_balance']?.toString() ?? '0') ?? 0.0;
+
+    final balance = isMerchant ? balanceRaw / 100.0 : balanceRaw;
+    final available = isMerchant ? availableRaw / 100.0 : availableRaw;
+    final clearing = isMerchant ? clearingRaw / 100.0 : clearingRaw;
+
     final currency = _wallet['currency']?.toString() ?? 'SGD';
     final payoutEnabled = _wallet['payout_enabled'] == true;
 
     return Scaffold(
       backgroundColor: AppColors.bgLight,
       appBar: AppBar(
-        backgroundColor: AppColors.primary,
+        backgroundColor: Colors.white,
         elevation: 0,
+        scrolledUnderElevation: 0.5,
+        shadowColor: Colors.black12,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back_rounded, color: Colors.white),
+          icon: const Icon(Icons.arrow_back_rounded, color: AppColors.primary),
           onPressed: () => Navigator.of(context).pop(),
         ),
         title: const Text('Wallet',
-            style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontFamily: 'Recoleta Alt')),
+            style: TextStyle(color: AppColors.primary, fontWeight: FontWeight.bold, fontFamily: 'Recoleta Alt', fontSize: 18)),
+        centerTitle: true,
         actions: [
           IconButton(
-            icon: const Icon(Icons.refresh_rounded, color: Colors.white),
+            icon: const Icon(Icons.refresh_rounded, color: AppColors.primary),
             onPressed: _fetchAll,
           ),
         ],
@@ -141,23 +150,20 @@ class _WalletScreenState extends State<WalletScreen> {
     return Container(
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          colors: [Color(0xFF1F2E4E), Color(0xFF2D4270)],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
+        color: const Color(0xFFFFFDF9), // Clean soft warm cream
         borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: const Color(0xFFF9E7C9), width: 1.5),
         boxShadow: [
-          BoxShadow(color: const Color(0xFF1F2E4E).withValues(alpha: 0.3), blurRadius: 20, offset: const Offset(0, 8)),
+          BoxShadow(color: const Color(0xFFF9E7C9).withValues(alpha: 0.15), blurRadius: 20, offset: const Offset(0, 8)),
         ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('Total Balance', style: TextStyle(color: Colors.white.withValues(alpha: 0.7), fontSize: 12)),
+          const Text('Total Balance', style: TextStyle(color: Colors.black54, fontSize: 12, fontWeight: FontWeight.w600)),
           const SizedBox(height: 6),
           Text('$currency ${balance.toStringAsFixed(2)}',
-              style: const TextStyle(color: Colors.white, fontSize: 32, fontWeight: FontWeight.w900, fontFamily: 'Recoleta Alt')),
+              style: const TextStyle(color: AppColors.primary, fontSize: 32, fontWeight: FontWeight.w900, fontFamily: 'Recoleta Alt')),
           const SizedBox(height: 20),
           Row(
             children: [
@@ -177,7 +183,7 @@ class _WalletScreenState extends State<WalletScreen> {
               const SizedBox(width: 6),
               Text(
                 payoutEnabled ? 'Payouts enabled' : 'Payouts not yet enabled',
-                style: TextStyle(color: Colors.white.withValues(alpha: 0.75), fontSize: 11),
+                style: TextStyle(color: AppColors.primary.withValues(alpha: 0.75), fontSize: 11, fontWeight: FontWeight.w500),
               ),
             ],
           ),
@@ -190,14 +196,14 @@ class _WalletScreenState extends State<WalletScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 14),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.08),
+        color: Colors.white,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(label, style: TextStyle(color: Colors.white.withValues(alpha: 0.6), fontSize: 10)),
+          Text(label, style: TextStyle(color: AppColors.primary.withValues(alpha: 0.5), fontSize: 10, fontWeight: FontWeight.w500)),
           const SizedBox(height: 3),
           Text(value, style: TextStyle(color: color, fontSize: 13, fontWeight: FontWeight.bold)),
         ],
@@ -205,9 +211,12 @@ class _WalletScreenState extends State<WalletScreen> {
     );
   }
 
+
   Widget _buildTxnCard(Map<String, dynamic> txn) {
     final type = (txn['type'] ?? 'credit').toString();
-    final amount = double.tryParse(txn['amount']?.toString() ?? '0') ?? 0.0;
+    final isMerchant = SessionManager.isMerchant;
+    final amountRaw = double.tryParse(txn['amount']?.toString() ?? '0') ?? 0.0;
+    final amount = isMerchant ? amountRaw / 100.0 : amountRaw;
     final desc = txn['description']?.toString() ?? type;
     final createdAt = txn['created_at']?.toString() ?? '';
     String dateStr = '';

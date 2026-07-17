@@ -1,4 +1,6 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/services/api_service.dart';
 import '../../../../core/widgets/custom_snackbar.dart';
@@ -32,9 +34,15 @@ class _AddPackageScreenState extends State<AddPackageScreen> {
   final TextEditingController _shortDescriptionController = TextEditingController();
   final TextEditingController _descriptionController = TextEditingController();
   final List<String> _keyPoints = [];
+  final TextEditingController _newKeyPointController = TextEditingController();
+  bool _isAddingKeyPoint = false;
   String _primaryCategory = '';
   String _secondaryCategory = '';
   String _packageStatus = 'draft'; // draft | pending | published
+
+  bool _isCustomMerchant = false;
+  final TextEditingController _customMerchantController = TextEditingController();
+  final ImagePicker _picker = ImagePicker();
 
   final TextEditingController _originalPriceController = TextEditingController();
   final TextEditingController _sellingPriceController = TextEditingController();
@@ -183,14 +191,34 @@ class _AddPackageScreenState extends State<AddPackageScreen> {
             .toList();
       }
 
+      // Deduplicate loaded merchants by business name or name (case-insensitive trim)
+      final Set<String> seenNames = {};
+      final List<Map<String, dynamic>> uniqueMerchants = [];
+      for (final merchant in loadedMerchants) {
+        final name = (merchant['business_name']?.toString() ?? merchant['name']?.toString() ?? '').trim().toLowerCase();
+        if (name.isNotEmpty && !seenNames.contains(name)) {
+          seenNames.add(name);
+          uniqueMerchants.add(merchant);
+        }
+      }
+
       List<Map<String, dynamic>> loadedCategories = [];
       if (categoryRes['success'] == true && categoryRes['data'] != null) {
         final List<dynamic> list = categoryRes['data'];
-        loadedCategories = list.map((item) => Map<String, dynamic>.from(item)).toList();
+        loadedCategories = list.map((item) {
+          final map = Map<String, dynamic>.from(item);
+          if (map['name'] != null) {
+            map['name'] = map['name']
+                .toString()
+                .replaceAll('&amp;', '&')
+                .replaceAll('\u0026amp;', '&');
+          }
+          return map;
+        }).toList();
       }
 
       setState(() {
-        _apiMerchants = loadedMerchants;
+        _apiMerchants = uniqueMerchants;
         _apiCategories = loadedCategories;
         _isLoadingData = false;
 
@@ -201,7 +229,7 @@ class _AddPackageScreenState extends State<AddPackageScreen> {
               ? editPkg['merchant_id']
               : int.tryParse(editPkg['merchant_id']?.toString() ?? '');
           if (editMerchantId != null) {
-            final matchedMerchant = loadedMerchants.firstWhere(
+            final matchedMerchant = uniqueMerchants.firstWhere(
               (m) => (m['id'] is int ? m['id'] : int.tryParse(m['id']?.toString() ?? '')) == editMerchantId,
               orElse: () => <String, dynamic>{},
             );
@@ -209,6 +237,19 @@ class _AddPackageScreenState extends State<AddPackageScreen> {
               _selectedMerchant = matchedMerchant['business_name']?.toString() ?? matchedMerchant['name']?.toString() ?? '';
               debugPrint('[DEBUG] Mapped merchant_id $editMerchantId to merchant name: $_selectedMerchant');
             }
+          }
+        }
+
+        // Detect if the selected merchant is custom (not in uniqueMerchants and not in fallback)
+        if (_selectedMerchant.isNotEmpty && _selectedMerchant != 'null') {
+          final existsInApi = uniqueMerchants.any((m) =>
+              (m['business_name']?.toString() == _selectedMerchant ||
+               m['name']?.toString() == _selectedMerchant));
+          final existsInFallback = _fallbackMerchants.contains(_selectedMerchant);
+          if (!existsInApi && !existsInFallback) {
+            _isCustomMerchant = true;
+            _customMerchantController.text = _selectedMerchant;
+            debugPrint('[DEBUG] Detected custom merchant: $_selectedMerchant');
           }
         }
         
@@ -230,66 +271,7 @@ class _AddPackageScreenState extends State<AddPackageScreen> {
     }
   }
 
-  void _showCustomMerchantDialog() {
-    final controller = TextEditingController();
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Text(
-          'Custom Merchant',
-          style: TextStyle(fontFamily: 'Recoleta Alt', fontWeight: FontWeight.bold, color: AppColors.primary),
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'If your merchant is not in our partner list, type their name below to add them.',
-              style: TextStyle(fontSize: 12, color: Colors.black54),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: controller,
-              decoration: InputDecoration(
-                hintText: 'e.g. Active Fitness Center',
-                hintStyle: TextStyle(color: AppColors.primary.withValues(alpha: 0.35)),
-                focusedBorder: const UnderlineInputBorder(borderSide: BorderSide(color: AppColors.primary)),
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Cancel', style: TextStyle(color: Colors.black54)),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              final name = controller.text.trim();
-              if (name.isNotEmpty) {
-                setState(() {
-                  final customMerchant = {
-                    'id': -1,
-                    'business_name': name,
-                    'logo_url': '',
-                  };
-                  _apiMerchants.add(customMerchant);
-                  _selectedMerchant = name;
-                });
-              }
-              Navigator.of(context).pop();
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF1F2E4E),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-            ),
-            child: const Text('Add & Select', style: TextStyle(color: Colors.white)),
-          ),
-        ],
-      ),
-    );
-  }
+
 
   Widget _buildMerchantDropdownItem(Map<String, dynamic> merchant) {
     final name = merchant['business_name']?.toString() ?? merchant['name']?.toString() ?? '';
@@ -374,6 +356,8 @@ class _AddPackageScreenState extends State<AddPackageScreen> {
     _titleController.dispose();
     _shortDescriptionController.dispose();
     _descriptionController.dispose();
+    _newKeyPointController.dispose();
+    _customMerchantController.dispose();
     _originalPriceController.dispose();
     _sellingPriceController.dispose();
     _sessionsToSellController.dispose();
@@ -396,14 +380,18 @@ class _AddPackageScreenState extends State<AddPackageScreen> {
         _showToast('Please select a merchant', type: SnackBarType.warning);
         return;
       }
-      setState(() => _currentStep = 2);
-    } else if (_currentStep == 2) {
       if (_titleController.text.trim().isEmpty) {
         _showToast('Package title is required', type: SnackBarType.warning);
         return;
       }
       if (_primaryCategory.isEmpty) {
         _showToast('Please select a primary category', type: SnackBarType.warning);
+        return;
+      }
+      setState(() => _currentStep = 2);
+    } else if (_currentStep == 2) {
+      if (_sellingPriceController.text.isEmpty) {
+        _showToast('Please enter the selling price', type: SnackBarType.warning);
         return;
       }
       setState(() => _currentStep = 3);
@@ -432,6 +420,11 @@ class _AddPackageScreenState extends State<AddPackageScreen> {
 
     if (sellingPriceStr.isEmpty) {
       _showToast('Please enter the selling price', type: SnackBarType.warning);
+      return;
+    }
+
+    if (_receiptFileName.isEmpty) {
+      _showToast('Please upload a submission receipt', type: SnackBarType.warning);
       return;
     }
 
@@ -503,6 +496,23 @@ class _AddPackageScreenState extends State<AddPackageScreen> {
             payload,
           )
         : await ApiService.createPackage(payload);
+
+    if (res['success'] == true) {
+      final createdPkg = res['data'] ?? {};
+      int? packageId;
+      if (isEditing) {
+        packageId = widget.packageToEdit!['id'] is int ? widget.packageToEdit!['id'] : int.tryParse(widget.packageToEdit!['id'].toString());
+      } else {
+        packageId = createdPkg['id'] is int ? createdPkg['id'] : int.tryParse(createdPkg['id']?.toString() ?? '');
+      }
+
+      // Check for local file paths
+      final localPaths = _galleryImages.where((path) => !path.startsWith('http') && !path.startsWith('assets/')).toList();
+      if (packageId != null && localPaths.isNotEmpty) {
+        debugPrint('[DEBUG] Uploading package images: $localPaths');
+        await ApiService.uploadPackageImages(packageId, localPaths);
+      }
+    }
 
     if (!mounted) return;
     Navigator.of(context).pop(); // pop spinner
@@ -604,6 +614,8 @@ class _AddPackageScreenState extends State<AddPackageScreen> {
       imageUrl = apiPkg['cover_url'];
     } else if (apiPkg['images'] != null && (apiPkg['images'] as List).isNotEmpty) {
       imageUrl = apiPkg['images'][0]['url'] ?? 'assets/images/package_spa.jpg';
+    } else if (_galleryImages.isNotEmpty) {
+      imageUrl = _galleryImages[0];
     }
 
     final double priceVal = double.tryParse(apiPkg['price']?.toString() ?? '') ?? double.tryParse(fallbackSellingPrice) ?? 0.0;
@@ -697,13 +709,13 @@ class _AddPackageScreenState extends State<AddPackageScreen> {
     double progress = 0.33;
 
     if (_currentStep == 1) {
-      stepTitle = 'Media & Merchant';
+      stepTitle = 'Package Information';
       progress = 0.33;
     } else if (_currentStep == 2) {
-      stepTitle = 'Package Information';
+      stepTitle = 'Pricing & Validity';
       progress = 0.66;
     } else {
-      stepTitle = 'Finalizing Details';
+      stepTitle = 'Media Uploads';
       progress = 1.0;
     }
 
@@ -759,21 +771,31 @@ class _AddPackageScreenState extends State<AddPackageScreen> {
     }
   }
 
-  // --- STEP 1: MEDIA & MERCHANT ---
-  Widget _buildStep1() {
+  // --- MERCHANT SECTION & STEPS BUILDERS ---
+  Widget _buildMerchantSection() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        // Merchant Label and "Not in the list"
+        // Merchant Label and Toggle Link
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            _buildSectionHeader('Select Merchant *'),
+            _buildSectionHeader(_isCustomMerchant ? 'Custom Merchant Name *' : 'Select Merchant *'),
             GestureDetector(
-              onTap: _showCustomMerchantDialog,
-              child: const Text(
-                'Not in the list',
-                style: TextStyle(
+              onTap: () {
+                setState(() {
+                  _isCustomMerchant = !_isCustomMerchant;
+                  if (!_isCustomMerchant) {
+                    _customMerchantController.clear();
+                    _selectedMerchant = '';
+                  } else {
+                    _selectedMerchant = _customMerchantController.text.trim();
+                  }
+                });
+              },
+              child: Text(
+                _isCustomMerchant ? 'Select from list' : 'Not in the list',
+                style: const TextStyle(
                   fontSize: 12,
                   fontWeight: FontWeight.bold,
                   color: Color(0xFFFBBD03),
@@ -783,187 +805,108 @@ class _AddPackageScreenState extends State<AddPackageScreen> {
             ),
           ],
         ),
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: AppColors.primary.withValues(alpha: 0.1)),
-          ),
-          child: DropdownButtonHideUnderline(
-            child: DropdownButtonFormField<String>(
-              isExpanded: true,
-              key: ValueKey(_selectedMerchant),
-              // ignore: deprecated_member_use
-              value: (_apiMerchants.any((m) => (m['business_name'] == _selectedMerchant || m['name'] == _selectedMerchant)) || _fallbackMerchants.contains(_selectedMerchant))
-                  ? (_selectedMerchant.isEmpty ? null : _selectedMerchant)
-                  : null,
-              hint: Text(
-                _isLoadingData ? 'Loading merchants...' : 'Select a merchant...',
-                style: TextStyle(color: AppColors.primary.withValues(alpha: 0.4), fontSize: 14),
-              ),
-              decoration: const InputDecoration(
+        if (_isCustomMerchant) ...[
+          Container(
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: AppColors.primary.withValues(alpha: 0.12)),
+            ),
+            child: TextFormField(
+              controller: _customMerchantController,
+              style: const TextStyle(fontSize: 13, color: AppColors.primary, fontWeight: FontWeight.w500),
+              onChanged: (val) {
+                setState(() {
+                  _selectedMerchant = val.trim();
+                });
+              },
+              decoration: InputDecoration(
+                hintText: 'e.g. Active Fitness Center',
+                hintStyle: TextStyle(color: AppColors.primary.withValues(alpha: 0.35), fontSize: 13),
                 border: InputBorder.none,
-                enabledBorder: InputBorder.none,
-                focusedBorder: InputBorder.none,
-                errorBorder: InputBorder.none,
-                disabledBorder: InputBorder.none,
-                contentPadding: EdgeInsets.zero,
+                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
               ),
-              items: _apiMerchants.isNotEmpty
-                  ? _apiMerchants.map((merchant) {
-                      final name = merchant['business_name']?.toString() ?? merchant['name']?.toString() ?? '';
-                      return DropdownMenuItem<String>(
-                        value: name,
-                        child: _buildMerchantDropdownItem(merchant),
-                      );
-                    }).toList()
-                  : _fallbackMerchants.map((name) {
-                      return DropdownMenuItem<String>(
-                        value: name,
-                        child: Row(
-                          children: [
-                            Container(
-                              width: 32,
-                              height: 32,
-                              decoration: const BoxDecoration(
-                                shape: BoxShape.circle,
-                                color: Color(0xFF8B5CF6),
-                              ),
-                              child: Center(
-                                child: Text(
-                                  name.substring(0, 1).toUpperCase(),
-                                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+            ),
+          ),
+        ] else ...[
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: AppColors.primary.withValues(alpha: 0.1)),
+            ),
+            child: DropdownButtonHideUnderline(
+              child: DropdownButtonFormField<String>(
+                isExpanded: true,
+                key: ValueKey(_selectedMerchant),
+                // ignore: deprecated_member_use
+                value: (_apiMerchants.any((m) => (m['business_name'] == _selectedMerchant || m['name'] == _selectedMerchant)) || _fallbackMerchants.contains(_selectedMerchant))
+                    ? (_selectedMerchant.isEmpty ? null : _selectedMerchant)
+                    : null,
+                hint: Text(
+                  _isLoadingData ? 'Loading merchants...' : 'Select a merchant...',
+                  style: TextStyle(color: AppColors.primary.withValues(alpha: 0.4), fontSize: 14),
+                ),
+                decoration: const InputDecoration(
+                  border: InputBorder.none,
+                  enabledBorder: InputBorder.none,
+                  focusedBorder: InputBorder.none,
+                  errorBorder: InputBorder.none,
+                  disabledBorder: InputBorder.none,
+                  contentPadding: EdgeInsets.zero,
+                ),
+                items: _apiMerchants.isNotEmpty
+                    ? _apiMerchants.map((merchant) {
+                        final name = merchant['business_name']?.toString() ?? merchant['name']?.toString() ?? '';
+                        return DropdownMenuItem<String>(
+                          value: name,
+                          child: _buildMerchantDropdownItem(merchant),
+                        );
+                      }).toList()
+                    : _fallbackMerchants.map((name) {
+                        return DropdownMenuItem<String>(
+                          value: name,
+                          child: Row(
+                            children: [
+                              Container(
+                                width: 32,
+                                height: 32,
+                                decoration: const BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  color: Color(0xFF8B5CF6),
+                                ),
+                                child: Center(
+                                  child: Text(
+                                    name.substring(0, 1).toUpperCase(),
+                                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                                  ),
                                 ),
                               ),
-                            ),
-                            const SizedBox(width: 12),
-                            Text(name, style: const TextStyle(fontSize: 14, color: AppColors.primary)),
-                          ],
-                        ),
-                      );
-                    }).toList(),
-              onChanged: (val) {
-                setState(() => _selectedMerchant = val ?? '');
-              },
-            ),
-          ),
-        ),
-        const SizedBox(height: 24),
-
-        // Gallery Images Card
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            _buildSectionHeader('Gallery Images (${_galleryImages.length}/5)'),
-            Text(
-              'Upload up to 5 images (max 5MB each)',
-              style: TextStyle(fontSize: 9, color: AppColors.primary.withValues(alpha: 0.4)),
-            ),
-          ],
-        ),
-        const SizedBox(height: 10),
-        _buildUploadDottedBox(
-          icon: Icons.add_photo_alternate_outlined,
-          label: 'Add Image',
-          onTap: () {
-            if (_galleryImages.length >= 5) {
-              _showToast('Maximum 5 images allowed', type: SnackBarType.warning);
-              return;
-            }
-            // Simulate adding a mock image path
-            setState(() {
-              _galleryImages.add('assets/images/package_spa.jpg');
-            });
-            _showToast('Mock image added to gallery', type: SnackBarType.success);
-          },
-        ),
-        if (_galleryImages.isNotEmpty) ...[
-          const SizedBox(height: 12),
-          SizedBox(
-            height: 64,
-            child: ListView.builder(
-              scrollDirection: Axis.horizontal,
-              itemCount: _galleryImages.length,
-              itemBuilder: (context, index) => Container(
-                margin: const EdgeInsets.only(right: 10),
-                width: 64,
-                height: 64,
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(10),
-                  image: DecorationImage(
-                    image: AssetImage(_galleryImages[index]),
-                    fit: BoxFit.cover,
-                  ),
-                ),
-                child: Align(
-                  alignment: Alignment.topRight,
-                  child: GestureDetector(
-                    onTap: () {
-                      setState(() => _galleryImages.removeAt(index));
-                    },
-                    child: Container(
-                      margin: const EdgeInsets.all(2),
-                      decoration: const BoxDecoration(color: Colors.black54, shape: BoxShape.circle),
-                      child: const Icon(Icons.close, color: Colors.white, size: 14),
-                    ),
-                  ),
-                ),
+                              const SizedBox(width: 12),
+                              Text(name, style: const TextStyle(fontSize: 14, color: AppColors.primary)),
+                            ],
+                          ),
+                        );
+                      }).toList(),
+                onChanged: (val) {
+                  setState(() => _selectedMerchant = val ?? '');
+                },
               ),
             ),
           ),
         ],
-        const SizedBox(height: 24),
-
-        // Submission Receipt Card
-        _buildSectionHeader('Submission Receipt*'),
-        const Text(
-          'Upload a receipt or proof of purchase for admin verification.',
-          style: TextStyle(fontSize: 11, color: Colors.black45),
-        ),
-        const SizedBox(height: 12),
-
-        // Alert bar
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-          decoration: BoxDecoration(
-            color: const Color(0xFFF3E5F5), // Light purple alert
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: Row(
-            children: const [
-              Icon(Icons.warning_amber_rounded, size: 16, color: Colors.purple),
-              SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  'Receipt is required to complete your package submission.',
-                  style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.purple),
-                ),
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 14),
-
-        _buildUploadDottedBox(
-          icon: Icons.receipt_long_outlined,
-          label: _receiptFileName.isEmpty ? 'Click to browse PDF, JPG or PNG' : _receiptFileName,
-          onTap: () {
-            setState(() {
-              _receiptFileName = 'receipt_invoice_591.pdf';
-            });
-            _showToast('Mock receipt uploaded successfully', type: SnackBarType.success);
-          },
-        ),
       ],
     );
   }
 
-  // --- STEP 2: PACKAGE INFORMATION ---
-  Widget _buildStep2() {
+  Widget _buildStep1() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        _buildMerchantSection(),
+        const SizedBox(height: 24),
+        
         // Title Input
         _buildSectionHeader('Package Title *'),
         _buildInputField(
@@ -995,68 +938,161 @@ class _AddPackageScreenState extends State<AddPackageScreen> {
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            _buildSectionHeader('Key Points (${_keyPoints.length}/5)'),
+            _buildSectionHeader("Key Points (What's Included)"),
             Text(
-              'Highlight what\'s included',
-              style: TextStyle(fontSize: 10, color: AppColors.primary.withValues(alpha: 0.4)),
+              "${_keyPoints.length}/5",
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: Colors.black.withValues(alpha: 0.4),
+              ),
             ),
           ],
         ),
         const SizedBox(height: 10),
-        _keyPoints.isEmpty
-            ? Container(
-                padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 16),
+
+        // List of added key points
+        if (_keyPoints.isNotEmpty) ...[
+          Column(
+            children: _keyPoints.asMap().entries.map((entry) {
+              final idx = entry.key;
+              final pt = entry.value;
+              return Container(
+                margin: const EdgeInsets.only(bottom: 8),
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                 decoration: BoxDecoration(
                   color: Colors.white,
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: AppColors.primary.withValues(alpha: 0.08)),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: AppColors.primary.withValues(alpha: 0.06)),
                 ),
                 child: Row(
-                  children: const [
-                    Icon(Icons.info_outline_rounded, size: 16, color: Colors.orange),
-                    SizedBox(width: 8),
-                    Text(
-                      'No key points added yet.',
-                      style: TextStyle(fontSize: 12, color: Colors.orange, fontWeight: FontWeight.bold),
+                  children: [
+                    const Icon(Icons.check_circle_rounded, color: Color(0xFF1F2E4E), size: 14),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        pt,
+                        style: const TextStyle(fontSize: 12, color: AppColors.primary, fontWeight: FontWeight.w500),
+                      ),
+                    ),
+                    GestureDetector(
+                      onTap: () => setState(() => _keyPoints.removeAt(idx)),
+                      child: const Icon(Icons.delete_outline, size: 16, color: Colors.red),
                     ),
                   ],
                 ),
-              )
-            : Column(
-                children: _keyPoints.asMap().entries.map((entry) {
-                  final idx = entry.key;
-                  final pt = entry.value;
-                  return Container(
-                    margin: const EdgeInsets.only(bottom: 8),
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: AppColors.primary.withValues(alpha: 0.06)),
+              );
+            }).toList(),
+          ),
+          const SizedBox(height: 8),
+        ],
+
+        // Input field or Add button
+        if (_isAddingKeyPoint) ...[
+          Row(
+            children: [
+              Expanded(
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: AppColors.primary.withValues(alpha: 0.12)),
+                  ),
+                  child: TextFormField(
+                    controller: _newKeyPointController,
+                    autofocus: true,
+                    style: const TextStyle(fontSize: 13, color: AppColors.primary, fontWeight: FontWeight.w500),
+                    textInputAction: TextInputAction.done,
+                    onFieldSubmitted: (val) => _addKeyPointInline(),
+                    decoration: InputDecoration(
+                      hintText: 'e.g., 1-Hour massage session...',
+                      hintStyle: TextStyle(color: AppColors.primary.withValues(alpha: 0.35), fontSize: 13),
+                      border: InputBorder.none,
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
                     ),
-                    child: Row(
-                      children: [
-                        const Icon(Icons.check_circle, color: Color(0xFF1F2E4E), size: 14),
-                        const SizedBox(width: 8),
-                        Expanded(child: Text(pt, style: const TextStyle(fontSize: 12))),
-                        GestureDetector(
-                          onTap: () => setState(() => _keyPoints.removeAt(idx)),
-                          child: const Icon(Icons.delete_outline, size: 16, color: Colors.red),
-                        ),
-                      ],
-                    ),
-                  );
-                }).toList(),
+                  ),
+                ),
               ),
-        const SizedBox(height: 10),
-        OutlinedButton.icon(
-          onPressed: _showAddKeyPointDialog,
-          icon: const Icon(Icons.add, size: 16, color: Color(0xFF1F2E4E)),
-          label: const Text('Add Key Point', style: TextStyle(color: Color(0xFF1F2E4E), fontWeight: FontWeight.bold)),
-          style: OutlinedButton.styleFrom(
-            padding: const EdgeInsets.symmetric(vertical: 12),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-            side: const BorderSide(color: Color(0xFF1F2E4E)),
+              const SizedBox(width: 10),
+              GestureDetector(
+                onTap: _addKeyPointInline,
+                child: Container(
+                  width: 48,
+                  height: 48,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF1F2E4E),
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  alignment: Alignment.center,
+                  child: const Icon(Icons.check_rounded, color: Colors.white, size: 20),
+                ),
+              ),
+              const SizedBox(width: 8),
+              GestureDetector(
+                onTap: () {
+                  setState(() {
+                    _newKeyPointController.clear();
+                    _isAddingKeyPoint = false;
+                  });
+                },
+                child: Container(
+                  width: 48,
+                  height: 48,
+                  decoration: BoxDecoration(
+                    color: Colors.red.shade50,
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: Colors.red.shade100),
+                  ),
+                  alignment: Alignment.center,
+                  child: const Icon(Icons.close_rounded, color: Colors.red, size: 20),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+        ] else if (_keyPoints.length < 5) ...[
+          GestureDetector(
+            onTap: () {
+              setState(() {
+                _isAddingKeyPoint = true;
+              });
+            },
+            child: Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(vertical: 14),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: AppColors.primary.withValues(alpha: 0.12)),
+              ),
+              alignment: Alignment.center,
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.add, size: 14, color: Colors.black.withValues(alpha: 0.6)),
+                  const SizedBox(width: 6),
+                  const Text(
+                    'Add Key Point',
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: Color(0xFF1F2E4E),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 10),
+        ],
+
+        // Subtitle
+        Text(
+          "Add up to 5 key points highlighting what's included in your package.",
+          style: TextStyle(
+            fontSize: 11,
+            color: Colors.black.withValues(alpha: 0.45),
+            fontWeight: FontWeight.w400,
           ),
         ),
         const SizedBox(height: 24),
@@ -1150,40 +1186,26 @@ class _AddPackageScreenState extends State<AddPackageScreen> {
     );
   }
 
-  void _showAddKeyPointDialog() {
-    final controller = TextEditingController();
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Add Key Point', style: TextStyle(fontFamily: 'Recoleta Alt', fontWeight: FontWeight.bold)),
-        content: TextField(
-          controller: controller,
-          decoration: const InputDecoration(hintText: 'e.g. 1-Hour massage session included'),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Cancel', style: TextStyle(color: Colors.black45)),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              if (controller.text.trim().isNotEmpty) {
-                setState(() {
-                  _keyPoints.add(controller.text.trim());
-                });
-              }
-              Navigator.of(context).pop();
-            },
-            style: ElevatedButton.styleFrom(backgroundColor: AppColors.primary),
-            child: const Text('Add', style: TextStyle(color: Colors.white)),
-          ),
-        ],
-      ),
-    );
+  void _addKeyPointInline() {
+    final text = _newKeyPointController.text.trim();
+    if (text.isEmpty) {
+      setState(() {
+        _isAddingKeyPoint = false;
+      });
+      return;
+    }
+    if (_keyPoints.length >= 5) {
+      _showToast('Maximum 5 key points allowed', type: SnackBarType.warning);
+      return;
+    }
+    setState(() {
+      _keyPoints.add(text);
+      _newKeyPointController.clear();
+      _isAddingKeyPoint = false;
+    });
   }
 
-  // --- STEP 3: FINALIZING DETAILS ---
-  Widget _buildStep3() {
+  Widget _buildStep2() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -1393,6 +1415,140 @@ class _AddPackageScreenState extends State<AddPackageScreen> {
     );
   }
 
+  Widget _buildStep3() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        // Gallery Images Card
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            _buildSectionHeader('Gallery Images (${_galleryImages.length}/5)'),
+            Text(
+              'Upload up to 5 images (max 5MB each)',
+              style: TextStyle(fontSize: 9, color: AppColors.primary.withValues(alpha: 0.4)),
+            ),
+          ],
+        ),
+        const SizedBox(height: 10),
+        _buildUploadDottedBox(
+          icon: Icons.add_photo_alternate_outlined,
+          label: 'Add Image',
+          onTap: () async {
+            if (_galleryImages.length >= 5) {
+              _showToast('Maximum 5 images allowed', type: SnackBarType.warning);
+              return;
+            }
+            try {
+              final List<XFile> pickedImages = await _picker.pickMultiImage();
+              if (pickedImages.isNotEmpty) {
+                setState(() {
+                  for (var image in pickedImages) {
+                    if (_galleryImages.length < 5) {
+                      _galleryImages.add(image.path);
+                    } else {
+                      break;
+                    }
+                  }
+                });
+                _showToast('${pickedImages.length} image(s) selected', type: SnackBarType.success);
+              }
+            } catch (e) {
+              _showToast('Failed to pick images: $e', type: SnackBarType.error);
+            }
+          },
+        ),
+        if (_galleryImages.isNotEmpty) ...[
+          const SizedBox(height: 12),
+          SizedBox(
+            height: 64,
+            child: ListView.builder(
+              scrollDirection: Axis.horizontal,
+              itemCount: _galleryImages.length,
+              itemBuilder: (context, index) => Container(
+                margin: const EdgeInsets.only(right: 10),
+                width: 64,
+                height: 64,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(10),
+                  image: DecorationImage(
+                    image: _galleryImages[index].startsWith('http')
+                        ? NetworkImage(_galleryImages[index]) as ImageProvider
+                        : _galleryImages[index].startsWith('assets/')
+                            ? AssetImage(_galleryImages[index])
+                            : FileImage(File(_galleryImages[index])),
+                    fit: BoxFit.cover,
+                  ),
+                ),
+                child: Align(
+                  alignment: Alignment.topRight,
+                  child: GestureDetector(
+                    onTap: () {
+                      setState(() => _galleryImages.removeAt(index));
+                    },
+                    child: Container(
+                      margin: const EdgeInsets.all(2),
+                      decoration: const BoxDecoration(color: Colors.black54, shape: BoxShape.circle),
+                      child: const Icon(Icons.close, color: Colors.white, size: 14),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+        const SizedBox(height: 24),
+
+        // Submission Receipt Card
+        _buildSectionHeader('Submission Receipt*'),
+        const Text(
+          'Upload a receipt or proof of purchase for admin verification.',
+          style: TextStyle(fontSize: 11, color: Colors.black45),
+        ),
+        const SizedBox(height: 12),
+
+        // Alert bar
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          decoration: BoxDecoration(
+            color: const Color(0xFFF3E5F5), // Light purple alert
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Row(
+            children: const [
+              Icon(Icons.warning_amber_rounded, size: 16, color: Colors.purple),
+              SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Receipt is required to complete your package submission.',
+                  style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.purple),
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 14),
+
+        _buildUploadDottedBox(
+          icon: Icons.receipt_long_outlined,
+          label: _receiptFileName.isEmpty ? 'Click to browse PDF, JPG or PNG' : _receiptFileName,
+          onTap: () async {
+            try {
+              final XFile? file = await _picker.pickImage(source: ImageSource.gallery);
+              if (file != null) {
+                setState(() {
+                  _receiptFileName = file.name;
+                });
+                _showToast('Receipt selected successfully', type: SnackBarType.success);
+              }
+            } catch (e) {
+              _showToast('Failed to pick receipt: $e', type: SnackBarType.error);
+            }
+          },
+        ),
+      ],
+    );
+  }
   void _showDatePicker() async {
     final picked = await showDatePicker(
       context: context,

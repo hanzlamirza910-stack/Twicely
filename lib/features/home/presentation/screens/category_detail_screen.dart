@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/services/api_service.dart';
+import '../../../../core/widgets/package_image_carousel.dart';
 import 'package_detail_screen.dart';
 
 class CategoryDetailScreen extends StatefulWidget {
@@ -183,6 +184,20 @@ class _CategoryDetailScreenState extends State<CategoryDetailScreen> {
       imageUrl = apiPkg['images'][0]['url'] ?? 'assets/images/package_spa.jpg';
     }
 
+    final List<String> allImages = [];
+    if (apiPkg['images'] != null && (apiPkg['images'] as List).isNotEmpty) {
+      for (var img in apiPkg['images'] as List) {
+        if (img is Map && img['url'] != null && img['url'].toString().isNotEmpty) {
+          allImages.add(img['url'].toString());
+        } else if (img is String && img.isNotEmpty) {
+          allImages.add(img);
+        }
+      }
+    }
+    if (allImages.isEmpty && imageUrl.isNotEmpty) {
+      allImages.add(imageUrl);
+    }
+
     final double basePrice = double.tryParse(apiPkg['price']?.toString() ?? '') ?? 0.0;
     final double discPrice = double.tryParse(apiPkg['discounted_price']?.toString() ?? '') ?? 0.0;
     final bool hasDiscount = discPrice > 0 && discPrice < basePrice;
@@ -215,18 +230,20 @@ class _CategoryDetailScreenState extends State<CategoryDetailScreen> {
     if (merchantIdVal != null && ApiService.merchantsCache.containsKey(merchantIdVal)) {
       final m = ApiService.merchantsCache[merchantIdVal]!;
       merchantName = m['business_name']?.toString() ?? 'Twicely Merchant';
-      merchantLogo = m['logo_url']?.toString() ?? '';
+      merchantLogo = ApiService.getMerchantLogo(merchantIdVal, m['logo_url']?.toString());
     } else if (apiPkg['merchant'] is Map && apiPkg['merchant']['name'] != null) {
       merchantName = apiPkg['merchant']['name'].toString();
-      merchantLogo = apiPkg['merchant']['logo']?.toString() ?? '';
+      merchantLogo = ApiService.getMerchantLogo(merchantIdVal, apiPkg['merchant']['logo']?.toString());
     } else if (apiPkg['merchant_name'] != null) {
       merchantName = apiPkg['merchant_name'].toString();
+      merchantLogo = ApiService.getMerchantLogo(merchantIdVal, '');
     }
 
     return {
       'id': apiPkg['id'],
       'imageUrl': imageUrl,
       'image': imageUrl,
+      'allImages': allImages,
       'tag': tag,
       'title': apiPkg['title'] ?? 'Package Listing',
       'originalPrice': 'S\$${originalPrice.toStringAsFixed(2)}',
@@ -247,6 +264,7 @@ class _CategoryDetailScreenState extends State<CategoryDetailScreen> {
       },
       'merchantName': merchantName,
       'merchantLogo': merchantLogo,
+      'merchant_id': merchantIdVal,
     };
   }
 
@@ -426,27 +444,19 @@ class _CategoryDetailScreenState extends State<CategoryDetailScreen> {
                                       crossAxisAlignment: CrossAxisAlignment.start,
                                       children: [
                                         // Package Image
-                                        ClipRRect(
+                                        PackageImageCarousel(
+                                          images: pkg['allImages'] != null ? List<String>.from(pkg['allImages'] as Iterable) : [img],
+                                          fallbackImage: 'assets/images/package_spa.jpg',
+                                          width: 90,
+                                          height: 90,
                                           borderRadius: BorderRadius.circular(12),
-                                          child: img.startsWith('assets/')
-                                              ? Image.asset(
-                                                  img,
-                                                  width: 90,
-                                                  height: 90,
-                                                  fit: BoxFit.cover,
-                                                )
-                                              : Image.network(
-                                                  img,
-                                                  width: 90,
-                                                  height: 90,
-                                                  fit: BoxFit.cover,
-                                                  errorBuilder: (context, error, stackTrace) => Container(
-                                                    width: 90,
-                                                    height: 90,
-                                                    color: AppColors.primary.withValues(alpha: 0.05),
-                                                    child: const Icon(Icons.image, color: AppColors.primary),
-                                                  ),
-                                                ),
+                                          onTap: () {
+                                            Navigator.of(context).push(
+                                              MaterialPageRoute(
+                                                builder: (context) => PackageDetailScreen(package: pkg),
+                                              ),
+                                            );
+                                          },
                                         ),
                                         const SizedBox(width: 14),
                                         // Content details

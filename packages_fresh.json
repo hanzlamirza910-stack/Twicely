@@ -1,0 +1,491 @@
+{
+    "success": true,
+    "data": [
+        {
+            "id": 1265,
+            "title": "This is new package",
+            "status": "published",
+            "price": 64,
+            "discounted_price": null,
+            "currency": "SGD",
+            "featured": false,
+            "location": "",
+            "images": [
+                {
+                    "id": 1266,
+                    "url": "https://staging.twicely.sg/wp-content/uploads/2026/04/truss-overkapping-8x8-1.jpg",
+                    "is_cover": true,
+                    "sort_order": 0
+                }
+            ],
+            "permalink": "https://staging.twicely.sg/packages/this-is-new-package/",
+            "created_at": "2026-04-12 11:39:05",
+            "availability_status": "active",
+            "owner_id": 0,
+            "owner_type": "",
+            "merchant_id": 14,
+            "secondary_category": "yoga-pilates"
+        },
+        {
+            "id": 704,
+            "title": "Testing more",
+            "status": "published",
+            "price": 1200,
+            "discounted_price": null,
+            "currency": "USD",
+            "featured": false,
+            "location": "",
+            "images": [
+                {
+                    "id": 705,
+                    "url": "https://staging.twicely.sg/wp-content/uploads/2026/03/02.png",
+                    "is_cover": true,
+                    "sort_order": 0
+                }
+            ],
+            "permalink": "https://staging.twicely.sg/packages/testing-more/",
+            "created_at": "2026-03-13 03:07:16",
+            "availability_status": "expired",
+            "owner_id": 0,
+            "owner_type": "",
+            "merchant_id": 13,
+            "secondary_category": "spa-massage"
+        },
+        {
+            "id": 702,
+            "title": "rejuran salmon injection",
+            "status": "published",
+            "price": 800,
+            "discounted_price": 748,
+            "currency": "SGD",
+            "featured": false,
+            "location": "",
+            "images": [],
+            "permalink": "https://staging.twicely.sg/packages/rejuran-salmon-injection/",
+            "created_at": "2026-03-05 12:52:56",
+            "availability_status": "sold",
+            "owner_id": 0,
+            "owner_type": "",
+            "merchant_id": 12,
+            "secondary_category": "spa-massage"
+        },
+        {
+            "id": 700,
+            "title": "Guided \u201cAnger Yoga\u201d + Cold Towel Reset (1 Session)",
+            "status": "published",
+            "price": 5000,
+            "discounted_price": null,
+            "currency": "SGD",
+            "featured": false,
+            "location": "",
+            "images": [
+                {
+                    "id": 701,
+                    "url": "https://staging.twicely.sg/wp-content/uploads/2026/03/angry-african-pro-woman-gamer-losing-space-shooter-2026-01-08-02-24-58-utc-scaled.jpg",
+                    "is_cover": true,
+                    "sort_order": 0
+                }
+            ],
+            "permalink": "https://staging.twicely.sg/packages/guided-anger-yoga-cold-towel-reset-1-session/",
+            "created_at": "2026-03-05 12:35:47",
+            "availability_status": "active",
+            "owner_id": 0,
+            "owner_type": "",
+            "merchant_id": 12,
+            "secondary_category": "lifestyle-classes"
+        },
+        {
+            "id": 697,
+            "title": "Beer Yoga Class \u2014 1 Session Pass (Small Group) [TEST]",
+            "status": "published",
+            "price": 1120,
+            "discounted_price": null,
+            "currency": "SGD",
+            "featured": false,
+            "location": "",
+            "images": [
+                {
+                    "id": 698,
+                    "url": "https://staging.twicely.sg/wp-content/uploads/2026/03/Singapore.png",
+                    "is_cover": true,
+                    "sort_order": 0
+                }
+            ],
+            "permalink": "https://staging.twicely.sg/packages/beer-yoga-class-1-session-pass-small-group-test/",
+            "created_at": "2026-03-05 12:16:49",
+            "availability_status": "expired",
+            "owner_id": 0,
+            "owner_type": "",
+            "merchant_id": 14,
+            "secondary_category": "yoga-pilates"
+        },
+        {
+            "id": 688,
+            "title": "Test",
+            "status": "published",
+            "price": 800,
+            "discounted_price": null,
+            "currency": "SGD",
+            "featured": false,
+            "location": "",
+            "images": [
+                {
+                    "id": 689,
+                    "url": "https://staging.twicely.sg/wp-content/uploads/2026/03/2001.jpg",
+                    "is_cover": true,
+                    "sort_order": 0
+                }
+            ],
+            "permalink": "https://staging.twicely.sg/packages/test/",
+            "created_at": "2026-03-02 08:15:01",
+            "availability_status": "expired",
+            "owner_id": 0,
+            "owner_type": "",
+            "merchant_id": 3,
+            "secondary_category": "beauty-nails"
+        },
+        {
+            "id": 671,
+            "title": "Testing 4sdsd",
+            "status": "published",
+            "price": 800,
+            "discounted_price": null,
+            "currency": "SGD",
+            "featured": false,
+            "location": "",
+            "images": [
+                {
+                    "id": 672,
+                    "url": "https://staging.twicely.sg/wp-content/uploads/2026/02/2148295318.jpg",
+                    "is_cover": true,
+                    "sort_order": 0
+                }
+            ],
+            "permalink": "https://staging.twicely.sg/packages/testing-4sdsd/",
+            "created_at": "2026-02-28 09:09:57",
+            "availability_status": "expired",
+            "owner_id": 0,
+            "owner_type": "",
+            "merchant_id": 3,
+            "secondary_category": ""
+        },
+        {
+            "id": 663,
+            "title": "Testing 3rd",
+            "status": "published",
+            "price": 800,
+            "discounted_price": null,
+            "currency": "SGD",
+            "featured": false,
+            "location": "",
+            "images": [
+                {
+                    "id": 664,
+                    "url": "https://staging.twicely.sg/wp-content/uploads/2026/02/shutterstock_2130936026.jpg",
+                    "is_cover": true,
+                    "sort_order": 0
+                }
+            ],
+            "permalink": "https://staging.twicely.sg/packages/testing-3rd/",
+            "created_at": "2026-02-28 06:57:04",
+            "availability_status": "sold",
+            "owner_id": 0,
+            "owner_type": "",
+            "merchant_id": 3,
+            "secondary_category": "gym-fitness"
+        },
+        {
+            "id": 659,
+            "title": "Testing package 2",
+            "status": "published",
+            "price": 800,
+            "discounted_price": null,
+            "currency": "SGD",
+            "featured": false,
+            "location": "",
+            "images": [
+                {
+                    "id": 660,
+                    "url": "https://staging.twicely.sg/wp-content/uploads/2026/02/bank-mum-dad-scaled.jpg",
+                    "is_cover": true,
+                    "sort_order": 0
+                }
+            ],
+            "permalink": "https://staging.twicely.sg/packages/testing-package-2/",
+            "created_at": "2026-02-28 06:45:01",
+            "availability_status": "expired",
+            "owner_id": 0,
+            "owner_type": "",
+            "merchant_id": 3,
+            "secondary_category": "yoga-pilates"
+        },
+        {
+            "id": 656,
+            "title": "Testing for ne",
+            "status": "published",
+            "price": 1000,
+            "discounted_price": null,
+            "currency": "SGD",
+            "featured": false,
+            "location": "",
+            "images": [
+                {
+                    "id": 657,
+                    "url": "https://staging.twicely.sg/wp-content/uploads/2026/02/shutterstock_2448685747.jpg",
+                    "is_cover": true,
+                    "sort_order": 0
+                }
+            ],
+            "permalink": "https://staging.twicely.sg/packages/testing-for-ne/",
+            "created_at": "2026-02-26 03:58:41",
+            "availability_status": "sold",
+            "owner_id": 0,
+            "owner_type": "",
+            "merchant_id": 3,
+            "secondary_category": ""
+        },
+        {
+            "id": 650,
+            "title": "5 Golf Sessions At Orchid Country Club (Zaman)",
+            "status": "published",
+            "price": 800,
+            "discounted_price": null,
+            "currency": "SGD",
+            "featured": false,
+            "location": "",
+            "images": [
+                {
+                    "id": 651,
+                    "url": "https://staging.twicely.sg/wp-content/uploads/2026/02/2001.jpg",
+                    "is_cover": true,
+                    "sort_order": 0
+                }
+            ],
+            "permalink": "https://staging.twicely.sg/packages/5-golf-sessions-at-orchid-country-club-zaman/",
+            "created_at": "2026-02-26 02:59:20",
+            "availability_status": "expired",
+            "owner_id": 0,
+            "owner_type": "",
+            "merchant_id": 3,
+            "secondary_category": "yoga-pilates"
+        },
+        {
+            "id": 644,
+            "title": "HydraFacial Glow Treatment (4 sessions)",
+            "status": "published",
+            "price": 120,
+            "discounted_price": 100,
+            "currency": "SGD",
+            "featured": false,
+            "location": "",
+            "images": [
+                {
+                    "id": 645,
+                    "url": "https://staging.twicely.sg/wp-content/uploads/2026/01/2785.jpg",
+                    "is_cover": true,
+                    "sort_order": 0
+                }
+            ],
+            "permalink": "https://staging.twicely.sg/packages/hydrafacial-glow-treatment-4-sessions/",
+            "created_at": "2026-01-12 15:53:06",
+            "availability_status": "expired",
+            "owner_id": 3,
+            "owner_type": "merchant",
+            "merchant_id": 3,
+            "secondary_category": "yoga-pilates"
+        },
+        {
+            "id": 640,
+            "title": "3 Golf Sessions At Orchid Country Club (Yishun)",
+            "status": "published",
+            "price": 120,
+            "discounted_price": null,
+            "currency": "SGD",
+            "featured": false,
+            "location": "",
+            "images": [
+                {
+                    "id": 641,
+                    "url": "https://staging.twicely.sg/wp-content/uploads/2026/01/2148295323.jpg",
+                    "is_cover": true,
+                    "sort_order": 0
+                },
+                {
+                    "id": 642,
+                    "url": "https://staging.twicely.sg/wp-content/uploads/2026/01/2148295318.jpg",
+                    "is_cover": false,
+                    "sort_order": 1
+                }
+            ],
+            "permalink": "https://staging.twicely.sg/packages/3-golf-sessions-at-orchid-country-club-yishun/",
+            "created_at": "2026-01-11 09:17:18",
+            "availability_status": "expired",
+            "owner_id": 0,
+            "owner_type": "",
+            "merchant_id": 3,
+            "secondary_category": "gym-fitness"
+        },
+        {
+            "id": 170,
+            "title": "5 Golf Sessions At Orchid Country Club (Yishun)",
+            "status": "published",
+            "price": 450,
+            "discounted_price": 100,
+            "currency": "SGD",
+            "featured": false,
+            "location": "",
+            "images": [
+                {
+                    "id": 171,
+                    "url": "https://staging.twicely.sg/wp-content/uploads/2025/11/shutterstock_2394341199-1.jpg",
+                    "is_cover": true,
+                    "sort_order": 0
+                }
+            ],
+            "permalink": "https://staging.twicely.sg/packages/5-golf-sessions-at-orchid-country-club-yishun/",
+            "created_at": "2025-11-19 13:55:32",
+            "availability_status": "expired",
+            "owner_id": 0,
+            "owner_type": "",
+            "merchant_id": null,
+            "secondary_category": "lifestyle-classes"
+        },
+        {
+            "id": 173,
+            "title": "HydraFacial Glow Treatment (8 sessions)",
+            "status": "published",
+            "price": 340,
+            "discounted_price": 120,
+            "currency": "SGD",
+            "featured": false,
+            "location": "",
+            "images": [
+                {
+                    "id": 175,
+                    "url": "https://staging.twicely.sg/wp-content/uploads/2025/11/shutterstock_1166005936-3.jpg",
+                    "is_cover": true,
+                    "sort_order": 0
+                }
+            ],
+            "permalink": "https://staging.twicely.sg/packages/hydrafacial-glow-treatment-8-sessions/",
+            "created_at": "2025-11-19 13:55:26",
+            "availability_status": "expired",
+            "owner_id": 0,
+            "owner_type": "",
+            "merchant_id": null,
+            "secondary_category": "beauty-nails"
+        },
+        {
+            "id": 176,
+            "title": "3 Reformer Pilates Session at PURE Yoga",
+            "status": "published",
+            "price": 320,
+            "discounted_price": 180,
+            "currency": "SGD",
+            "featured": false,
+            "location": "",
+            "images": [
+                {
+                    "id": 177,
+                    "url": "https://staging.twicely.sg/wp-content/uploads/2025/11/shutterstock_2598131743-2.jpg",
+                    "is_cover": true,
+                    "sort_order": 0
+                }
+            ],
+            "permalink": "https://staging.twicely.sg/packages/3-reformer-pilates-session-at-pure-yoga/",
+            "created_at": "2025-11-19 13:55:18",
+            "availability_status": "expired",
+            "owner_id": 0,
+            "owner_type": "",
+            "merchant_id": null,
+            "secondary_category": "yoga-pilates"
+        },
+        {
+            "id": 159,
+            "title": "Korean Facial x 8 Sessions (Jurong)",
+            "status": "published",
+            "price": 300,
+            "discounted_price": 270,
+            "currency": "SGD",
+            "featured": false,
+            "location": "",
+            "images": [
+                {
+                    "id": 160,
+                    "url": "https://staging.twicely.sg/wp-content/uploads/2025/11/shutterstock_2447441543.jpg",
+                    "is_cover": true,
+                    "sort_order": 0
+                },
+                {
+                    "id": 280,
+                    "url": "https://staging.twicely.sg/wp-content/uploads/2025/11/8396e272-355c-4355-8c4f-50c4cfd909b5-2.png",
+                    "is_cover": false,
+                    "sort_order": 1
+                }
+            ],
+            "permalink": "https://staging.twicely.sg/packages/korean-facial-x-8-sessions-jurong/",
+            "created_at": "2025-11-19 13:20:09",
+            "availability_status": "expired",
+            "owner_id": 0,
+            "owner_type": "",
+            "merchant_id": 3,
+            "secondary_category": "beauty-nails"
+        },
+        {
+            "id": 157,
+            "title": "10 x Mani-Pedi Sessions (Gel)",
+            "status": "published",
+            "price": 350,
+            "discounted_price": 250,
+            "currency": "SGD",
+            "featured": false,
+            "location": "",
+            "images": [
+                {
+                    "id": 158,
+                    "url": "https://staging.twicely.sg/wp-content/uploads/2025/11/shutterstock_2251640325.jpg",
+                    "is_cover": true,
+                    "sort_order": 0
+                }
+            ],
+            "permalink": "https://staging.twicely.sg/packages/10-x-mani-pedi-sessions-gel/",
+            "created_at": "2025-11-19 13:19:14",
+            "availability_status": "expired",
+            "owner_id": 0,
+            "owner_type": "",
+            "merchant_id": 3,
+            "secondary_category": "beauty-nails"
+        },
+        {
+            "id": 42,
+            "title": "2 Thai Massage with Aromatherapy (male only)",
+            "status": "published",
+            "price": 350,
+            "discounted_price": 200,
+            "currency": "SGD",
+            "featured": false,
+            "location": "",
+            "images": [
+                {
+                    "id": 156,
+                    "url": "https://staging.twicely.sg/wp-content/uploads/2025/11/shutterstock_2541039123.jpg",
+                    "is_cover": true,
+                    "sort_order": 0
+                }
+            ],
+            "permalink": "https://staging.twicely.sg/packages/1-month-all-access-gym-pass/",
+            "created_at": "2025-11-08 18:17:17",
+            "availability_status": "expired",
+            "owner_id": 0,
+            "owner_type": "",
+            "merchant_id": 3,
+            "secondary_category": "lifestyle-classes"
+        }
+    ],
+    "meta": {
+        "total": 19,
+        "page": 1,
+        "per_page": 20,
+        "total_pages": 1
+    }
+}

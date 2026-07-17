@@ -112,6 +112,7 @@ class _SellerProfileScreenState extends State<SellerProfileScreen> {
       'tag': tag,
       'merchant': _displayName,
       'merchantLogo': widget.merchantLogo,
+      'merchant_id': widget.merchantId,
       'category': secondarySlug,
       'secondary_category': secondarySlug,
     };
@@ -241,7 +242,7 @@ class _SellerProfileScreenState extends State<SellerProfileScreen> {
             width: 72,
             height: 72,
             decoration: BoxDecoration(
-              color: const Color(0xFFD68A84),
+              color: hasLogo ? Colors.grey.shade100 : _merchantAvatarColor(_displayName),
               shape: BoxShape.circle,
               image: hasLogo
                   ? DecorationImage(
@@ -251,7 +252,7 @@ class _SellerProfileScreenState extends State<SellerProfileScreen> {
                   : null,
             ),
             alignment: Alignment.center,
-            child: (!hasLogo && widget.merchantId != 14)
+            child: !hasLogo
                 ? Text(
                     avatarText,
                     style: const TextStyle(
@@ -432,52 +433,79 @@ class _SellerProfileScreenState extends State<SellerProfileScreen> {
               ),
             ),
             // Details
-            Padding(
-              padding: const EdgeInsets.all(12.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _buildCategoryRichText(item['tag']?.toString() ?? ''),
-                  const SizedBox(height: 6),
-                  Text(
-                    item['title'] ?? 'Package',
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.bold,
-                      color: AppColors.primary,
-                      height: 1.2,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  // Price row
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.baseline,
-                    textBaseline: TextBaseline.alphabetic,
-                    children: [
-                      Text(
-                        item['resalePrice'] ?? '',
-                        style: const TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w800,
-                          color: Color(0xFF273DB7),
-                        ),
-                      ),
-                      if (isDiscounted) ...[
-                        const SizedBox(width: 6),
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(10, 6, 10, 8),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    // Top: tag + title
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _buildCategoryRichText(item['tag']?.toString() ?? ''),
+                        const SizedBox(height: 3),
                         Text(
-                          item['originalPrice'] ?? '',
-                          style: TextStyle(
-                            fontSize: 10,
-                            decoration: TextDecoration.lineThrough,
-                            color: Colors.black.withValues(alpha: 0.4),
+                          item['title'] ?? 'Package',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
+                            color: AppColors.primary,
+                            height: 1.2,
                           ),
                         ),
                       ],
-                    ],
-                  ),
-                ],
+                    ),
+                    // Middle: price
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        if (isDiscounted)
+                          Text(
+                            item['originalPrice'] ?? '',
+                            style: TextStyle(
+                              fontSize: 9,
+                              decoration: TextDecoration.lineThrough,
+                              color: Colors.black.withValues(alpha: 0.4),
+                            ),
+                          ),
+                        Text(
+                          item['resalePrice'] ?? '',
+                          style: const TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w800,
+                            color: Color(0xFF273DB7),
+                          ),
+                        ),
+                      ],
+                    ),
+                    // Bottom: merchant row
+                    Row(
+                      children: [
+                        _buildMerchantAvatar(
+                          item['merchant']?.toString(),
+                          item['merchantLogo']?.toString(),
+                          radius: 7,
+                        ),
+                        const SizedBox(width: 5),
+                        Expanded(
+                          child: Text(
+                            item['merchant']?.toString() ?? 'Twicely',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 9,
+                              color: Colors.black.withValues(alpha: 0.6),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
               ),
             ),
           ],
@@ -513,6 +541,37 @@ class _SellerProfileScreenState extends State<SellerProfileScreen> {
       ),
       maxLines: 1,
       overflow: TextOverflow.ellipsis,
+    );
+  }
+
+  Color _merchantAvatarColor(String name) {
+    // Fixed brand color for Twicely internal packages
+    if (name.toLowerCase() == 'twicely') return const Color(0xFF273DB7);
+    const colors = [
+      Color(0xFF4A6FA5),
+      Color(0xFF3D8B5E),
+      Color(0xFF7B5EA7),
+      Color(0xFF5B8DB8),
+      Color(0xFF8B6E3C),
+      Color(0xFF4A7C59),
+    ];
+    return colors[name.hashCode.abs() % colors.length];
+  }
+
+  Widget _buildMerchantAvatar(String? name, String? logoUrl, {double radius = 12}) {
+    final hasLogo = logoUrl != null && logoUrl.isNotEmpty;
+    final initial = (name != null && name.isNotEmpty) ? name[0].toUpperCase() : 'T';
+    final avatarColor = hasLogo ? Colors.grey.shade100 : _merchantAvatarColor(name ?? '');
+    return CircleAvatar(
+      radius: radius,
+      backgroundColor: avatarColor,
+      backgroundImage: hasLogo ? NetworkImage(logoUrl) : null,
+      child: hasLogo
+          ? null
+          : Text(
+              initial,
+              style: TextStyle(fontSize: radius * 0.85, color: Colors.white, fontWeight: FontWeight.bold),
+            ),
     );
   }
 }

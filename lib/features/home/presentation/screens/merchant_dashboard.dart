@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../auth/presentation/screens/login_screen.dart';
@@ -13,6 +14,8 @@ import '../../../../core/services/api_service.dart';
 import '../../../../core/utils/session_manager.dart';
 import 'home_screen.dart';
 import '../../../../core/widgets/custom_snackbar.dart';
+import 'package:image_picker/image_picker.dart';
+
 
 class MerchantDashboard extends StatefulWidget {
   const MerchantDashboard({super.key});
@@ -36,6 +39,11 @@ class _MerchantDashboardState extends State<MerchantDashboard> {
   String _merchantWebsite = "-";
   String _merchantEmail = "synvolv3@gmail.com";
   String _merchantPhone = "03030844726";
+  String _merchantLogoUrl = "";
+
+  final ImagePicker _picker = ImagePicker();
+  bool _isUploadingLogo = false;
+  String? _localLogoPath;
 
   List<Map<String, dynamic>> _merchantPackages = [];
   bool _isLoadingPackages = false;
@@ -54,6 +62,12 @@ class _MerchantDashboardState extends State<MerchantDashboard> {
     _fetchDynamicData();
   }
 
+  @override
+  void dispose() {
+    super.dispose();
+  }
+
+
   void _loadMerchantData() {
     if (SessionManager.isLoggedIn) {
       final user = SessionManager.userData;
@@ -70,16 +84,17 @@ class _MerchantDashboardState extends State<MerchantDashboard> {
         _merchantRegNumber = user['business_registration'] as String? ?? "2324";
         _merchantAddress = user['business_address'] as String? ?? "07 lahore";
         _merchantWebsite = user['website_link'] as String? ?? "-";
+        _merchantLogoUrl = user['logo'] as String? ?? user['logo_url'] as String? ?? user['avatar_url'] as String? ?? '';
       }
     }
   }
 
   Map<String, dynamic> _mapApiPackage(Map<String, dynamic> apiPkg) {
-    String imageUrl = 'assets/images/package_spa.jpg';
+    String imageUrl = '';
     if (apiPkg['cover_url'] != null && apiPkg['cover_url'].toString().isNotEmpty) {
       imageUrl = apiPkg['cover_url'];
     } else if (apiPkg['images'] != null && (apiPkg['images'] as List).isNotEmpty) {
-      imageUrl = apiPkg['images'][0]['url'] ?? 'assets/images/package_spa.jpg';
+      imageUrl = apiPkg['images'][0]['url'] ?? '';
     }
 
     final double priceVal = double.tryParse(apiPkg['price']?.toString() ?? '') ?? 0.0;
@@ -147,6 +162,7 @@ class _MerchantDashboardState extends State<MerchantDashboard> {
           _merchantWebsite = mData['website_link']?.toString() ?? _merchantWebsite;
           _merchantEmail = mData['email']?.toString() ?? _merchantEmail;
           _merchantPhone = mData['phone']?.toString() ?? _merchantPhone;
+          _merchantLogoUrl = mData['logo']?.toString() ?? mData['logo_url']?.toString() ?? mData['avatar_url']?.toString() ?? _merchantLogoUrl;
         });
       }
 
@@ -853,171 +869,15 @@ class _MerchantDashboardState extends State<MerchantDashboard> {
     );
   }
 
-  void _showEditProfileBottomSheet() {
-    final nameCtrl = TextEditingController(text: _merchantBusinessName);
-    final typeCtrl = TextEditingController(text: _merchantBusinessType);
-    final regCtrl = TextEditingController(text: _merchantRegNumber);
-    final addrCtrl = TextEditingController(text: _merchantAddress);
-    final webCtrl = TextEditingController(text: _merchantWebsite);
-    final emailCtrl = TextEditingController(text: _merchantEmail);
-    final phoneCtrl = TextEditingController(text: _merchantPhone);
-
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) {
-        return Container(
-          decoration: const BoxDecoration(
-            color: Color(0xFFFFF8EA),
-            borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
-          ),
-          padding: EdgeInsets.only(
-            left: 24,
-            right: 24,
-            top: 20,
-            bottom: MediaQuery.of(context).viewInsets.bottom + 24,
-          ),
-          child: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Center(
-                  child: Container(
-                    width: 48,
-                    height: 5,
-                    decoration: BoxDecoration(
-                      color: AppColors.primary.withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 20),
-                const Text(
-                  'Edit Merchant Profile',
-                  style: TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
-                    color: AppColors.primary,
-                    fontFamily: 'Recoleta Alt',
-                  ),
-                ),
-                const SizedBox(height: 20),
-                _buildEditField('Business Name', nameCtrl),
-                _buildEditField('Business Type', typeCtrl),
-                _buildEditField('Company Registration Number', regCtrl),
-                _buildEditField('Business Address', addrCtrl),
-                _buildEditField('Website Link', webCtrl),
-                _buildEditField('Email', emailCtrl),
-                _buildEditField('Phone', phoneCtrl),
-                const SizedBox(height: 24),
-                ElevatedButton(
-                  onPressed: () async {
-                    final data = {
-                      'business_name': nameCtrl.text.trim(),
-                      'business_type': typeCtrl.text.trim(),
-                      'business_registration': regCtrl.text.trim(),
-                      'business_address': addrCtrl.text.trim(),
-                      'website_link': webCtrl.text.trim(),
-                      'email': emailCtrl.text.trim(),
-                      'phone': phoneCtrl.text.trim(),
-                    };
-
-                    showDialog(
-                      context: context,
-                      barrierDismissible: false,
-                      builder: (context) => const Center(
-                        child: CircularProgressIndicator(
-                          valueColor: AlwaysStoppedAnimation<Color>(AppColors.primary),
-                        ),
-                      ),
-                    );
-
-                    final res = await ApiService.updateMerchantMe(data);
-
-                    if (!context.mounted) return;
-                    Navigator.of(context).pop(); // pop loading spinner
-                    Navigator.of(context).pop(); // pop bottom sheet
-
-                    if (res['success'] == true) {
-                      setState(() {
-                        _merchantBusinessName = nameCtrl.text.trim();
-                        _merchantBusinessType = typeCtrl.text.trim();
-                        _merchantRegNumber = regCtrl.text.trim();
-                        _merchantAddress = addrCtrl.text.trim();
-                        _merchantWebsite = webCtrl.text.trim();
-                        _merchantEmail = emailCtrl.text.trim();
-                        _merchantPhone = phoneCtrl.text.trim();
-                      });
-                      CustomSnackBar.show(
-                        context,
-                        message: 'Profile updated successfully!',
-                        type: SnackBarType.success,
-                      );
-                    } else {
-                      CustomSnackBar.show(
-                        context,
-                        message: res['message'] ?? 'Failed to update profile',
-                        type: SnackBarType.error,
-                      );
-                    }
-                  },
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF1F2E4E),
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
-                  ),
-                  child: const Text('Save Changes', style: TextStyle(fontWeight: FontWeight.bold)),
-                ),
-              ],
-            ),
-          ),
-        );
-      },
-    );
-  }
-
-  Widget _buildEditField(String label, TextEditingController controller) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 16.0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            label,
-            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.primary),
-          ),
-          const SizedBox(height: 6),
-          TextField(
-            controller: controller,
-            decoration: InputDecoration(
-              filled: true,
-              fillColor: Colors.white,
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(16),
-                borderSide: BorderSide(color: AppColors.primary.withValues(alpha: 0.1)),
-              ),
-              enabledBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(16),
-                borderSide: BorderSide(color: AppColors.primary.withValues(alpha: 0.1)),
-              ),
-              focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(16),
-                borderSide: const BorderSide(color: AppColors.primary, width: 1.5),
-              ),
-              contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            ),
-            style: const TextStyle(fontSize: 14, color: AppColors.primary),
-          ),
-        ],
-      ),
-    );
-  }
-
   Widget _buildProfileTab() {
     final firstLetter = _merchantBusinessName.isNotEmpty ? _merchantBusinessName[0].toUpperCase() : 'M';
+    final name = _merchantBusinessName;
+    final email = _merchantEmail;
+    final phone = _merchantPhone;
+    final type = _merchantBusinessType;
+    final reg = _merchantRegNumber;
+    final addr = _merchantAddress;
+    final web = _merchantWebsite;
 
     return SingleChildScrollView(
       physics: const BouncingScrollPhysics(),
@@ -1025,8 +885,9 @@ class _MerchantDashboardState extends State<MerchantDashboard> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const SizedBox(height: 10),
-          // Profile image & edit pencil badge
+          const SizedBox(height: 20),
+          
+          // Centered Profile Avatar & Header info
           Center(
             child: Stack(
               children: [
@@ -1035,36 +896,44 @@ class _MerchantDashboardState extends State<MerchantDashboard> {
                   height: 96,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
-                    border: Border.all(color: const Color(0xFFF27B6E).withValues(alpha: 0.2), width: 2),
-                    color: const Color(0xFFE5ECFF),
+                    border: Border.all(color: const Color(0xFF1F2E4E).withValues(alpha: 0.3), width: 2),
                   ),
-                  alignment: Alignment.center,
-                  child: Text(
-                    firstLetter,
-                    style: const TextStyle(
-                      fontSize: 36,
-                      fontWeight: FontWeight.bold,
-                      color: Color(0xFF1E56B3),
-                      fontFamily: 'Recoleta Alt',
-                    ),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(48),
+                    child: _isUploadingLogo
+                        ? const Center(
+                            child: SizedBox(
+                              width: 24,
+                              height: 24,
+                              child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.primary),
+                            ),
+                          )
+                        : _localLogoPath != null
+                            ? Image.file(
+                                File(_localLogoPath!),
+                                fit: BoxFit.cover,
+                              )
+                            : _merchantLogoUrl.isNotEmpty
+                                ? Image.network(
+                                    _merchantLogoUrl,
+                                    fit: BoxFit.cover,
+                                    errorBuilder: (_, __, ___) => _buildDefaultLogo(firstLetter),
+                                  )
+                                : _buildDefaultLogo(firstLetter),
                   ),
                 ),
                 Positioned(
                   bottom: 0,
                   right: 4,
                   child: GestureDetector(
-                    onTap: _showEditProfileBottomSheet,
+                    onTap: () => _showEditMerchantProfileSheet(name, type, reg, addr, web, phone),
                     child: Container(
                       padding: const EdgeInsets.all(6),
                       decoration: const BoxDecoration(
-                        color: Color(0xFF1F2E4E),
+                        color: Color(0xFFF27B6E),
                         shape: BoxShape.circle,
                       ),
-                      child: const Icon(
-                        Icons.edit,
-                        color: Colors.white,
-                        size: 14,
-                      ),
+                      child: const Icon(Icons.edit, color: Colors.white, size: 14),
                     ),
                   ),
                 ),
@@ -1073,9 +942,9 @@ class _MerchantDashboardState extends State<MerchantDashboard> {
           ),
           const SizedBox(height: 16),
 
-          // Name and Member Date
+          // Business Name
           Text(
-            _merchantBusinessName,
+            name.isEmpty ? 'Merchant Partner' : name,
             textAlign: TextAlign.center,
             style: const TextStyle(
               fontFamily: 'Recoleta Alt',
@@ -1084,25 +953,28 @@ class _MerchantDashboardState extends State<MerchantDashboard> {
               color: AppColors.primary,
             ),
           ),
-          const SizedBox(height: 6),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: const [
-              Icon(Icons.storefront_outlined, size: 14, color: Colors.black38),
-              SizedBox(width: 4),
-              Text(
-                'Merchant Partner since 2026',
-                style: TextStyle(
-                  fontSize: 11,
-                  color: Colors.black45,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 14),
+          const SizedBox(height: 4),
 
-          // Badges row
+          // Email
+          if (email.isNotEmpty)
+            Text(
+              email,
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 11, color: AppColors.primary.withValues(alpha: 0.5)),
+            ),
+
+          // Phone
+          if (phone.isNotEmpty) ...[
+            const SizedBox(height: 2),
+            Text(
+              phone,
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 11, color: AppColors.primary.withValues(alpha: 0.4)),
+            ),
+          ],
+          const SizedBox(height: 10),
+
+          // Badges
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
@@ -1113,39 +985,13 @@ class _MerchantDashboardState extends State<MerchantDashboard> {
                   borderRadius: BorderRadius.circular(20),
                 ),
                 child: const Text(
-                  'MERCHANT PARTNER',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 9,
-                    fontWeight: FontWeight.w900,
-                    letterSpacing: 0.5,
-                  ),
-                ),
-              ),
-              const SizedBox(width: 8),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                decoration: BoxDecoration(
-                  color: Colors.black.withValues(alpha: 0.04),
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: Row(
-                  children: const [
-                    Text(
-                      '4.9',
-                      style: TextStyle(
-                        color: AppColors.primary,
-                        fontSize: 9,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    SizedBox(width: 2),
-                    Icon(Icons.star, size: 10, color: AppColors.primary),
-                  ],
+                  'MERCHANT',
+                  style: TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.w900, letterSpacing: 0.5),
                 ),
               ),
             ],
           ),
+          
           const SizedBox(height: 28),
 
           // Option cards
@@ -1164,7 +1010,7 @@ class _MerchantDashboardState extends State<MerchantDashboard> {
             title: 'Business Profile',
             subtitle: 'Edit business details & address',
             icon: Icons.business_outlined,
-            onTap: _showEditProfileBottomSheet,
+            onTap: () => _showEditMerchantProfileSheet(name, type, reg, addr, web, phone),
           ),
           const SizedBox(height: 12),
           _buildProfileOption(
@@ -1266,6 +1112,488 @@ class _MerchantDashboardState extends State<MerchantDashboard> {
         ],
       ),
     );
+  }
+
+  Widget _buildDefaultLogo(String initials) {
+    return Container(
+      color: const Color(0xFFF1F5F9),
+      alignment: Alignment.center,
+      child: Text(
+        initials,
+        style: const TextStyle(
+          fontSize: 32,
+          fontWeight: FontWeight.bold,
+          color: AppColors.primary,
+          fontFamily: 'Recoleta Alt',
+        ),
+      ),
+    );
+  }
+
+
+
+  void _showEditMerchantProfileSheet(
+    String currentName,
+    String currentType,
+    String currentReg,
+    String currentAddr,
+    String currentWeb,
+    String currentPhone,
+  ) {
+    final nameCtrl = TextEditingController(text: currentName);
+    final typeCtrl = TextEditingController(text: currentType);
+    final regCtrl = TextEditingController(text: currentReg);
+    final addrCtrl = TextEditingController(text: currentAddr);
+    final webCtrl = TextEditingController(text: currentWeb);
+    final phoneCtrl = TextEditingController(text: currentPhone);
+    final email = _merchantEmail;
+    final firstLetter = currentName.isNotEmpty ? currentName[0].toUpperCase() : 'M';
+    final logoUrl = _merchantLogoUrl;
+    bool isSaving = false;
+    String? localLogoPath;
+
+    debugPrint('[MerchantProfileEdit] Opening Edit Business Profile bottom sheet.');
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => StatefulBuilder(
+        builder: (ctx, setModalState) {
+          final isUploading = _isUploadingLogo;
+          return Container(
+            padding: EdgeInsets.only(
+              left: 24, right: 24, top: 24,
+              bottom: MediaQuery.of(ctx).viewInsets.bottom + 24,
+            ),
+            decoration: const BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+            ),
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text('Business Profile',
+                          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppColors.primary, fontFamily: 'Recoleta Alt')),
+                      IconButton(
+                        icon: const Icon(Icons.close),
+                        onPressed: () {
+                          debugPrint('[MerchantProfileEdit] Closing edit sheet via close button.');
+                          Navigator.of(ctx).pop();
+                        },
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  
+                  // Logo Avatar Pick Option inside sheet
+                  Center(
+                    child: Stack(
+                      children: [
+                        Container(
+                          width: 88,
+                          height: 88,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            border: Border.all(color: const Color(0xFFF9E7C9), width: 1.5),
+                          ),
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(44),
+                            child: isUploading
+                                ? const Center(
+                                    child: SizedBox(
+                                      width: 24,
+                                      height: 24,
+                                      child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.primary),
+                                    ),
+                                  )
+                                : localLogoPath != null
+                                    ? Image.file(
+                                        File(localLogoPath!),
+                                        fit: BoxFit.cover,
+                                      )
+                                    : logoUrl.isNotEmpty
+                                        ? Image.network(
+                                            logoUrl,
+                                            fit: BoxFit.cover,
+                                            errorBuilder: (_, __, ___) => _buildDefaultLogo(firstLetter),
+                                          )
+                                        : _buildDefaultLogo(firstLetter),
+                          ),
+                        ),
+                        Positioned(
+                          bottom: 0,
+                          right: 0,
+                          child: GestureDetector(
+                            onTap: () {
+                              _showImageSourceActionSheet(
+                                context,
+                                true,
+                                onImagePicked: (path) {
+                                  setModalState(() {
+                                    localLogoPath = path;
+                                  });
+                                  debugPrint('[MerchantProfileEdit] Local logo selected: $path');
+                                },
+                              );
+                            },
+                            child: Container(
+                              padding: const EdgeInsets.all(6),
+                              decoration: const BoxDecoration(
+                                color: AppColors.primary,
+                                shape: BoxShape.circle,
+                              ),
+                              child: const Icon(Icons.camera_alt_rounded, color: Colors.white, size: 12),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Center(
+                    child: TextButton(
+                      onPressed: () {
+                        _showImageSourceActionSheet(
+                          context,
+                          true,
+                          onImagePicked: (path) {
+                            setModalState(() {
+                              localLogoPath = path;
+                            });
+                            debugPrint('[MerchantProfileEdit] Local logo selected: $path');
+                          },
+                        );
+                      },
+                      child: const Text('Change Business Logo', style: TextStyle(color: AppColors.primary, fontWeight: FontWeight.bold, fontSize: 13)),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  
+                  // Text Fields
+                  TextField(
+                    controller: nameCtrl,
+                    style: const TextStyle(fontSize: 14, color: AppColors.primary),
+                    decoration: InputDecoration(
+                      labelText: 'Business Name *',
+                      labelStyle: TextStyle(color: AppColors.primary.withValues(alpha: 0.6)),
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(14),
+                        borderSide: const BorderSide(color: AppColors.primary, width: 1.5),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: typeCtrl,
+                    style: const TextStyle(fontSize: 14, color: AppColors.primary),
+                    decoration: InputDecoration(
+                      labelText: 'Business Type *',
+                      labelStyle: TextStyle(color: AppColors.primary.withValues(alpha: 0.6)),
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(14),
+                        borderSide: const BorderSide(color: AppColors.primary, width: 1.5),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: regCtrl,
+                    style: const TextStyle(fontSize: 14, color: AppColors.primary),
+                    decoration: InputDecoration(
+                      labelText: 'Company Registration Number',
+                      labelStyle: TextStyle(color: AppColors.primary.withValues(alpha: 0.6)),
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(14),
+                        borderSide: const BorderSide(color: AppColors.primary, width: 1.5),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: addrCtrl,
+                    style: const TextStyle(fontSize: 14, color: AppColors.primary),
+                    decoration: InputDecoration(
+                      labelText: 'Business Address',
+                      labelStyle: TextStyle(color: AppColors.primary.withValues(alpha: 0.6)),
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(14),
+                        borderSide: const BorderSide(color: AppColors.primary, width: 1.5),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: webCtrl,
+                    style: const TextStyle(fontSize: 14, color: AppColors.primary),
+                    decoration: InputDecoration(
+                      labelText: 'Website Link',
+                      labelStyle: TextStyle(color: AppColors.primary.withValues(alpha: 0.6)),
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(14),
+                        borderSide: const BorderSide(color: AppColors.primary, width: 1.5),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: TextEditingController(text: email),
+                    readOnly: true,
+                    style: TextStyle(fontSize: 14, color: AppColors.primary.withValues(alpha: 0.5)),
+                    decoration: InputDecoration(
+                      labelText: 'Email Address',
+                      labelStyle: TextStyle(color: AppColors.primary.withValues(alpha: 0.6)),
+                      filled: true,
+                      fillColor: const Color(0xFFF8FAFC),
+                      helperText: 'Email address cannot be changed.',
+                      helperStyle: const TextStyle(color: Colors.black38, fontSize: 10),
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(14),
+                        borderSide: BorderSide(color: AppColors.primary.withValues(alpha: 0.2)),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: phoneCtrl,
+                    keyboardType: TextInputType.phone,
+                    style: const TextStyle(fontSize: 14, color: AppColors.primary),
+                    decoration: InputDecoration(
+                      labelText: 'Phone Number',
+                      labelStyle: TextStyle(color: AppColors.primary.withValues(alpha: 0.6)),
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(14),
+                        borderSide: const BorderSide(color: AppColors.primary, width: 1.5),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+                  ElevatedButton(
+                    onPressed: isSaving
+                        ? null
+                        : () async {
+                            if (nameCtrl.text.trim().isEmpty) {
+                              CustomSnackBar.show(
+                                context,
+                                message: 'Business Name is required.',
+                                type: SnackBarType.error,
+                              );
+                              return;
+                            }
+                            setModalState(() {
+                              isSaving = true;
+                            });
+                            
+                            debugPrint('[MerchantProfileEdit] Save transaction started from bottom sheet.');
+                            bool uploadSuccess = true;
+                            if (localLogoPath != null) {
+                              debugPrint('[MerchantProfileEdit] Uploading local logo file to server: $localLogoPath');
+                              final uploadRes = await ApiService.uploadMerchantLogo(localLogoPath!);
+                              if (uploadRes['success'] != true) {
+                                uploadSuccess = false;
+                                debugPrint('[MerchantProfileEdit] Logo upload failed: ${uploadRes['message']}');
+                                if (ctx.mounted) {
+                                  CustomSnackBar.show(
+                                    ctx,
+                                    message: uploadRes['message'] ?? 'Logo upload failed',
+                                    type: SnackBarType.error,
+                                  );
+                                }
+                              } else {
+                                debugPrint('[MerchantProfileEdit] Logo uploaded successfully.');
+                              }
+                            }
+
+                            if (uploadSuccess) {
+                              debugPrint('[MerchantProfileEdit] Updating business details: name="${nameCtrl.text.trim()}", type="${typeCtrl.text.trim()}"');
+                              final res = await ApiService.updateMerchantMe({
+                                'business_name': nameCtrl.text.trim(),
+                                'business_type': typeCtrl.text.trim(),
+                                'business_registration': regCtrl.text.trim(),
+                                'business_address': addrCtrl.text.trim(),
+                                'website_link': webCtrl.text.trim(),
+                                'phone': phoneCtrl.text.trim(),
+                              });
+                              if (res['success'] == true) {
+                                debugPrint('[MerchantProfileEdit] Business details saved successfully.');
+                                if (mounted) {
+                                  setState(() {
+                                    _merchantBusinessName = nameCtrl.text.trim();
+                                    _merchantBusinessType = typeCtrl.text.trim();
+                                    _merchantRegNumber = regCtrl.text.trim();
+                                    _merchantAddress = addrCtrl.text.trim();
+                                    _merchantWebsite = webCtrl.text.trim();
+                                    _merchantPhone = phoneCtrl.text.trim();
+                                    _localLogoPath = localLogoPath;
+                                  });
+                                  _fetchDynamicData();
+                                }
+                                if (ctx.mounted) {
+                                  Navigator.of(ctx).pop(); // Close sheet
+                                  CustomSnackBar.show(
+                                    context,
+                                    message: 'Merchant profile updated!',
+                                    type: SnackBarType.success,
+                                  );
+                                }
+                              } else {
+                                debugPrint('[MerchantProfileEdit] Business details update failed: ${res['message']}');
+                                if (ctx.mounted) {
+                                  CustomSnackBar.show(
+                                    ctx,
+                                    message: res['message'] ?? 'Update failed',
+                                    type: SnackBarType.error,
+                                  );
+                                }
+                              }
+                            }
+                            if (mounted) {
+                              setModalState(() {
+                                isSaving = false;
+                              });
+                            }
+                          },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFFFBBD03),
+                      foregroundColor: Colors.black,
+                      elevation: 0,
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                    ),
+                    child: isSaving
+                        ? const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(strokeWidth: 2, color: Colors.black),
+                          )
+                        : const Text('Save Changes', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
+                  ),
+                  const SizedBox(height: 10),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  void _showImageSourceActionSheet(BuildContext context, bool isMerchant, {void Function(String)? onImagePicked}) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (BuildContext ctx) {
+        return Container(
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+          ),
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const Text(
+                'Select Image Source',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppColors.primary, fontFamily: 'Recoleta Alt'),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 20),
+              ListTile(
+                leading: const Icon(Icons.camera_alt_outlined, color: AppColors.primary),
+                title: const Text('Camera', style: TextStyle(color: AppColors.primary, fontWeight: FontWeight.w600)),
+                onTap: () async {
+                  Navigator.of(ctx).pop();
+                  if (onImagePicked != null) {
+                    final XFile? picked = await _picker.pickImage(source: ImageSource.camera);
+                    if (picked != null) {
+                      onImagePicked(picked.path);
+                    }
+                  } else {
+                    _pickAndUploadImage(ImageSource.camera, isMerchant);
+                  }
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.photo_library_outlined, color: AppColors.primary),
+                title: const Text('Gallery', style: TextStyle(color: AppColors.primary, fontWeight: FontWeight.w600)),
+                onTap: () async {
+                  Navigator.of(ctx).pop();
+                  if (onImagePicked != null) {
+                    final XFile? picked = await _picker.pickImage(source: ImageSource.gallery);
+                    if (picked != null) {
+                      onImagePicked(picked.path);
+                    }
+                  } else {
+                    _pickAndUploadImage(ImageSource.gallery, isMerchant);
+                  }
+                },
+              ),
+              const SizedBox(height: 10),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _pickAndUploadImage(ImageSource source, bool isMerchant) async {
+    try {
+      final XFile? picked = await _picker.pickImage(source: source);
+      if (picked == null) return;
+
+      setState(() {
+        _isUploadingLogo = true;
+      });
+
+      final res = isMerchant 
+          ? await ApiService.uploadMerchantLogo(picked.path)
+          : await ApiService.uploadUserAvatar(picked.path);
+
+      setState(() {
+        _isUploadingLogo = false;
+      });
+
+      if (!mounted) return;
+
+      if (res['success'] == true) {
+        _fetchDynamicData();
+        CustomSnackBar.show(
+          context,
+          message: 'Logo updated successfully!',
+          type: SnackBarType.success,
+        );
+      } else {
+        CustomSnackBar.show(
+          context,
+          message: res['message'] ?? 'Upload failed',
+          type: SnackBarType.error,
+        );
+      }
+    } catch (e) {
+      setState(() {
+        _isUploadingLogo = false;
+      });
+      if (mounted) {
+        CustomSnackBar.show(
+          context,
+          message: 'Failed to upload: $e',
+          type: SnackBarType.error,
+        );
+      }
+    }
   }
 
   Widget _buildProfileOption({
@@ -1781,7 +2109,7 @@ class _MerchantDashboardState extends State<MerchantDashboard> {
                                   ),
                                 ),
                                 const SizedBox(width: 12),
-                                ClipRRect(
+                                 ClipRRect(
                                   borderRadius: BorderRadius.circular(10),
                                   child: (pkg['image'] as String).startsWith('http')
                                       ? Image.network(
@@ -1796,17 +2124,11 @@ class _MerchantDashboardState extends State<MerchantDashboard> {
                                             child: const Icon(Icons.image, color: AppColors.primary, size: 20),
                                           ),
                                         )
-                                      : Image.asset(
-                                          (pkg['image'] as String).startsWith('assets/') ? (pkg['image'] as String) : 'assets/images/package_spa.jpg',
+                                      : Container(
                                           width: 52,
                                           height: 52,
-                                          fit: BoxFit.cover,
-                                          errorBuilder: (context, error, stackTrace) => Container(
-                                            width: 52,
-                                            height: 52,
-                                            color: AppColors.primary.withValues(alpha: 0.05),
-                                            child: const Icon(Icons.image, color: AppColors.primary, size: 20),
-                                          ),
+                                          color: AppColors.primary.withValues(alpha: 0.05),
+                                          child: const Icon(Icons.image, color: AppColors.primary, size: 20),
                                         ),
                                 ),
                               ],
@@ -2412,7 +2734,9 @@ class _MerchantDashboardState extends State<MerchantDashboard> {
     final inactiveColor = const Color(0xFF1F2E4E).withValues(alpha: 0.4);
 
     return GestureDetector(
-      onTap: () => setState(() => _currentIndex = index),
+      onTap: () {
+        setState(() => _currentIndex = index);
+      },
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [

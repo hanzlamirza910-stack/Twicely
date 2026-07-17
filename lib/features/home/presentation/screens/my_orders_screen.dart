@@ -286,7 +286,7 @@ class _MyOrdersScreenState extends State<MyOrdersScreen> {
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 const Text('Total Amount', style: TextStyle(color: Colors.black54, fontSize: 13)),
-                Text('\$${(order['price'] as double).toStringAsFixed(2)}', style: const TextStyle(fontWeight: FontWeight.w900, color: AppColors.primary, fontSize: 15)),
+                Text('\$${(order['price'] as double).toStringAsFixed(2)}', style: const TextStyle(fontWeight: FontWeight.w900, color: Color(0xFF273DB7), fontSize: 15)),
               ],
             ),
           ],
@@ -364,43 +364,24 @@ class _MyOrdersScreenState extends State<MyOrdersScreen> {
     return Scaffold(
       backgroundColor: AppColors.bgLight,
       appBar: AppBar(
-        backgroundColor: Colors.transparent,
+        backgroundColor: Colors.white,
         elevation: 0,
+        scrolledUnderElevation: 0.5,
+        shadowColor: Colors.black12,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_rounded, color: AppColors.primary),
           onPressed: () => Navigator.of(context).pop(),
         ),
-        title: Image.asset(
-          'assets/images/logo.webp',
-          height: 34,
-          fit: BoxFit.contain,
-          errorBuilder: (context, error, stackTrace) => const Text(
-            'twicely',
-            style: TextStyle(
-              fontSize: 22,
-              fontWeight: FontWeight.bold,
-              color: AppColors.primary,
-            ),
+        title: const Text(
+          'My Orders',
+          style: TextStyle(
+            color: AppColors.primary,
+            fontWeight: FontWeight.bold,
+            fontFamily: 'Recoleta Alt',
+            fontSize: 18,
           ),
         ),
-        centerTitle: false,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.notifications_none_rounded, color: AppColors.primary, size: 26),
-            onPressed: () {},
-          ),
-          Container(
-            margin: const EdgeInsets.only(right: 16, left: 4),
-            width: 32,
-            height: 32,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: AppColors.primary.withValues(alpha: 0.1),
-              border: Border.all(color: AppColors.primary.withValues(alpha: 0.2)),
-            ),
-            child: const Icon(Icons.person_outline_rounded, color: AppColors.primary, size: 18),
-          ),
-        ],
+        centerTitle: true,
       ),
       body: _isLoading
           ? const Center(
@@ -693,7 +674,7 @@ class _MyOrdersScreenState extends State<MyOrdersScreen> {
                                                 style: const TextStyle(
                                                   fontSize: 16,
                                                   fontWeight: FontWeight.w900,
-                                                  color: AppColors.primary,
+                                                  color: Color(0xFF273DB7),
                                                 ),
                                               ),
                                             ],
