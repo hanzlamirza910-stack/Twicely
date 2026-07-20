@@ -5,7 +5,8 @@ import '../../../../core/utils/session_manager.dart';
 import '../../../../core/widgets/custom_snackbar.dart';
 
 class PayoutScreen extends StatefulWidget {
-  const PayoutScreen({super.key});
+  final bool? isMerchant;
+  const PayoutScreen({super.key, this.isMerchant});
 
   @override
   State<PayoutScreen> createState() => _PayoutScreenState();
@@ -73,14 +74,20 @@ class _PayoutScreenState extends State<PayoutScreen> {
     } catch (_) {}
   }
 
+  bool get _isMerchantMode => widget.isMerchant ?? SessionManager.isMerchant;
+
   Future<void> _loadWallet() async {
     try {
-      final res = await ApiService.getWallet();
+      final isMerchant = _isMerchantMode;
+      final res = isMerchant
+          ? await ApiService.getMerchantWallet()
+          : await ApiService.getWallet();
       if (!mounted) return;
       if (res['success'] == true && res['data'] != null) {
         final data = res['data'] as Map;
+        final rawBal = double.tryParse(data['available_balance']?.toString() ?? '0') ?? 0.0;
         setState(() {
-          _availableBalance = double.tryParse(data['available_balance']?.toString() ?? '0') ?? 0.0;
+          _availableBalance = isMerchant ? rawBal / 100.0 : rawBal;
           _currency = data['currency']?.toString() ?? 'SGD';
         });
       }
@@ -208,7 +215,7 @@ class _PayoutScreenState extends State<PayoutScreen> {
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     // ── Verified Merchant Alert (From Website) ──────────────
-                    if (SessionManager.isMerchant) ...[
+                    if (_isMerchantMode) ...[
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                         decoration: BoxDecoration(
@@ -259,11 +266,11 @@ class _PayoutScreenState extends State<PayoutScreen> {
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: const Color(0xFFFFFDF9), // Clean soft warm cream
+        color: Colors.white,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: const Color(0xFFF9E7C9), width: 1.5),
+        border: Border.all(color: AppColors.borderLight, width: 1.0),
         boxShadow: [
-          BoxShadow(color: const Color(0xFFF9E7C9).withValues(alpha: 0.15), blurRadius: 10, offset: const Offset(0, 4)),
+          BoxShadow(color: Colors.black.withValues(alpha: 0.03), blurRadius: 10, offset: const Offset(0, 4)),
         ],
       ),
       child: Row(
@@ -284,10 +291,10 @@ class _PayoutScreenState extends State<PayoutScreen> {
             width: 44,
             height: 44,
             decoration: BoxDecoration(
-              color: const Color(0xFFFFF3E0),
+              color: AppColors.bgLight,
               borderRadius: BorderRadius.circular(14),
             ),
-            child: const Icon(Icons.account_balance_wallet_rounded, color: Color(0xFFF57C00), size: 22),
+            child: const Icon(Icons.account_balance_wallet_rounded, color: AppColors.primary, size: 22),
           ),
         ],
       ),

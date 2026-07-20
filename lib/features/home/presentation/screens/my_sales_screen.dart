@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/services/api_service.dart';
+import '../../../../core/utils/session_manager.dart';
 
 class MySalesScreen extends StatefulWidget {
-  const MySalesScreen({super.key});
+  final bool? isMerchant;
+  const MySalesScreen({super.key, this.isMerchant});
 
   @override
   State<MySalesScreen> createState() => _MySalesScreenState();
@@ -22,14 +24,23 @@ class _MySalesScreenState extends State<MySalesScreen> {
     _fetchSales();
   }
 
+  bool get _isMerchantMode => widget.isMerchant ?? SessionManager.isMerchant;
+
   Future<void> _fetchSales() async {
     if (!mounted) return;
     setState(() => _isLoading = true);
-    final res = await ApiService.getMySales(perPage: 50);
+    final isMerchant = _isMerchantMode;
+    final res = isMerchant
+        ? await ApiService.getMerchantOrders(perPage: 50)
+        : await ApiService.getMySales(perPage: 50);
     if (!mounted) return;
-    if (res['success'] == true && res['data'] != null) {
+    
+    final isSuccess = res['success'] == true;
+    final salesData = res['data'] ?? res['sales'];
+
+    if (isSuccess && salesData != null && salesData is List) {
       setState(() {
-        _sales = (res['data'] as List<dynamic>)
+        _sales = salesData
             .map((e) => Map<String, dynamic>.from(e as Map))
             .toList();
         _isLoading = false;
@@ -41,15 +52,27 @@ class _MySalesScreenState extends State<MySalesScreen> {
 
   List<Map<String, dynamic>> get _filtered {
     if (_selectedPill == 'All') return _sales;
+    final target = _selectedPill.toLowerCase();
     return _sales.where((s) {
       final status = (s['status'] ?? '').toString().toLowerCase();
-      return status == _selectedPill.toLowerCase();
+      if (target == 'completed') {
+        return status == 'completed' || status == 'processing' || status == 'paid' || status == 'confirmed';
+      }
+      if (target == 'pending') {
+        return status == 'pending';
+      }
+      if (target == 'cancelled') {
+        return status == 'cancelled' || status == 'failed' || status == 'refunded';
+      }
+      return status == target;
     }).toList();
   }
 
   Color _statusColor(String status) {
     switch (status.toLowerCase()) {
       case 'completed': return const Color(0xFF22C55E);
+      case 'processing': return const Color(0xFF3B82F6);
+      case 'paid': return const Color(0xFF22C55E);
       case 'pending': return const Color(0xFFF59E0B);
       case 'cancelled': return const Color(0xFFEF4444);
       case 'confirmed': return const Color(0xFF3B82F6);
@@ -110,12 +133,25 @@ class _MySalesScreenState extends State<MySalesScreen> {
   }
 
   Widget _buildStatsBanner() {
+    final isMerchant = _isMerchantMode;
     final total = _sales.length;
-    final completed = _sales.where((s) => (s['status'] ?? '').toString().toLowerCase() == 'completed').length;
-    final pending = _sales.where((s) => (s['status'] ?? '').toString().toLowerCase() == 'pending').length;
+    final completed = _sales.where((s) {
+      final status = (s['status'] ?? '').toString().toLowerCase();
+      return status == 'completed' || status == 'processing' || status == 'paid' || status == 'confirmed';
+    }).length;
+    final pending = _sales.where((s) {
+      final status = (s['status'] ?? '').toString().toLowerCase();
+      return status == 'pending';
+    }).length;
     final totalEarnings = _sales
-        .where((s) => (s['status'] ?? '').toString().toLowerCase() == 'completed')
-        .fold<double>(0, (sum, s) => sum + (double.tryParse(s['seller_amount']?.toString() ?? s['total']?.toString() ?? '0') ?? 0));
+        .where((s) {
+          final status = (s['status'] ?? '').toString().toLowerCase();
+          return status == 'completed' || status == 'processing' || status == 'paid' || status == 'confirmed';
+        })
+        .fold<double>(0, (sum, s) {
+          final double val = double.tryParse(s['seller_amount']?.toString() ?? s['total']?.toString() ?? '0') ?? 0;
+          return sum + (isMerchant ? val / 100.0 : val);
+        });
 
     return Container(
       color: Colors.white,
@@ -139,13 +175,13 @@ class _MySalesScreenState extends State<MySalesScreen> {
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 6),
         decoration: BoxDecoration(
-          color: const Color(0xFFFFFDF9), // Clean soft warm cream
+          color: Colors.white,
           borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: const Color(0xFFF9E7C9), width: 1.2),
+          border: Border.all(color: AppColors.borderLight, width: 1.0),
         ),
         child: Column(
           children: [
-            Icon(icon, color: const Color(0xFFF57C00), size: 18),
+            Icon(icon, color: AppColors.primary, size: 18),
             const SizedBox(height: 6),
             Text(value, style: const TextStyle(color: AppColors.primary, fontWeight: FontWeight.bold, fontSize: 13)),
             const SizedBox(height: 2),
@@ -190,11 +226,17 @@ class _MySalesScreenState extends State<MySalesScreen> {
   }
 
   Widget _buildSaleCard(Map<String, dynamic> sale) {
+    final isMerchant = _isMerchantMode;
     final status = (sale['status'] ?? 'pending').toString();
     final orderNum = sale['order_number']?.toString() ?? '#${sale['id']}';
-    final total = double.tryParse(sale['total']?.toString() ?? '0') ?? 0.0;
-    final sellerAmt = double.tryParse(sale['seller_amount']?.toString() ?? '0') ?? total;
-    final buyer = sale['customer_name']?.toString() ?? 'Customer';
+    
+    final double rawTotal = double.tryParse(sale['total']?.toString() ?? '0') ?? 0.0;
+    final double rawSellerAmt = double.tryParse(sale['seller_amount']?.toString() ?? '0') ?? rawTotal;
+    
+    final total = isMerchant ? rawTotal / 100.0 : rawTotal;
+    final sellerAmt = isMerchant ? rawSellerAmt / 100.0 : rawSellerAmt;
+    
+    final buyer = sale['customer_name']?.toString() ?? sale['buyer_name']?.toString() ?? 'Customer';
     final currency = sale['currency']?.toString() ?? 'SGD';
     final createdAt = sale['created_at']?.toString() ?? '';
 

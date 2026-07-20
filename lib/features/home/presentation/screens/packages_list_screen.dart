@@ -397,6 +397,8 @@ class _PackagesListScreenState extends State<PackagesListScreen> {
       'hasHeart': p['liked'] == true,
       'likesCount': likesCount,
       'merchant_id': merchantIdVal,
+      'owner_id': p['owner_id'],
+      'owner_type': p['owner_type'],
       'category': (selectedFilter != null && selectedFilter != 'All Categories' && selectedFilter != 'All')
           ? selectedFilter
           : _getPkgTrueCategory(p),
@@ -439,6 +441,9 @@ class _PackagesListScreenState extends State<PackagesListScreen> {
         'category': pkg['category'],
         'description': pkg['description'],
         'validity': pkg['validity'],
+        'merchant_id': pkg['merchant_id'],
+        'owner_id': pkg['owner_id'],
+        'owner_type': pkg['owner_type'],
         'merchant': {'name': pkg['merchant']},
       }),
     ));
@@ -804,7 +809,7 @@ class _PackagesListScreenState extends State<PackagesListScreen> {
           children: [
             // IMAGE
             Expanded(
-              flex: 50,
+              flex: 46,
               child: ClipRRect(
                 borderRadius: const BorderRadius.vertical(top: Radius.circular(14.5)),
                 child: Stack(
@@ -843,43 +848,42 @@ class _PackagesListScreenState extends State<PackagesListScreen> {
 
             // CONTENT
             Expanded(
-              flex: 50,
+              flex: 54,
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(10, 6, 10, 8),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    // Top: category tag + title
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        _buildCategoryRichText(tagString),
-                        const SizedBox(height: 3),
-                        Text(
-                          pkg['title'],
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF1A1A2E), height: 1.3),
-                        ),
-                      ],
+                    _buildCategoryRichText(tagString),
+                    const SizedBox(height: 3),
+                    SizedBox(
+                      height: 32,
+                      child: Text(
+                        pkg['title'],
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF1A1A2E), height: 1.3),
+                      ),
                     ),
-                    // Middle: price
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        if (originalPrice > resalePrice)
-                          Text(
-                            'S\$${originalPrice.toStringAsFixed(2)}',
-                            style: const TextStyle(fontSize: 9, color: Color(0xFF9E9E9E), decoration: TextDecoration.lineThrough, decorationColor: Color(0xFF9E9E9E)),
-                          ),
-                        Text(
-                          'S\$${resalePrice.toStringAsFixed(2)}',
-                          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: Color(0xFF273DB7), letterSpacing: -0.2),
-                        ),
-                      ],
+                    const SizedBox(height: 4),
+                    SizedBox(
+                      height: 12,
+                      child: (originalPrice > resalePrice)
+                          ? Text(
+                              'S\$${originalPrice.toStringAsFixed(2)}',
+                              style: const TextStyle(fontSize: 9, color: Color(0xFF9E9E9E), decoration: TextDecoration.lineThrough, decorationColor: Color(0xFF9E9E9E)),
+                            )
+                          : const SizedBox.shrink(),
                     ),
-                    // Bottom: merchant row
+                    const SizedBox(height: 2),
+                    SizedBox(
+                      height: 18,
+                      child: Text(
+                        'S\$${resalePrice.toStringAsFixed(2)}',
+                        style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: Color(0xFF273DB7), letterSpacing: -0.2),
+                      ),
+                    ),
+                    const Spacer(),
                     Row(
                       children: [
                         _buildMerchantAvatar(pkg['merchant']?.toString(), pkg['merchantLogo']?.toString(), radius: 7),

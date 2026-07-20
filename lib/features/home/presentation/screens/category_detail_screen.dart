@@ -498,7 +498,7 @@ class _CategoryDetailScreenState extends State<CategoryDetailScreen> {
                                                   height: 1.35,
                                                 ),
                                               ),
-                                              const SizedBox(height: 12),
+                                              const SizedBox(height: 4),
                                               Row(
                                                 children: [
                                                   if (pkg['originalPriceVal'] != null && pkg['resalePriceVal'] != null && (pkg['originalPriceVal'] as double) > (pkg['resalePriceVal'] as double)) ...[

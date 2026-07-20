@@ -516,6 +516,12 @@ class ApiService {
       if (decoded is Map<String, dynamic>) {
         return decoded;
       }
+      if (decoded is List) {
+        return {
+          'success': true,
+          'data': decoded,
+        };
+      }
       return {
         'success': false,
         'code': 'invalid_response',
@@ -1545,6 +1551,30 @@ class ApiService {
       return _safeDecode(response, 'Failed to fetch transactions.');
     } catch (e) {
       return {'success': false, 'message': 'Failed to fetch transactions: $e'};
+    }
+  }
+
+  static Future<Map<String, dynamic>> getPublicMerchantProfile(int merchantId) async {
+    try {
+      final response = await get('/merchants/$merchantId', authenticated: false);
+      return _safeDecode(response, 'Failed to fetch public merchant profile.');
+    } catch (e) {
+      return {'success': false, 'message': 'Failed to fetch public merchant profile: $e'};
+    }
+  }
+
+  static Future<Map<String, dynamic>> getPublicUserProfile(int userId) async {
+    try {
+      final basewp = baseUrl.replaceAll('/twicely/v1', '');
+      final url = Uri.parse('$basewp/wp/v2/users/$userId');
+      final response = await http.get(url);
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        return {'success': true, 'data': data};
+      }
+      return {'success': false, 'message': 'User profile not found (${response.statusCode})'};
+    } catch (e) {
+      return {'success': false, 'message': 'Failed to fetch public profile: $e'};
     }
   }
 }

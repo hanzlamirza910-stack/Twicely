@@ -51,6 +51,55 @@ class _HomeScreenState extends State<HomeScreen> {
   int _ordersCount = 0;
   final ImagePicker _picker = ImagePicker();
   bool _isUploadingAvatar = false;
+  int _avatarCacheBuster = 0;
+
+  String _getAvatarUrl(Map<String, dynamic> data) {
+    String rawUrl = '';
+    if (data['avatar_url'] != null && data['avatar_url'].toString().isNotEmpty) {
+      rawUrl = data['avatar_url'].toString();
+    } else if (data['avatar_urls'] != null) {
+      final avatarUrls = data['avatar_urls'];
+      if (avatarUrls is Map) {
+        rawUrl = avatarUrls['96']?.toString() ?? avatarUrls['48']?.toString() ?? avatarUrls['24']?.toString() ?? '';
+      } else if (avatarUrls != null && avatarUrls.toString().isNotEmpty) {
+        rawUrl = avatarUrls.toString();
+      }
+    } else if (data['avatar'] != null) {
+      final avatar = data['avatar'];
+      if (avatar is Map) {
+        rawUrl = avatar['url']?.toString() ?? avatar['96']?.toString() ?? avatar['48']?.toString() ?? avatar['24']?.toString() ?? '';
+      } else if (avatar != null && avatar.toString().isNotEmpty) {
+        rawUrl = avatar.toString();
+      }
+    } else if (data['photo'] != null && data['photo'].toString().isNotEmpty) {
+      rawUrl = data['photo'].toString();
+    } else if (data['profile_photo'] != null && data['profile_photo'].toString().isNotEmpty) {
+      rawUrl = data['profile_photo'].toString();
+    } else if (data['profile_image'] != null && data['profile_image'].toString().isNotEmpty) {
+      rawUrl = data['profile_image'].toString();
+    }
+
+    if (rawUrl.isEmpty) return '';
+
+    // If it is a relative path, prepend the WordPress base domain
+    if (rawUrl.startsWith('/')) {
+      try {
+        final uri = Uri.parse(ApiService.baseUrl);
+        final hostUrl = '${uri.scheme}://${uri.host}';
+        rawUrl = '$hostUrl$rawUrl';
+      } catch (_) {
+        rawUrl = 'https://staging.twicely.sg$rawUrl';
+      }
+    }
+
+    // Append cache buster if set
+    if (_avatarCacheBuster > 0) {
+      final separator = rawUrl.contains('?') ? '&' : '?';
+      rawUrl = '$rawUrl${separator}cb=$_avatarCacheBuster';
+    }
+
+    return rawUrl;
+  }
 
   // Maps display filter label → API category slug
   static const Map<String, String?> _filterToSlug = {
@@ -165,13 +214,22 @@ class _HomeScreenState extends State<HomeScreen> {
     if (!mounted) return;
     if (profileRes['success'] == true && profileRes['data'] != null) {
       _profileData = Map<String, dynamic>.from(profileRes['data'] as Map);
+    } else if (profileRes.containsKey('id') || profileRes.containsKey('email')) {
+      _profileData = Map<String, dynamic>.from(profileRes);
     }
-    // Load wallet balance
-    final walletRes = await ApiService.getWallet();
+    // Load wallet balance — merchants get balance in cents, divide by 100
+    final isMerchantWallet = SessionManager.isMerchant;
+    final walletRes = isMerchantWallet
+        ? await ApiService.getMerchantWallet()
+        : await ApiService.getWallet();
     if (!mounted) return;
     if (walletRes['success'] == true && walletRes['data'] != null) {
       final wd = walletRes['data'] as Map;
-      _walletBalance = double.tryParse(wd['balance']?.toString() ?? '0') ?? 0.0;
+      final rawBalance = double.tryParse(wd['balance']?.toString() ?? '0') ?? 0.0;
+      _walletBalance = isMerchantWallet ? rawBalance / 100.0 : rawBalance;
+    } else if (walletRes.containsKey('balance')) {
+      final rawBalance = double.tryParse(walletRes['balance']?.toString() ?? '0') ?? 0.0;
+      _walletBalance = isMerchantWallet ? rawBalance / 100.0 : rawBalance;
     }
     // Load wishlist count
     final wishRes = await ApiService.getUserWishlist(perPage: 1);
@@ -180,7 +238,10 @@ class _HomeScreenState extends State<HomeScreen> {
       _wishlistCount = (wishRes['meta']?['total'] ?? (wishRes['data'] as List?)?.length ?? 0) as int;
     }
     // Load sales count
-    final salesRes = await ApiService.getMySales(perPage: 1);
+    final isMerchant = SessionManager.isMerchant;
+    final salesRes = isMerchant
+        ? await ApiService.getMerchantOrders(perPage: 1)
+        : await ApiService.getMySales(perPage: 1);
     if (!mounted) return;
     if (salesRes['success'] == true) {
       _salesCount = (salesRes['meta']?['total'] ?? (salesRes['data'] as List?)?.length ?? 0) as int;
@@ -1221,7 +1282,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
           // Horizontal Packages Scroller
           SizedBox(
-            height: 245,
+            height: 220,
             child: _isLoadingPackages
                 ? const Center(
                     child: CircularProgressIndicator(
@@ -1432,7 +1493,7 @@ class _HomeScreenState extends State<HomeScreen> {
           children: [
             // Image top header
             Expanded(
-              flex: 50,
+              flex: 46,
               child: ClipRRect(
                 borderRadius: const BorderRadius.vertical(top: Radius.circular(14.5)),
                 child: Stack(
@@ -1504,58 +1565,57 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
             // Content metadata
             Expanded(
-              flex: 50,
+              flex: 54,
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(10, 6, 10, 8),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    // Top section: category + title
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        _buildCategoryRichText(tag),
-                        const SizedBox(height: 3),
-                        Text(
-                          title,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.bold,
-                            color: Color(0xFF1A1A2E),
-                            height: 1.3,
-                          ),
+                    _buildCategoryRichText(tag),
+                    const SizedBox(height: 3),
+                    SizedBox(
+                      height: 32,
+                      child: Text(
+                        title,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                          color: Color(0xFF1A1A2E),
+                          height: 1.3,
                         ),
-                      ],
+                      ),
                     ),
-                    // Middle section: price
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        if (isDiscounted)
-                          Text(
-                            originalPrice,
-                            style: const TextStyle(
-                              fontSize: 9,
-                              decoration: TextDecoration.lineThrough,
-                              decorationColor: Color(0xFF9E9E9E),
-                              color: Color(0xFF9E9E9E),
-                            ),
-                          ),
-                        Text(
-                          resalePrice,
-                          style: const TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w800,
-                            color: Color(0xFF273DB7),
-                            letterSpacing: -0.2,
-                          ),
+                    const SizedBox(height: 4),
+                    SizedBox(
+                      height: 12,
+                      child: isDiscounted
+                          ? Text(
+                              originalPrice,
+                              style: const TextStyle(
+                                fontSize: 9,
+                                decoration: TextDecoration.lineThrough,
+                                decorationColor: Color(0xFF9E9E9E),
+                                color: Color(0xFF9E9E9E),
+                              ),
+                            )
+                          : const SizedBox.shrink(),
+                    ),
+                    const SizedBox(height: 2),
+                    SizedBox(
+                      height: 18,
+                      child: Text(
+                        resalePrice,
+                        style: const TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w800,
+                          color: Color(0xFF273DB7),
+                          letterSpacing: -0.2,
                         ),
-                      ],
+                      ),
                     ),
-                    // Bottom section: merchant row
+                    const Spacer(),
                     Row(
                       children: [
                         _buildMerchantAvatar(merchantName, merchantLogo, radius: 7),
@@ -1936,7 +1996,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                 crossAxisCount: 2,
                                 crossAxisSpacing: 14,
                                 mainAxisSpacing: 14,
-                                childAspectRatio: 0.70,
+                                childAspectRatio: 0.84,
                               ),
                               itemCount: filtered.length,
                               itemBuilder: (context, index) {
@@ -1986,7 +2046,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       final items = _displayRecentlyViewed;
                       if (items.isEmpty) return const SizedBox.shrink();
                       return SizedBox(
-                        height: 245,
+                        height: 220,
                         child: Row(
                           crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: List.generate(items.length.clamp(0, 2), (index) {
@@ -2105,11 +2165,11 @@ class _HomeScreenState extends State<HomeScreen> {
             : nameFallback.isNotEmpty ? nameFallback : null)
         ?? SessionManager.userName ?? 'Twicely Member';
     final email = _profileData['email']?.toString() ?? SessionManager.userEmail ?? '';
-    final phone = _profileData['phone_number']?.toString() ?? '';
+    final phone = _profileData['phone_number']?.toString() ?? _profileData['phone']?.toString() ?? '';
     final verified = _profileData['verification_status']?.toString() == 'verified';
     final isMerchant = SessionManager.isMerchant;
     final initials = name.split(' ').where((w) => w.isNotEmpty).take(2).map((w) => w[0].toUpperCase()).join();
-    final avatarUrl = _profileData['avatar_url']?.toString() ?? _profileData['photo']?.toString() ?? _profileData['avatar']?.toString() ?? '';
+    final avatarUrl = _getAvatarUrl(_profileData);
 
     return RefreshIndicator(
       onRefresh: _loadProfile,
@@ -2234,7 +2294,9 @@ class _HomeScreenState extends State<HomeScreen> {
               subtitle: _isLoadingProfile ? 'Loading...' : 'Balance: SGD ${_walletBalance.toStringAsFixed(2)}',
               icon: Icons.account_balance_wallet_outlined,
               onTap: () async {
-                await Navigator.of(context).push(MaterialPageRoute(builder: (_) => const WalletScreen()));
+                await Navigator.of(context).push(MaterialPageRoute(
+                  builder: (_) => WalletScreen(isMerchant: isMerchant),
+                ));
                 _loadProfile();
               },
             ),
@@ -2244,7 +2306,9 @@ class _HomeScreenState extends State<HomeScreen> {
               subtitle: _isLoadingProfile ? 'Loading...' : '$_salesCount sale${_salesCount != 1 ? 's' : ''}',
               icon: Icons.sell_outlined,
               onTap: () async {
-                await Navigator.of(context).push(MaterialPageRoute(builder: (_) => const MySalesScreen()));
+                await Navigator.of(context).push(MaterialPageRoute(
+                  builder: (_) => MySalesScreen(isMerchant: isMerchant),
+                ));
                 _loadProfile();
               },
             ),
@@ -2273,7 +2337,9 @@ class _HomeScreenState extends State<HomeScreen> {
               title: 'Payout Methods',
               subtitle: 'Manage withdrawals',
               icon: Icons.payment_outlined,
-              onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const PayoutScreen())),
+              onTap: () => Navigator.of(context).push(MaterialPageRoute(
+                builder: (_) => PayoutScreen(isMerchant: isMerchant),
+              )),
             ),
             const SizedBox(height: 24),
 
@@ -2291,7 +2357,7 @@ class _HomeScreenState extends State<HomeScreen> {
               label: const Text('Log Out',
                   style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: AppColors.primary)),
               style: OutlinedButton.styleFrom(
-                backgroundColor: const Color(0xFFFFFDF9),
+                backgroundColor: Colors.white,
                 side: BorderSide(color: AppColors.primary.withValues(alpha: 0.08)),
                 padding: const EdgeInsets.symmetric(vertical: 14),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
@@ -2325,7 +2391,7 @@ class _HomeScreenState extends State<HomeScreen> {
     final phoneCtrl = TextEditingController(text: currentPhone);
     final email = _profileData['email']?.toString() ?? SessionManager.userEmail ?? '';
     final initials = currentName.split(' ').where((w) => w.isNotEmpty).take(2).map((w) => w[0].toUpperCase()).join();
-    final avatarUrl = _profileData['avatar_url']?.toString() ?? _profileData['photo']?.toString() ?? _profileData['avatar']?.toString() ?? '';
+    final avatarUrl = _getAvatarUrl(_profileData);
     bool isSaving = false;
     String? localImagePath;
 
@@ -2377,7 +2443,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           height: 88,
                           decoration: BoxDecoration(
                             shape: BoxShape.circle,
-                            border: Border.all(color: const Color(0xFFF9E7C9), width: 1.5),
+                            border: Border.all(color: AppColors.borderLight, width: 1.5),
                           ),
                           child: ClipRRect(
                             borderRadius: BorderRadius.circular(44),
@@ -2542,8 +2608,12 @@ class _HomeScreenState extends State<HomeScreen> {
                                 'phone': phoneCtrl.text.trim(),
                               });
                               if (!ctx.mounted) return;
-                              if (res['success'] == true) {
+                              final isSuccess = res['success'] == true || res.containsKey('id') || res.containsKey('email');
+                              if (isSuccess) {
                                 debugPrint('[ProfileEdit] Profile details updated successfully.');
+                                setState(() {
+                                  _avatarCacheBuster = DateTime.now().millisecondsSinceEpoch;
+                                });
                                 _loadProfile();
                                 CustomSnackBar.show(
                                   context,
@@ -2664,6 +2734,9 @@ class _HomeScreenState extends State<HomeScreen> {
       if (!mounted) return;
 
       if (res['success'] == true) {
+        setState(() {
+          _avatarCacheBuster = DateTime.now().millisecondsSinceEpoch;
+        });
         _loadProfile();
         CustomSnackBar.show(
           context,

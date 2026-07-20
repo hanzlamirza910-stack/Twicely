@@ -393,6 +393,7 @@ class _SellerProfileScreenState extends State<SellerProfileScreen> {
           children: [
             // Image Stack
             Expanded(
+              flex: 46,
               child: Stack(
                 fit: StackFit.expand,
                 children: [
@@ -434,55 +435,55 @@ class _SellerProfileScreenState extends State<SellerProfileScreen> {
             ),
             // Details
             Expanded(
+              flex: 54,
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(10, 6, 10, 8),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    // Top: tag + title
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        _buildCategoryRichText(item['tag']?.toString() ?? ''),
-                        const SizedBox(height: 3),
-                        Text(
-                          item['title'] ?? 'Package',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.bold,
-                            color: AppColors.primary,
-                            height: 1.2,
-                          ),
+                    _buildCategoryRichText(item['tag']?.toString() ?? ''),
+                    const SizedBox(height: 3),
+                    SizedBox(
+                      height: 32,
+                      child: Text(
+                        item['title'] ?? 'Package',
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                          color: AppColors.primary,
+                          height: 1.2,
                         ),
-                      ],
+                      ),
                     ),
-                    // Middle: price
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        if (isDiscounted)
-                          Text(
-                            item['originalPrice'] ?? '',
-                            style: TextStyle(
-                              fontSize: 9,
-                              decoration: TextDecoration.lineThrough,
-                              color: Colors.black.withValues(alpha: 0.4),
-                            ),
-                          ),
-                        Text(
-                          item['resalePrice'] ?? '',
-                          style: const TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w800,
-                            color: Color(0xFF273DB7),
-                          ),
+                    const SizedBox(height: 4),
+                    SizedBox(
+                      height: 12,
+                      child: isDiscounted
+                          ? Text(
+                              item['originalPrice'] ?? '',
+                              style: TextStyle(
+                                fontSize: 9,
+                                decoration: TextDecoration.lineThrough,
+                                color: Colors.black.withValues(alpha: 0.4),
+                              ),
+                            )
+                          : const SizedBox.shrink(),
+                    ),
+                    const SizedBox(height: 2),
+                    SizedBox(
+                      height: 18,
+                      child: Text(
+                        item['resalePrice'] ?? '',
+                        style: const TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w800,
+                          color: Color(0xFF273DB7),
                         ),
-                      ],
+                      ),
                     ),
-                    // Bottom: merchant row
+                    const Spacer(),
                     Row(
                       children: [
                         _buildMerchantAvatar(

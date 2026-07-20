@@ -75,15 +75,12 @@ class _MerchantDashboardState extends State<MerchantDashboard> {
         _merchantBusinessName = user['business_name'] as String? ?? 
             user['name'] as String? ?? 
             '${user['first_name'] ?? ''} ${user['last_name'] ?? ''}'.trim();
-        if (_merchantBusinessName.isEmpty) {
-          _merchantBusinessName = "Rolys";
-        }
-        _merchantEmail = user['email'] as String? ?? "synvolv3@gmail.com";
-        _merchantPhone = user['phone'] as String? ?? "03030844726";
-        _merchantBusinessType = user['business_type'] as String? ?? "Company";
-        _merchantRegNumber = user['business_registration'] as String? ?? "2324";
-        _merchantAddress = user['business_address'] as String? ?? "07 lahore";
-        _merchantWebsite = user['website_link'] as String? ?? "-";
+        _merchantEmail = user['email'] as String? ?? '';
+        _merchantPhone = user['phone'] as String? ?? user['phone_number'] as String? ?? '';
+        _merchantBusinessType = user['business_type'] as String? ?? '';
+        _merchantRegNumber = user['business_registration'] as String? ?? '';
+        _merchantAddress = user['business_address'] as String? ?? '';
+        _merchantWebsite = user['website_link'] as String? ?? '';
         _merchantLogoUrl = user['logo'] as String? ?? user['logo_url'] as String? ?? user['avatar_url'] as String? ?? '';
       }
     }
@@ -1020,7 +1017,7 @@ class _MerchantDashboardState extends State<MerchantDashboard> {
             onTap: () {
               Navigator.of(context).push(
                 MaterialPageRoute(
-                  builder: (context) => const WalletScreen(),
+                  builder: (context) => const WalletScreen(isMerchant: true),
                 ),
               );
             },
@@ -1028,12 +1025,12 @@ class _MerchantDashboardState extends State<MerchantDashboard> {
           const SizedBox(height: 12),
           _buildProfileOption(
             title: 'My Sales',
-            subtitle: '${_merchantPackages.length} Active Listings',
+            subtitle: '${_merchantOrders.length} sale${_merchantOrders.length != 1 ? 's' : ''}',
             icon: Icons.sell_outlined,
             onTap: () {
               Navigator.of(context).push(
                 MaterialPageRoute(
-                  builder: (context) => const MySalesScreen(),
+                  builder: (context) => const MySalesScreen(isMerchant: true),
                 ),
               );
             },
@@ -1072,7 +1069,7 @@ class _MerchantDashboardState extends State<MerchantDashboard> {
             onTap: () {
               Navigator.of(context).push(
                 MaterialPageRoute(
-                  builder: (context) => const PayoutScreen(),
+                  builder: (context) => const PayoutScreen(isMerchant: true),
                 ),
               );
             },
@@ -1102,7 +1099,7 @@ class _MerchantDashboardState extends State<MerchantDashboard> {
               style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: AppColors.primary),
             ),
             style: OutlinedButton.styleFrom(
-              backgroundColor: const Color(0xFFFFFDF9),
+              backgroundColor: Colors.white,
               side: BorderSide(color: AppColors.primary.withValues(alpha: 0.08)),
               padding: const EdgeInsets.symmetric(vertical: 14),
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
@@ -1200,7 +1197,7 @@ class _MerchantDashboardState extends State<MerchantDashboard> {
                           height: 88,
                           decoration: BoxDecoration(
                             shape: BoxShape.circle,
-                            border: Border.all(color: const Color(0xFFF9E7C9), width: 1.5),
+                            border: Border.all(color: AppColors.borderLight, width: 1.5),
                           ),
                           child: ClipRRect(
                             borderRadius: BorderRadius.circular(44),
@@ -2152,7 +2149,7 @@ class _MerchantDashboardState extends State<MerchantDashboard> {
                                       style: TextStyle(
                                         fontSize: 11,
                                         fontWeight: FontWeight.bold,
-                                        color: AppColors.primary,
+                                        color: Color(0xFF273DB7),
                                       ),
                                     ),
                                     Text(
@@ -2160,7 +2157,7 @@ class _MerchantDashboardState extends State<MerchantDashboard> {
                                       style: const TextStyle(
                                         fontSize: 18,
                                         fontWeight: FontWeight.bold,
-                                        color: AppColors.primary,
+                                        color: Color(0xFF273DB7),
                                       ),
                                     ),
                                   ],

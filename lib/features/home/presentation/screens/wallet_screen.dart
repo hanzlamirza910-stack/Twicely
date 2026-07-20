@@ -4,7 +4,8 @@ import '../../../../core/services/api_service.dart';
 import '../../../../core/utils/session_manager.dart';
 
 class WalletScreen extends StatefulWidget {
-  const WalletScreen({super.key});
+  final bool? isMerchant;
+  const WalletScreen({super.key, this.isMerchant});
 
   @override
   State<WalletScreen> createState() => _WalletScreenState();
@@ -29,9 +30,11 @@ class _WalletScreenState extends State<WalletScreen> {
     setState(() => _isLoading = false);
   }
 
+  bool get _isMerchantMode => widget.isMerchant ?? SessionManager.isMerchant;
+
   Future<void> _fetchWallet() async {
     // Try merchant wallet first if applicable
-    final isMerchant = SessionManager.isMerchant;
+    final isMerchant = _isMerchantMode;
     final res = isMerchant
         ? await ApiService.getMerchantWallet()
         : await ApiService.getWallet();
@@ -42,7 +45,7 @@ class _WalletScreenState extends State<WalletScreen> {
   }
 
   Future<void> _fetchTransactions() async {
-    final isMerchant = SessionManager.isMerchant;
+    final isMerchant = _isMerchantMode;
     final res = isMerchant
         ? await ApiService.getMerchantTransactions(perPage: 30)
         : await ApiService.getUserTransactions(perPage: 30);
@@ -74,7 +77,7 @@ class _WalletScreenState extends State<WalletScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final isMerchant = SessionManager.isMerchant;
+    final isMerchant = _isMerchantMode;
     final balanceRaw = double.tryParse(_wallet['balance']?.toString() ?? '0') ?? 0.0;
     final availableRaw = double.tryParse(_wallet['available_balance']?.toString() ?? '0') ?? 0.0;
     final clearingRaw = double.tryParse(_wallet['clearing_balance']?.toString() ?? '0') ?? 0.0;
@@ -150,11 +153,11 @@ class _WalletScreenState extends State<WalletScreen> {
     return Container(
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
-        color: const Color(0xFFFFFDF9), // Clean soft warm cream
+        color: Colors.white,
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: const Color(0xFFF9E7C9), width: 1.5),
+        border: Border.all(color: AppColors.borderLight, width: 1.0),
         boxShadow: [
-          BoxShadow(color: const Color(0xFFF9E7C9).withValues(alpha: 0.15), blurRadius: 20, offset: const Offset(0, 8)),
+          BoxShadow(color: Colors.black.withValues(alpha: 0.03), blurRadius: 10, offset: const Offset(0, 4)),
         ],
       ),
       child: Column(
@@ -214,7 +217,7 @@ class _WalletScreenState extends State<WalletScreen> {
 
   Widget _buildTxnCard(Map<String, dynamic> txn) {
     final type = (txn['type'] ?? 'credit').toString();
-    final isMerchant = SessionManager.isMerchant;
+    final isMerchant = _isMerchantMode;
     final amountRaw = double.tryParse(txn['amount']?.toString() ?? '0') ?? 0.0;
     final amount = isMerchant ? amountRaw / 100.0 : amountRaw;
     final desc = txn['description']?.toString() ?? type;

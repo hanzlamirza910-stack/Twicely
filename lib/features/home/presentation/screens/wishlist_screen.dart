@@ -372,6 +372,7 @@ class _WishlistScreenState extends State<WishlistScreen> {
           children: [
             // Image Section with Floating Heart and Category Pill
             Expanded(
+              flex: 46,
               child: Stack(
                 children: [
                   PackageImageCarousel(
@@ -439,51 +440,80 @@ class _WishlistScreenState extends State<WishlistScreen> {
 
             // Details Section
             Expanded(
+              flex: 54,
               child: Padding(
-                padding: const EdgeInsets.fromLTRB(12, 6, 12, 8),
+                padding: const EdgeInsets.fromLTRB(10, 6, 10, 8),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    // Top: title + description
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          item['title'] as String,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.bold,
-                            color: AppColors.primary,
-                          ),
+                    _buildCategoryRichText(item['tag'] as String? ?? item['category'] as String? ?? 'General'),
+                    const SizedBox(height: 3),
+                    SizedBox(
+                      height: 32,
+                      child: Text(
+                        item['title'] as String,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                          color: Color(0xFF1A1A2E),
+                          height: 1.3,
                         ),
-                        const SizedBox(height: 2),
-                        Text(
-                          item['description'] as String,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            fontSize: 10,
-                            color: AppColors.primary.withValues(alpha: 0.5),
-                          ),
-                        ),
-                      ],
+                      ),
                     ),
-                    // Bottom: price + cart button
+                    const SizedBox(height: 4),
+                    SizedBox(
+                      height: 12,
+                      child: (item['originalPriceVal'] != null &&
+                              item['resalePriceVal'] != null &&
+                              (item['originalPriceVal'] as double) > (item['resalePriceVal'] as double))
+                          ? Text(
+                              item['originalPrice'] as String,
+                              style: const TextStyle(
+                                fontSize: 9,
+                                decoration: TextDecoration.lineThrough,
+                                decorationColor: Color(0xFF9E9E9E),
+                                color: Color(0xFF9E9E9E),
+                              ),
+                            )
+                          : const SizedBox.shrink(),
+                    ),
+                    const SizedBox(height: 2),
+                    SizedBox(
+                      height: 18,
+                      child: Text(
+                        item['resalePrice'] as String,
+                        style: const TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w800,
+                          color: Color(0xFF273DB7),
+                          letterSpacing: -0.2,
+                        ),
+                      ),
+                    ),
+                    const Spacer(),
                     Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        Text(
-                          'SGD ${(item['price'] as double).toStringAsFixed(0)}',
-                          style: const TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w900,
-                            color: Color(0xFF273DB7),
+                        _buildMerchantAvatar(
+                          item['merchantName'] as String? ?? item['merchant'] as String? ?? 'Twicely',
+                          item['merchantLogo'] as String? ?? '',
+                          radius: 7,
+                        ),
+                        const SizedBox(width: 5),
+                        Expanded(
+                          child: Text(
+                            item['merchantName'] as String? ?? item['merchant'] as String? ?? 'Twicely',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 9,
+                              color: Colors.black.withValues(alpha: 0.6),
+                              fontWeight: FontWeight.w400,
+                            ),
                           ),
                         ),
-                        // Shopping Bag/Cart Icon Button
+                        const SizedBox(width: 4),
                         GestureDetector(
                           onTap: () async {
                             final int? pkgId = int.tryParse(item['id'].toString());
@@ -524,41 +554,103 @@ class _WishlistScreenState extends State<WishlistScreen> {
                                   context,
                                   message: res['message'] ?? 'Failed to add item to cart.',
                                   type: SnackBarType.error,
-                                  );
-                                }
-                              } catch (e) {
-                                if (!mounted) return;
-                                Navigator.of(context).pop();
-                                CustomSnackBar.show(
-                                  context,
-                                  message: 'Error: $e',
-                                  type: SnackBarType.error,
                                 );
                               }
-                            },
-                            child: Container(
-                              padding: const EdgeInsets.all(4),
-                              decoration: BoxDecoration(
-                                shape: BoxShape.circle,
-                                border: Border.all(color: AppColors.primary.withValues(alpha: 0.12)),
-                              ),
-                              child: const Icon(
-                                Icons.shopping_bag_outlined,
-                                color: AppColors.primary,
-                                size: 14,
-                              ),
+                            } catch (e) {
+                              if (!mounted) return;
+                              Navigator.of(context).pop();
+                              CustomSnackBar.show(
+                                context,
+                                message: 'Error: $e',
+                                type: SnackBarType.error,
+                              );
+                            }
+                          },
+                          child: Container(
+                            padding: const EdgeInsets.all(4),
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              border: Border.all(color: AppColors.primary.withValues(alpha: 0.12)),
+                            ),
+                            child: const Icon(
+                              Icons.shopping_bag_outlined,
+                              color: AppColors.primary,
+                              size: 14,
                             ),
                           ),
-                        ],
-                      ),
-                    ],
-                  ),
+                        ),
+                      ],
+                    ),
+                  ],
                 ),
               ),
-            ],
-          ),
+            ),
+          ],
         ),
+      ),
     );
   }
 
+  Widget _buildCategoryRichText(String tag) {
+    final parts = tag.split('>');
+    final List<InlineSpan> spans = [];
+    for (int i = 0; i < parts.length; i++) {
+      final part = parts[i].trim();
+      Color textColor = const Color(0xFF111111);
+      if (i == 0) {
+        textColor = const Color(0xFFFF014E);
+      } else if (i < parts.length - 1) {
+        textColor = const Color(0xFF0691D7);
+      }
+      spans.add(TextSpan(text: part, style: TextStyle(color: textColor)));
+      if (i < parts.length - 1) {
+        spans.add(const TextSpan(text: ' > ', style: TextStyle(color: Color(0xFF111111))));
+      }
+    }
+    return RichText(
+      text: TextSpan(
+        style: const TextStyle(
+          fontSize: 9,
+          fontWeight: FontWeight.bold,
+          fontFamily: 'Recoleta Alt',
+        ),
+        children: spans,
+      ),
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+    );
+  }
+
+  Widget _buildMerchantAvatar(String? name, String? logoUrl, {double radius = 12}) {
+    final hasLogo = logoUrl != null && logoUrl.isNotEmpty;
+    final initial = (name != null && name.isNotEmpty) ? name[0].toUpperCase() : 'T';
+    const colors = [
+      Color(0xFF4A6FA5),
+      Color(0xFF3D8B5E),
+      Color(0xFF7B5EA7),
+      Color(0xFF5B8DB8),
+      Color(0xFF8B6E3C),
+      Color(0xFF4A7C59),
+    ];
+    final Color avatarColor = hasLogo
+        ? Colors.grey.shade100
+        : (name?.toLowerCase() == 'twicely'
+            ? const Color(0xFF273DB7)
+            : colors[(name?.hashCode.abs() ?? 0) % colors.length]);
+    return CircleAvatar(
+      radius: radius,
+      backgroundColor: avatarColor,
+      backgroundImage: hasLogo ? NetworkImage(logoUrl) : null,
+      child: !hasLogo
+          ? Text(
+              initial,
+              style: TextStyle(
+                fontSize: radius * 0.9,
+                fontWeight: FontWeight.bold,
+                color: Colors.white,
+              ),
+            )
+          : null,
+    );
+  }
 }

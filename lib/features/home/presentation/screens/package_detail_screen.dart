@@ -25,12 +25,14 @@ class _PackageDetailScreenState extends State<PackageDetailScreen> {
   Map<String, dynamic>? _detailedPackage;
   List<Map<String, dynamic>> _similarPackages = [];
   bool _loadingSimilar = false;
+  Map<String, dynamic>? _fetchedOwner;
 
   @override
   void initState() {
     super.initState();
     _isFavorited = widget.package['hasHeart'] == true;
     _fetchDetails();
+    _fetchOwnerDetails(widget.package);
     _fetchSimilar(pkg: widget.package);
   }
 
@@ -43,15 +45,77 @@ class _PackageDetailScreenState extends State<PackageDetailScreen> {
     final res = await ApiService.getPackageById(intId);
     if (res['success'] == true && res['data'] != null) {
       if (mounted) {
+        final pkgData = res['data'] as Map<String, dynamic>;
         setState(() {
-          _detailedPackage = res['data'] as Map<String, dynamic>;
+          _detailedPackage = pkgData;
           _isFavorited = _detailedPackage?['liked'] == true || _detailedPackage?['hasHeart'] == true;
           _isLoading = false;
         });
         _fetchSimilar(pkg: _detailedPackage!);
+        _fetchOwnerDetails(pkgData);
       }
     } else {
       if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _fetchOwnerDetails(Map<String, dynamic> pkg) async {
+    final ownerIdVal = int.tryParse(pkg['owner_id']?.toString() ?? '') ?? int.tryParse(pkg['merchant_id']?.toString() ?? '');
+    final ownerTypeVal = pkg['owner_type']?.toString() ?? '';
+
+    if (ownerIdVal == null || ownerIdVal == 0) return;
+
+    if (ownerTypeVal == 'merchant' || (ownerTypeVal.isEmpty && pkg['merchant_id'] != null)) {
+      if (ApiService.merchantsCache.containsKey(ownerIdVal)) {
+        final cached = ApiService.merchantsCache[ownerIdVal]!;
+        if (mounted) {
+          setState(() {
+            _fetchedOwner = {
+              'name': cached['business_name']?.toString() ?? 'Twicely Merchant',
+              'avatar': ApiService.getMerchantLogo(ownerIdVal, cached['logo_url']?.toString()),
+              'is_merchant': true,
+              'merchant_id': ownerIdVal,
+            };
+          });
+        }
+        return;
+      }
+
+      final res = await ApiService.getPublicMerchantProfile(ownerIdVal);
+      if (res['success'] == true && res['data'] != null) {
+        final data = res['data'] as Map<String, dynamic>;
+        ApiService.merchantsCache[ownerIdVal] = data;
+        if (mounted) {
+          setState(() {
+            _fetchedOwner = {
+              'name': data['business_name']?.toString() ?? 'Twicely Merchant',
+              'avatar': ApiService.getMerchantLogo(ownerIdVal, data['logo_url']?.toString()),
+              'is_merchant': true,
+              'merchant_id': ownerIdVal,
+            };
+          });
+        }
+      }
+    } else if (ownerTypeVal == 'user') {
+      final res = await ApiService.getPublicUserProfile(ownerIdVal);
+      if (res['success'] == true && res['data'] != null) {
+        final data = res['data'] as Map<String, dynamic>;
+        final avatarUrls = data['avatar_urls'];
+        String avatarUrl = '';
+        if (avatarUrls is Map) {
+          avatarUrl = avatarUrls['96']?.toString() ?? avatarUrls['48']?.toString() ?? '';
+        }
+        if (mounted) {
+          setState(() {
+            _fetchedOwner = {
+              'name': data['name']?.toString() ?? 'Twicely Member',
+              'avatar': avatarUrl,
+              'is_merchant': false,
+              'owner_id': ownerIdVal,
+            };
+          });
+        }
+      }
     }
   }
 
@@ -883,39 +947,71 @@ class _PackageDetailScreenState extends State<PackageDetailScreen> {
 
   Widget _buildMerchantCard() {
     final pkg = _detailedPackage ?? widget.package;
-    final merchantIdVal = int.tryParse(pkg['merchant_id']?.toString() ?? '');
+    final ownerIdVal = int.tryParse(pkg['owner_id']?.toString() ?? '');
+    final ownerTypeVal = pkg['owner_type']?.toString() ?? '';
+    final merchantIdVal = ownerTypeVal == 'merchant' ? ownerIdVal : int.tryParse(pkg['merchant_id']?.toString() ?? '');
 
-    // Resolution priority:
-    // 1. Pre-resolved merchantName/merchantLogo keys (set by home/list screens)
-    // 2. merchantsCache lookup by merchant_id
-    // 3. Nested pkg['merchant'] map
-    // 4. pkg['merchant_name'] field
-    // 5. Fallback to 'Twicely'
     String merchantName = 'Twicely';
     String merchantLogo = '';
+    bool isRealMerchant = false;
+    int? activeMerchantId = merchantIdVal;
 
-    if (pkg['merchantName'] != null && pkg['merchantName'].toString().isNotEmpty) {
-      merchantName = pkg['merchantName'].toString();
-      merchantLogo = pkg['merchantLogo']?.toString() ?? '';
-    } else if (merchantIdVal != null && ApiService.merchantsCache.containsKey(merchantIdVal)) {
-      final m = ApiService.merchantsCache[merchantIdVal]!;
-      merchantName = m['business_name']?.toString() ?? 'Twicely';
-      merchantLogo = ApiService.getMerchantLogo(merchantIdVal, m['logo_url']?.toString());
-    } else if (pkg['merchant'] is Map && pkg['merchant']['name'] != null) {
-      merchantName = pkg['merchant']['name'].toString();
-      merchantLogo = ApiService.getMerchantLogo(merchantIdVal, pkg['merchant']['logo']?.toString());
-    } else if (pkg['merchant'] is Map && pkg['merchant']['display_name'] != null) {
-      merchantName = pkg['merchant']['display_name'].toString();
-      merchantLogo = ApiService.getMerchantLogo(merchantIdVal, '');
-    } else if (pkg['merchant_name'] != null) {
-      merchantName = pkg['merchant_name'].toString();
-      merchantLogo = ApiService.getMerchantLogo(merchantIdVal, '');
-    } else if (merchantIdVal != null) {
-      // merchant_id exists but not in cache — look up directly from API cache
-      merchantLogo = ApiService.getMerchantLogo(merchantIdVal, '');
+    String getAvatarFromMap(Map map) {
+      final photo = map['photo'] ?? map['profile_photo'] ?? map['avatar_url'] ?? map['avatar'] ?? map['logo_url'] ?? map['logo'];
+      if (photo != null && photo.toString().isNotEmpty) {
+        final path = photo.toString();
+        if (path.startsWith('http://') || path.startsWith('https://')) {
+          return path;
+        }
+        return '${ApiService.baseUrl.replaceAll('/wp-json/twicely/v1', '')}$path';
+      }
+      final avatarUrls = map['avatar_urls'];
+      if (avatarUrls is Map) {
+        final url = avatarUrls['96'] ?? avatarUrls['48'] ?? avatarUrls['24'];
+        if (url != null && url.toString().isNotEmpty) {
+          return url.toString();
+        }
+      }
+      return '';
     }
 
-    final bool isRealMerchant = merchantIdVal != null;
+    if (_fetchedOwner != null) {
+      merchantName = _fetchedOwner!['name']?.toString() ?? 'Twicely';
+      merchantLogo = _fetchedOwner!['avatar']?.toString() ?? '';
+      isRealMerchant = _fetchedOwner!['is_merchant'] == true;
+      activeMerchantId = _fetchedOwner!['merchant_id'] as int?;
+    } else {
+      if (pkg['merchantName'] != null && pkg['merchantName'].toString().isNotEmpty) {
+        merchantName = pkg['merchantName'].toString();
+        merchantLogo = pkg['merchantLogo']?.toString() ?? '';
+        isRealMerchant = merchantIdVal != null;
+      } else if (pkg['presented_by'] is Map) {
+        final pb = pkg['presented_by'] as Map;
+        merchantName = pb['name']?.toString() ?? pb['display_name']?.toString() ?? pb['username']?.toString() ?? 'Twicely';
+        merchantLogo = getAvatarFromMap(pb);
+        isRealMerchant = false;
+      } else if (merchantIdVal != null && ApiService.merchantsCache.containsKey(merchantIdVal)) {
+        final m = ApiService.merchantsCache[merchantIdVal]!;
+        merchantName = m['business_name']?.toString() ?? 'Twicely';
+        merchantLogo = ApiService.getMerchantLogo(merchantIdVal, m['logo_url']?.toString());
+        isRealMerchant = true;
+      } else if (pkg['merchant'] is Map && pkg['merchant']['name'] != null) {
+        merchantName = pkg['merchant']['name'].toString();
+        merchantLogo = ApiService.getMerchantLogo(merchantIdVal, pkg['merchant']['logo']?.toString());
+        isRealMerchant = merchantIdVal != null;
+      } else if (pkg['merchant'] is Map && pkg['merchant']['display_name'] != null) {
+        merchantName = pkg['merchant']['display_name'].toString();
+        merchantLogo = ApiService.getMerchantLogo(merchantIdVal, '');
+        isRealMerchant = merchantIdVal != null;
+      } else if (pkg['merchant_name'] != null) {
+        merchantName = pkg['merchant_name'].toString();
+        merchantLogo = ApiService.getMerchantLogo(merchantIdVal, '');
+        isRealMerchant = merchantIdVal != null;
+      } else if (merchantIdVal != null) {
+        merchantLogo = ApiService.getMerchantLogo(merchantIdVal, '');
+        isRealMerchant = true;
+      }
+    }
 
     final Widget cardContent = Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
@@ -933,10 +1029,8 @@ class _PackageDetailScreenState extends State<PackageDetailScreen> {
       ),
       child: Row(
         children: [
-          // Avatar — uses the same _buildMerchantAvatar helper as all other screens
           _buildMerchantAvatar(merchantName, merchantLogo, radius: 24),
           const SizedBox(width: 14),
-          // Name and info
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -956,7 +1050,6 @@ class _PackageDetailScreenState extends State<PackageDetailScreen> {
                     ),
                     if (isRealMerchant) ...[
                       const SizedBox(width: 6),
-                      // Verified Pill — only for real merchants
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                         decoration: BoxDecoration(
@@ -996,13 +1089,13 @@ class _PackageDetailScreenState extends State<PackageDetailScreen> {
       ),
     );
 
-    if (!isRealMerchant) return cardContent;
+    if (!isRealMerchant || activeMerchantId == null) return cardContent;
     return GestureDetector(
       onTap: () {
         Navigator.of(context).push(
           MaterialPageRoute(
             builder: (context) => SellerProfileScreen(
-              merchantId: merchantIdVal,
+              merchantId: activeMerchantId!,
               merchantName: merchantName,
               merchantLogo: merchantLogo,
             ),
@@ -1046,7 +1139,7 @@ class _PackageDetailScreenState extends State<PackageDetailScreen> {
           )
         else
           SizedBox(
-            height: 245,
+            height: 220,
             child: ListView.builder(
               scrollDirection: Axis.horizontal,
               physics: const BouncingScrollPhysics(),
@@ -1092,7 +1185,7 @@ class _PackageDetailScreenState extends State<PackageDetailScreen> {
                       children: [
                         // Image Top Header
                         Expanded(
-                          flex: 55,
+                          flex: 46,
                           child: ClipRRect(
                             borderRadius: const BorderRadius.vertical(top: Radius.circular(14.5)),
                             child: Stack(
@@ -1149,58 +1242,57 @@ class _PackageDetailScreenState extends State<PackageDetailScreen> {
                         ),
                         // Content metadata
                         Expanded(
-                          flex: 45,
+                          flex: 54,
                           child: Padding(
                             padding: const EdgeInsets.fromLTRB(10, 6, 10, 8),
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
-                                // Top: tag + title
-                                Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    _buildCategoryRichText(tag),
-                                    const SizedBox(height: 3),
-                                    Text(
-                                      title,
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: const TextStyle(
-                                        fontSize: 12,
-                                        fontWeight: FontWeight.bold,
-                                        color: Color(0xFF1A1A2E),
-                                        height: 1.3,
-                                      ),
+                                _buildCategoryRichText(tag),
+                                const SizedBox(height: 3),
+                                SizedBox(
+                                  height: 32,
+                                  child: Text(
+                                    title,
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.bold,
+                                      color: Color(0xFF1A1A2E),
+                                      height: 1.3,
                                     ),
-                                  ],
+                                  ),
                                 ),
-                                // Middle: price
-                                Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    if (isDiscounted)
-                                      Text(
-                                        originalPrice,
-                                        style: const TextStyle(
-                                          fontSize: 9,
-                                          decoration: TextDecoration.lineThrough,
-                                          decorationColor: Color(0xFF9E9E9E),
-                                          color: Color(0xFF9E9E9E),
-                                        ),
-                                      ),
-                                    Text(
-                                      resalePrice,
-                                      style: const TextStyle(
-                                        fontSize: 13,
-                                        fontWeight: FontWeight.w800,
-                                        color: Color(0xFF273DB7),
-                                        letterSpacing: -0.2,
-                                      ),
+                                const SizedBox(height: 4),
+                                SizedBox(
+                                  height: 12,
+                                  child: isDiscounted
+                                      ? Text(
+                                          originalPrice,
+                                          style: const TextStyle(
+                                            fontSize: 9,
+                                            decoration: TextDecoration.lineThrough,
+                                            decorationColor: Color(0xFF9E9E9E),
+                                            color: Color(0xFF9E9E9E),
+                                          ),
+                                        )
+                                      : const SizedBox.shrink(),
+                                ),
+                                const SizedBox(height: 2),
+                                SizedBox(
+                                  height: 18,
+                                  child: Text(
+                                    resalePrice,
+                                    style: const TextStyle(
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w800,
+                                      color: Color(0xFF273DB7),
+                                      letterSpacing: -0.2,
                                     ),
-                                  ],
+                                  ),
                                 ),
-                                // Bottom: merchant row
+                                const SizedBox(height: 6),
                                 Row(
                                   children: [
                                     _buildMerchantAvatar(merchantName, merchantLogo, radius: 7),
