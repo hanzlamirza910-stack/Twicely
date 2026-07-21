@@ -5,13 +5,15 @@ import '../../../../core/widgets/custom_snackbar.dart';
 import 'package_detail_screen.dart';
 
 class SellerProfileScreen extends StatefulWidget {
-  final int merchantId;
+  final int? merchantId;
+  final int? ownerId;
   final String merchantName;
   final String merchantLogo;
 
   const SellerProfileScreen({
     super.key,
-    required this.merchantId,
+    this.merchantId,
+    this.ownerId,
     required this.merchantName,
     required this.merchantLogo,
   });
@@ -48,6 +50,7 @@ class _SellerProfileScreenState extends State<SellerProfileScreen> {
       page: 1,
       perPage: 100,
       merchantId: widget.merchantId,
+      ownerId: widget.ownerId,
     );
 
     if (!mounted) return;

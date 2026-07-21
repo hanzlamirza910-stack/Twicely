@@ -33,27 +33,31 @@ class _WalletScreenState extends State<WalletScreen> {
   bool get _isMerchantMode => widget.isMerchant ?? SessionManager.isMerchant;
 
   Future<void> _fetchWallet() async {
-    // Try merchant wallet first if applicable
-    final isMerchant = _isMerchantMode;
-    final res = isMerchant
+    // Both /payments/wallet and /merchants/me/wallet return balance in integer CENTS
+    // e.g. balance: 525 means SGD 5.25
+    final res = _isMerchantMode
         ? await ApiService.getMerchantWallet()
         : await ApiService.getWallet();
     if (!mounted) return;
     if (res['success'] == true && res['data'] != null) {
-      _wallet = Map<String, dynamic>.from(res['data'] as Map);
+      setState(() {
+        _wallet = Map<String, dynamic>.from(res['data'] as Map);
+      });
     }
   }
 
   Future<void> _fetchTransactions() async {
-    final isMerchant = _isMerchantMode;
-    final res = isMerchant
-        ? await ApiService.getMerchantTransactions(perPage: 30)
-        : await ApiService.getUserTransactions(perPage: 30);
+    // /payments/wallet/transactions works for ALL users (merchant and C2C)
+    // and returns amount as dollar string e.g. "525.00" - no division needed
+    // /merchants/me/transactions and /users/me/transactions return empty data
+    final res = await ApiService.getWalletTransactions(perPage: 50);
     if (!mounted) return;
     if (res['success'] == true && res['data'] != null) {
-      _transactions = (res['data'] as List<dynamic>)
-          .map((e) => Map<String, dynamic>.from(e as Map))
-          .toList();
+      setState(() {
+        _transactions = (res['data'] as List<dynamic>)
+            .map((e) => Map<String, dynamic>.from(e as Map))
+            .toList();
+      });
     }
   }
 
@@ -77,14 +81,15 @@ class _WalletScreenState extends State<WalletScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final isMerchant = _isMerchantMode;
+    // API always returns balance as integer CENTS for all user types
+    // e.g. balance: 525 = SGD 5.25, so always divide by 100
     final balanceRaw = double.tryParse(_wallet['balance']?.toString() ?? '0') ?? 0.0;
     final availableRaw = double.tryParse(_wallet['available_balance']?.toString() ?? '0') ?? 0.0;
     final clearingRaw = double.tryParse(_wallet['clearing_balance']?.toString() ?? '0') ?? 0.0;
 
-    final balance = isMerchant ? balanceRaw / 100.0 : balanceRaw;
-    final available = isMerchant ? availableRaw / 100.0 : availableRaw;
-    final clearing = isMerchant ? clearingRaw / 100.0 : clearingRaw;
+    final balance = balanceRaw;
+    final available = availableRaw;
+    final clearing = clearingRaw;
 
     final currency = _wallet['currency']?.toString() ?? 'SGD';
     final payoutEnabled = _wallet['payout_enabled'] == true;
@@ -217,9 +222,9 @@ class _WalletScreenState extends State<WalletScreen> {
 
   Widget _buildTxnCard(Map<String, dynamic> txn) {
     final type = (txn['type'] ?? 'credit').toString();
-    final isMerchant = _isMerchantMode;
-    final amountRaw = double.tryParse(txn['amount']?.toString() ?? '0') ?? 0.0;
-    final amount = isMerchant ? amountRaw / 100.0 : amountRaw;
+    // Transaction amounts come as dollar strings already (e.g. "525.00" = SGD 525.00)
+    // No division needed - just parse directly
+    final amount = double.tryParse(txn['amount']?.toString() ?? '0') ?? 0.0;
     final desc = txn['description']?.toString() ?? type;
     final createdAt = txn['created_at']?.toString() ?? '';
     String dateStr = '';

@@ -137,6 +137,7 @@ class _PackagesListScreenState extends State<PackagesListScreen> {
     if (!mounted) return;
     if (res['success'] == true && res['data'] != null) {
       final List<dynamic> raw = res['data'];
+      await ApiService.prefetchOwners(raw);
       final mapped = raw.map((p) => _mapPkg(p as Map<String, dynamic>, selectedFilter: _selectedFilter)).toList();
       setState(() {
         if (reset) {
@@ -357,20 +358,9 @@ class _PackagesListScreenState extends State<PackagesListScreen> {
     final secondarySlug = p['secondary_category']?.toString() ?? '';
     final subcatLabel = _subcatLabels[secondarySlug] ?? '';
 
-    final merchantIdVal = int.tryParse(p['merchant_id']?.toString() ?? '');
-    String merchantName = 'Twicely Merchant';
-    String merchantLogo = '';
-    if (merchantIdVal != null && ApiService.merchantsCache.containsKey(merchantIdVal)) {
-      final m = ApiService.merchantsCache[merchantIdVal]!;
-      merchantName = m['business_name']?.toString() ?? 'Twicely Merchant';
-      merchantLogo = ApiService.getMerchantLogo(merchantIdVal, m['logo_url']?.toString());
-    } else if (p['merchant'] is Map && p['merchant']['name'] != null) {
-      merchantName = p['merchant']['name'].toString();
-      merchantLogo = ApiService.getMerchantLogo(merchantIdVal, p['merchant']['logo']?.toString());
-    } else if (p['merchant_name'] != null) {
-      merchantName = p['merchant_name'].toString();
-      merchantLogo = ApiService.getMerchantLogo(merchantIdVal, '');
-    }
+    final ownerInfo = ApiService.resolveOwnerInfo(p);
+    final String merchantName = ownerInfo['name'] ?? 'Twicely';
+    final String merchantLogo = ownerInfo['avatar'] ?? '';
 
     int likesCount = int.tryParse(p['likes_count']?.toString() ?? '') ??
                      (p['likes'] != null ? int.tryParse(p['likes'].toString()) : null) ??
@@ -396,7 +386,7 @@ class _PackagesListScreenState extends State<PackagesListScreen> {
       'validity': p['validity_date'] ?? p['valid_until'] ?? '',
       'hasHeart': p['liked'] == true,
       'likesCount': likesCount,
-      'merchant_id': merchantIdVal,
+      'merchant_id': ownerInfo['merchant_id'],
       'owner_id': p['owner_id'],
       'owner_type': p['owner_type'],
       'category': (selectedFilter != null && selectedFilter != 'All Categories' && selectedFilter != 'All')

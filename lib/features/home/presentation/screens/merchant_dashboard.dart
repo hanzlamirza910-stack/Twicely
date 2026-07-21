@@ -309,12 +309,12 @@ class _MerchantDashboardState extends State<MerchantDashboard> {
   Widget _buildHomeTab() {
     final totalPkgs = _merchantPackages.length.toString();
     final num revNum = _merchantStats['revenue_this_week'] ?? 0;
-    final String revenueThisWeek = 'S\$${(revNum / 100.0).toStringAsFixed(2)}';
+    final String revenueThisWeek = 'S\$${revNum.toStringAsFixed(2)}';
     
     final totalSold = _merchantStats['total_sold_packages'] ?? _merchantStats['sold_listings'] ?? _merchantOrders.length;
     final String totalSellPackages = totalSold.toString();
     
-    final String walletBalance = 'S\$${(_walletBalance / 100.0).toStringAsFixed(2)}';
+    final String walletBalance = 'S\$${_walletBalance.toStringAsFixed(2)}';
 
     return SingleChildScrollView(
       physics: const BouncingScrollPhysics(),
@@ -605,7 +605,7 @@ class _MerchantDashboardState extends State<MerchantDashboard> {
                   ?.map((it) => it['package_title'] ?? '')
                   .join(', ') ?? 'Sale Package';
               final double totalVal = double.tryParse(order['total']?.toString() ?? '0.0') ?? 0.0;
-              final String priceStr = 'S\$${(totalVal / 100.0).toStringAsFixed(2)}';
+              final String priceStr = 'S\$${totalVal.toStringAsFixed(2)}';
               
               String dateStr = 'Recent Order';
               if (order['created_at'] != null) {
@@ -1012,7 +1012,7 @@ class _MerchantDashboardState extends State<MerchantDashboard> {
           const SizedBox(height: 12),
           _buildProfileOption(
             title: 'Wallet',
-            subtitle: 'Balance: S\$${(_walletBalance / 100.0).toStringAsFixed(2)}',
+            subtitle: 'Balance: S\$${_walletBalance.toStringAsFixed(2)}',
             icon: Icons.account_balance_wallet_outlined,
             onTap: () {
               Navigator.of(context).push(

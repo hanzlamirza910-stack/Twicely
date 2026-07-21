@@ -60,62 +60,102 @@ class _PackageDetailScreenState extends State<PackageDetailScreen> {
   }
 
   Future<void> _fetchOwnerDetails(Map<String, dynamic> pkg) async {
-    final ownerIdVal = int.tryParse(pkg['owner_id']?.toString() ?? '') ?? int.tryParse(pkg['merchant_id']?.toString() ?? '');
+    final ownerIdVal = int.tryParse(pkg['owner_id']?.toString() ?? '');
+    final merchantIdVal = int.tryParse(pkg['merchant_id']?.toString() ?? '');
     final ownerTypeVal = pkg['owner_type']?.toString() ?? '';
 
-    if (ownerIdVal == null || ownerIdVal == 0) return;
-
-    if (ownerTypeVal == 'merchant' || (ownerTypeVal.isEmpty && pkg['merchant_id'] != null)) {
-      if (ApiService.merchantsCache.containsKey(ownerIdVal)) {
-        final cached = ApiService.merchantsCache[ownerIdVal]!;
+    // 1. C2C User Profile Resolution
+    if (ownerIdVal != null && ownerIdVal > 0 && ownerTypeVal != 'merchant') {
+      if (ApiService.usersCache.containsKey(ownerIdVal)) {
+        final u = ApiService.usersCache[ownerIdVal]!;
+        final avatarUrls = u['avatar_urls'];
+        String avatarUrl = '';
+        if (avatarUrls is Map) {
+          avatarUrl = avatarUrls['96']?.toString() ?? avatarUrls['48']?.toString() ?? avatarUrls['24']?.toString() ?? '';
+        } else if (u['avatar'] != null) {
+          avatarUrl = u['avatar'].toString();
+        }
         if (mounted) {
           setState(() {
             _fetchedOwner = {
-              'name': cached['business_name']?.toString() ?? 'Twicely Merchant',
-              'avatar': ApiService.getMerchantLogo(ownerIdVal, cached['logo_url']?.toString()),
-              'is_merchant': true,
-              'merchant_id': ownerIdVal,
+              'name': u['name']?.toString() ?? u['display_name']?.toString() ?? 'Twicely Member',
+              'avatar': avatarUrl,
+              'is_merchant': false,
+              'owner_id': ownerIdVal,
+              'merchant_id': merchantIdVal,
             };
           });
         }
         return;
+      } else {
+        final uRes = await ApiService.getPublicUserProfile(ownerIdVal);
+        if (uRes['success'] == true && uRes['data'] != null) {
+          final data = uRes['data'] as Map<String, dynamic>;
+          final avatarUrls = data['avatar_urls'];
+          String avatarUrl = '';
+          if (avatarUrls is Map) {
+            avatarUrl = avatarUrls['96']?.toString() ?? avatarUrls['48']?.toString() ?? avatarUrls['24']?.toString() ?? '';
+          }
+          if (mounted) {
+            setState(() {
+              _fetchedOwner = {
+                'name': data['name']?.toString() ?? data['display_name']?.toString() ?? 'Twicely Member',
+                'avatar': avatarUrl,
+                'is_merchant': false,
+                'owner_id': ownerIdVal,
+                'merchant_id': merchantIdVal,
+              };
+            });
+          }
+          return;
+        }
       }
+    }
 
-      final res = await ApiService.getPublicMerchantProfile(ownerIdVal);
-      if (res['success'] == true && res['data'] != null) {
-        final data = res['data'] as Map<String, dynamic>;
-        ApiService.merchantsCache[ownerIdVal] = data;
+    // 2. Merchant Profile Resolution
+    final targetMerchantId = (ownerTypeVal == 'merchant' ? ownerIdVal : null) ?? merchantIdVal;
+    if (targetMerchantId != null && targetMerchantId > 0) {
+      if (ApiService.merchantsCache.containsKey(targetMerchantId)) {
+        final cached = ApiService.merchantsCache[targetMerchantId]!;
         if (mounted) {
           setState(() {
             _fetchedOwner = {
-              'name': data['business_name']?.toString() ?? 'Twicely Merchant',
-              'avatar': ApiService.getMerchantLogo(ownerIdVal, data['logo_url']?.toString()),
+              'name': cached['business_name']?.toString() ?? 'Twicely Merchant',
+              'avatar': ApiService.getMerchantLogo(targetMerchantId, cached['logo_url']?.toString()),
               'is_merchant': true,
-              'merchant_id': ownerIdVal,
-            };
-          });
-        }
-      }
-    } else if (ownerTypeVal == 'user') {
-      final res = await ApiService.getPublicUserProfile(ownerIdVal);
-      if (res['success'] == true && res['data'] != null) {
-        final data = res['data'] as Map<String, dynamic>;
-        final avatarUrls = data['avatar_urls'];
-        String avatarUrl = '';
-        if (avatarUrls is Map) {
-          avatarUrl = avatarUrls['96']?.toString() ?? avatarUrls['48']?.toString() ?? '';
-        }
-        if (mounted) {
-          setState(() {
-            _fetchedOwner = {
-              'name': data['name']?.toString() ?? 'Twicely Member',
-              'avatar': avatarUrl,
-              'is_merchant': false,
+              'merchant_id': targetMerchantId,
               'owner_id': ownerIdVal,
             };
           });
         }
+        return;
+      } else {
+        final mRes = await ApiService.getPublicMerchantProfile(targetMerchantId);
+        if (mRes['success'] == true && mRes['data'] != null) {
+          final data = mRes['data'] as Map<String, dynamic>;
+          ApiService.merchantsCache[targetMerchantId] = data;
+          if (mounted) {
+            setState(() {
+              _fetchedOwner = {
+                'name': data['business_name']?.toString() ?? 'Twicely Merchant',
+                'avatar': ApiService.getMerchantLogo(targetMerchantId, data['logo_url']?.toString()),
+                'is_merchant': true,
+                'merchant_id': targetMerchantId,
+                'owner_id': ownerIdVal,
+              };
+            });
+          }
+          return;
+        }
       }
+    }
+
+    // 3. Fallback to resolveOwnerInfo
+    final ownerInfo = ApiService.resolveOwnerInfo(pkg);
+    if (mounted) {
+      setState(() {
+        _fetchedOwner = ownerInfo;
+      });
     }
   }
 
@@ -758,10 +798,9 @@ class _PackageDetailScreenState extends State<PackageDetailScreen> {
             ),
             const SizedBox(height: 16),
 
-            // 5. Price Area with original and resale discount
+            // 5. Price Area with original and resale discount + Presented By
             Row(
-              crossAxisAlignment: CrossAxisAlignment.baseline,
-              textBaseline: TextBaseline.alphabetic,
+              crossAxisAlignment: CrossAxisAlignment.center,
               children: [
                 Text(
                   resalePrice.startsWith('S') ? resalePrice : 'S\$$resalePrice',
@@ -782,8 +821,8 @@ class _PackageDetailScreenState extends State<PackageDetailScreen> {
                     ),
                   ),
                 ],
-                const Spacer(),
-                if (hasDiscount && discount != null)
+                if (hasDiscount && discount != null) ...[
+                  const SizedBox(width: 8),
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                     decoration: BoxDecoration(
@@ -799,6 +838,69 @@ class _PackageDetailScreenState extends State<PackageDetailScreen> {
                       ),
                     ),
                   ),
+                ],
+                const Spacer(),
+                (() {
+                  Map<String, dynamic>? presentedByMap;
+                  if (pkg['presented_by'] is Map) {
+                    presentedByMap = Map<String, dynamic>.from(pkg['presented_by'] as Map);
+                  } else if (pkg['merchant'] is Map) {
+                    presentedByMap = Map<String, dynamic>.from(pkg['merchant'] as Map);
+                  }
+                  final String presentedName = presentedByMap?['name']?.toString() ??
+                      presentedByMap?['business_name']?.toString() ??
+                      presentedByMap?['display_name']?.toString() ??
+                      pkg['manual_vendor_name']?.toString() ?? '';
+                  final String presentedLogo = presentedByMap?['logo']?.toString() ??
+                      presentedByMap?['logo_url']?.toString() ??
+                      presentedByMap?['avatar']?.toString() ?? '';
+                  if (presentedName.isEmpty) return const SizedBox.shrink();
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        'Presented By',
+                        style: TextStyle(
+                          fontSize: 9,
+                          color: Colors.black.withValues(alpha: 0.4),
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          if (presentedLogo.isNotEmpty)
+                            CircleAvatar(
+                              radius: 8,
+                              backgroundImage: NetworkImage(presentedLogo),
+                            )
+                          else
+                            CircleAvatar(
+                              radius: 8,
+                              backgroundColor: const Color(0xFF273DB7),
+                              child: Text(
+                                presentedName[0].toUpperCase(),
+                                style: const TextStyle(fontSize: 7, color: Colors.white, fontWeight: FontWeight.bold),
+                              ),
+                            ),
+                          const SizedBox(width: 4),
+                          Text(
+                            presentedName,
+                            style: const TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.bold,
+                              color: AppColors.primary,
+                            ),
+                          ),
+                          const SizedBox(width: 2),
+                          const Icon(Icons.north_east_rounded, size: 10, color: AppColors.primary),
+                        ],
+                      ),
+                    ],
+                  );
+                })(),
               ],
             ),
             const SizedBox(height: 12),
@@ -947,70 +1049,26 @@ class _PackageDetailScreenState extends State<PackageDetailScreen> {
 
   Widget _buildMerchantCard() {
     final pkg = _detailedPackage ?? widget.package;
-    final ownerIdVal = int.tryParse(pkg['owner_id']?.toString() ?? '');
-    final ownerTypeVal = pkg['owner_type']?.toString() ?? '';
-    final merchantIdVal = ownerTypeVal == 'merchant' ? ownerIdVal : int.tryParse(pkg['merchant_id']?.toString() ?? '');
 
     String merchantName = 'Twicely';
     String merchantLogo = '';
     bool isRealMerchant = false;
-    int? activeMerchantId = merchantIdVal;
-
-    String getAvatarFromMap(Map map) {
-      final photo = map['photo'] ?? map['profile_photo'] ?? map['avatar_url'] ?? map['avatar'] ?? map['logo_url'] ?? map['logo'];
-      if (photo != null && photo.toString().isNotEmpty) {
-        final path = photo.toString();
-        if (path.startsWith('http://') || path.startsWith('https://')) {
-          return path;
-        }
-        return '${ApiService.baseUrl.replaceAll('/wp-json/twicely/v1', '')}$path';
-      }
-      final avatarUrls = map['avatar_urls'];
-      if (avatarUrls is Map) {
-        final url = avatarUrls['96'] ?? avatarUrls['48'] ?? avatarUrls['24'];
-        if (url != null && url.toString().isNotEmpty) {
-          return url.toString();
-        }
-      }
-      return '';
-    }
+    int? activeMerchantId;
+    int? activeOwnerId;
 
     if (_fetchedOwner != null) {
       merchantName = _fetchedOwner!['name']?.toString() ?? 'Twicely';
       merchantLogo = _fetchedOwner!['avatar']?.toString() ?? '';
       isRealMerchant = _fetchedOwner!['is_merchant'] == true;
       activeMerchantId = _fetchedOwner!['merchant_id'] as int?;
+      activeOwnerId = _fetchedOwner!['owner_id'] as int?;
     } else {
-      if (pkg['merchantName'] != null && pkg['merchantName'].toString().isNotEmpty) {
-        merchantName = pkg['merchantName'].toString();
-        merchantLogo = pkg['merchantLogo']?.toString() ?? '';
-        isRealMerchant = merchantIdVal != null;
-      } else if (pkg['presented_by'] is Map) {
-        final pb = pkg['presented_by'] as Map;
-        merchantName = pb['name']?.toString() ?? pb['display_name']?.toString() ?? pb['username']?.toString() ?? 'Twicely';
-        merchantLogo = getAvatarFromMap(pb);
-        isRealMerchant = false;
-      } else if (merchantIdVal != null && ApiService.merchantsCache.containsKey(merchantIdVal)) {
-        final m = ApiService.merchantsCache[merchantIdVal]!;
-        merchantName = m['business_name']?.toString() ?? 'Twicely';
-        merchantLogo = ApiService.getMerchantLogo(merchantIdVal, m['logo_url']?.toString());
-        isRealMerchant = true;
-      } else if (pkg['merchant'] is Map && pkg['merchant']['name'] != null) {
-        merchantName = pkg['merchant']['name'].toString();
-        merchantLogo = ApiService.getMerchantLogo(merchantIdVal, pkg['merchant']['logo']?.toString());
-        isRealMerchant = merchantIdVal != null;
-      } else if (pkg['merchant'] is Map && pkg['merchant']['display_name'] != null) {
-        merchantName = pkg['merchant']['display_name'].toString();
-        merchantLogo = ApiService.getMerchantLogo(merchantIdVal, '');
-        isRealMerchant = merchantIdVal != null;
-      } else if (pkg['merchant_name'] != null) {
-        merchantName = pkg['merchant_name'].toString();
-        merchantLogo = ApiService.getMerchantLogo(merchantIdVal, '');
-        isRealMerchant = merchantIdVal != null;
-      } else if (merchantIdVal != null) {
-        merchantLogo = ApiService.getMerchantLogo(merchantIdVal, '');
-        isRealMerchant = true;
-      }
+      final ownerInfo = ApiService.resolveOwnerInfo(pkg);
+      merchantName = ownerInfo['name']?.toString() ?? 'Twicely';
+      merchantLogo = ownerInfo['avatar']?.toString() ?? '';
+      isRealMerchant = ownerInfo['is_merchant'] == true;
+      activeMerchantId = ownerInfo['merchant_id'] as int?;
+      activeOwnerId = ownerInfo['owner_id'] as int?;
     }
 
     final Widget cardContent = Container(
@@ -1018,7 +1076,7 @@ class _PackageDetailScreenState extends State<PackageDetailScreen> {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: Colors.black.withValues(alpha: 0.05)),
+        border: Border.all(color: Colors.black.withValues(alpha: 0.08)),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withValues(alpha: 0.02),
@@ -1035,67 +1093,79 @@ class _PackageDetailScreenState extends State<PackageDetailScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Row(
-                  children: [
-                    Flexible(
-                      child: Text(
-                        merchantName,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 14,
-                          color: Color(0xFF1A1A2E),
-                        ),
-                      ),
-                    ),
-                    if (isRealMerchant) ...[
-                      const SizedBox(width: 6),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFE8F5E9),
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                        child: const Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(Icons.star_rounded, size: 10, color: Color(0xFF2E7D32)),
-                            SizedBox(width: 2),
-                            Text(
-                              'Verified',
-                              style: TextStyle(fontSize: 9, color: Color(0xFF2E7D32), fontWeight: FontWeight.bold),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ],
+                const Text(
+                  'Sold By',
+                  style: TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w500,
+                    color: Colors.black45,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  merchantName,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 15,
+                    color: Color(0xFF1A1A2E),
+                  ),
                 ),
                 const SizedBox(height: 4),
-                Text(
-                  isRealMerchant ? 'View Profile' : 'Official Twicely Package',
+                const Text(
+                  'View Profile',
                   style: TextStyle(
                     fontSize: 11,
-                    color: isRealMerchant ? const Color(0xFFF27B6E) : Colors.black38,
-                    fontWeight: isRealMerchant ? FontWeight.bold : FontWeight.normal,
+                    color: Color(0xFF273DB7),
+                    fontWeight: FontWeight.bold,
+                    decoration: TextDecoration.underline,
+                    decorationColor: Color(0xFF273DB7),
                   ),
                 ),
               ],
             ),
           ),
-          if (isRealMerchant)
-            const Icon(Icons.chevron_right_rounded, color: Colors.black38, size: 20),
+          const SizedBox(width: 8),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            decoration: BoxDecoration(
+              color: isRealMerchant ? const Color(0xFFEFF4FF) : const Color(0xFFE8F5E9),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(
+                color: isRealMerchant ? const Color(0xFF273DB7).withValues(alpha: 0.2) : const Color(0xFF2E7D32).withValues(alpha: 0.2),
+              ),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  Icons.verified_rounded,
+                  size: 14,
+                  color: isRealMerchant ? const Color(0xFF273DB7) : const Color(0xFF2E7D32),
+                ),
+                const SizedBox(width: 4),
+                Text(
+                  isRealMerchant ? 'Verified Partner' : 'Verified Seller',
+                  style: TextStyle(
+                    fontSize: 10,
+                    color: isRealMerchant ? const Color(0xFF273DB7) : const Color(0xFF2E7D32),
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ],
+            ),
+          ),
         ],
       ),
     );
 
-    if (!isRealMerchant || activeMerchantId == null) return cardContent;
     return GestureDetector(
       onTap: () {
         Navigator.of(context).push(
           MaterialPageRoute(
             builder: (context) => SellerProfileScreen(
-              merchantId: activeMerchantId!,
+              merchantId: activeMerchantId,
+              ownerId: activeOwnerId,
               merchantName: merchantName,
               merchantLogo: merchantLogo,
             ),

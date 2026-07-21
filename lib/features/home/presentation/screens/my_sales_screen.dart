@@ -15,8 +15,10 @@ class _MySalesScreenState extends State<MySalesScreen> {
   bool _isLoading = true;
   List<Map<String, dynamic>> _sales = [];
   String _selectedPill = 'All';
+  final TextEditingController _searchController = TextEditingController();
+  String _searchQuery = '';
 
-  final List<String> _pills = ['All', 'Pending', 'Completed', 'Cancelled'];
+  bool get _isMerchantMode => widget.isMerchant ?? SessionManager.isMerchant;
 
   @override
   void initState() {
@@ -24,23 +26,25 @@ class _MySalesScreenState extends State<MySalesScreen> {
     _fetchSales();
   }
 
-  bool get _isMerchantMode => widget.isMerchant ?? SessionManager.isMerchant;
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
 
   Future<void> _fetchSales() async {
     if (!mounted) return;
     setState(() => _isLoading = true);
-    final isMerchant = _isMerchantMode;
-    final res = isMerchant
+    // /users/me/sales → richer C2C data (package_names, seller_amount)
+    // /merchants/me/orders → merchant data
+    // Amounts from both endpoints already in DOLLARS (no /100)
+    final res = _isMerchantMode
         ? await ApiService.getMerchantOrders(perPage: 50)
         : await ApiService.getMySales(perPage: 50);
     if (!mounted) return;
-    
-    final isSuccess = res['success'] == true;
-    final salesData = res['data'] ?? res['sales'];
-
-    if (isSuccess && salesData != null && salesData is List) {
+    if (res['success'] == true && res['data'] is List) {
       setState(() {
-        _sales = salesData
+        _sales = (res['data'] as List)
             .map((e) => Map<String, dynamic>.from(e as Map))
             .toList();
         _isLoading = false;
@@ -50,287 +54,529 @@ class _MySalesScreenState extends State<MySalesScreen> {
     }
   }
 
-  List<Map<String, dynamic>> get _filtered {
-    if (_selectedPill == 'All') return _sales;
-    final target = _selectedPill.toLowerCase();
-    return _sales.where((s) {
-      final status = (s['status'] ?? '').toString().toLowerCase();
-      if (target == 'completed') {
-        return status == 'completed' || status == 'processing' || status == 'paid' || status == 'confirmed';
-      }
-      if (target == 'pending') {
-        return status == 'pending';
-      }
-      if (target == 'cancelled') {
-        return status == 'cancelled' || status == 'failed' || status == 'refunded';
-      }
-      return status == target;
-    }).toList();
+  // ── Helpers ──────────────────────────────────────────────────────────────
+
+  String _fmt(String? raw) {
+    if (raw == null || raw.isEmpty) return '';
+    try {
+      final dt = DateTime.parse(raw.replaceFirst(' ', 'T'));
+      const m = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+      final h = dt.hour == 0 ? 12 : (dt.hour > 12 ? dt.hour - 12 : dt.hour);
+      final ap = dt.hour >= 12 ? 'PM' : 'AM';
+      return '${m[dt.month-1]} ${dt.day}, ${dt.year}, ${h.toString().padLeft(2,'0')}:${dt.minute.toString().padLeft(2,'0')} $ap';
+    } catch (_) { return raw; }
   }
 
-  Color _statusColor(String status) {
-    switch (status.toLowerCase()) {
-      case 'completed': return const Color(0xFF22C55E);
-      case 'processing': return const Color(0xFF3B82F6);
-      case 'paid': return const Color(0xFF22C55E);
-      case 'pending': return const Color(0xFFF59E0B);
-      case 'cancelled': return const Color(0xFFEF4444);
-      case 'confirmed': return const Color(0xFF3B82F6);
-      default: return AppColors.primary.withValues(alpha: 0.5);
+  double _parseAmt(dynamic v) => double.tryParse(v?.toString() ?? '0') ?? 0.0;
+
+  String _payStatus(Map<String, dynamic> s) {
+    final p = (s['payment_status'] ?? '').toString().toLowerCase();
+    if (p == 'paid') return 'Paid';
+    if (p == 'refunded') return 'Refunded';
+    return _cap(p.isEmpty ? 'Pending' : p);
+  }
+
+  String _ordStatus(Map<String, dynamic> s) {
+    final st = (s['status'] ?? '').toString().toLowerCase();
+    if (st == 'completed') return 'Completed';
+    if (st == 'cancelled') return 'Cancelled';
+    if (st == 'processing') return 'Processing';
+    return _cap(st.isEmpty ? 'Pending' : st);
+  }
+
+  Color _statusColor(String s) {
+    switch (s.toLowerCase()) {
+      case 'paid': case 'completed': return const Color(0xFF16A34A);
+      case 'refunded': return const Color(0xFF6B7280);
+      case 'cancelled': return const Color(0xFFDC2626);
+      default: return const Color(0xFFF59E0B);
     }
   }
 
+  String _cap(String s) =>
+      s.isEmpty ? s : '${s[0].toUpperCase()}${s.substring(1)}';
+
+  List<Map<String, dynamic>> get _filtered {
+    return _sales.where((s) {
+      final q = _searchQuery.toLowerCase();
+      if (q.isNotEmpty) {
+        final num = (s['order_number'] ?? '').toString().toLowerCase();
+        final buyer = (s['customer_name'] ?? '').toString().toLowerCase();
+        final pkgs = (s['package_names'] as List?)?.join(' ').toLowerCase() ?? '';
+        if (!num.contains(q) && !buyer.contains(q) && !pkgs.contains(q)) return false;
+      }
+      if (_selectedPill != 'All') {
+        final ps = _payStatus(s);
+        final os = _ordStatus(s);
+        if (ps != _selectedPill && os != _selectedPill) return false;
+      }
+      return true;
+    }).toList();
+  }
+
+  void _showSaleDetail(Map<String, dynamic> sale) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => _SaleDetailSheet(
+        sale: sale, fmt: _fmt, payStatus: _payStatus(sale),
+        ordStatus: _ordStatus(sale), statusColor: _statusColor,
+        parseAmt: _parseAmt, isMerchant: _isMerchantMode,
+      ),
+    );
+  }
+
+  // ── Build ──────────────────────────────────────────────────────────────
+
   @override
   Widget build(BuildContext context) {
+    final filtered = _filtered;
     return Scaffold(
       backgroundColor: AppColors.bgLight,
       appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
-        scrolledUnderElevation: 0.5,
-        shadowColor: Colors.black12,
+        backgroundColor: Colors.white, elevation: 0,
+        scrolledUnderElevation: 0.5, shadowColor: Colors.black12,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back_rounded, color: AppColors.primary),
-          onPressed: () => Navigator.of(context).pop(),
-        ),
+            icon: const Icon(Icons.arrow_back_rounded, color: AppColors.primary),
+            onPressed: () => Navigator.of(context).pop()),
         title: const Text('My Sales',
-            style: TextStyle(color: AppColors.primary, fontWeight: FontWeight.bold, fontFamily: 'Recoleta Alt', fontSize: 18)),
+            style: TextStyle(color: AppColors.primary, fontWeight: FontWeight.bold,
+                fontFamily: 'Recoleta Alt', fontSize: 18)),
         centerTitle: true,
         actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh_rounded, color: AppColors.primary),
-            onPressed: _fetchSales,
-          ),
+          IconButton(icon: const Icon(Icons.refresh_rounded, color: AppColors.primary),
+              onPressed: _fetchSales),
         ],
       ),
       body: RefreshIndicator(
         onRefresh: _fetchSales,
         color: AppColors.primary,
-        child: Column(
-          children: [
-            // Stats banner
-            if (!_isLoading) _buildStatsBanner(),
+        child: Column(children: [
+          // Stats banner
+          if (!_isLoading) _buildStatsBanner(),
 
-            // Filter pills
-            _buildFilterPills(),
+          // Search
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
+            child: _buildSearch(),
+          ),
 
-            // List
-            Expanded(
-              child: _isLoading
-                  ? const Center(child: CircularProgressIndicator(valueColor: AlwaysStoppedAnimation<Color>(AppColors.primary)))
-                  : _filtered.isEmpty
-                      ? _buildEmpty()
-                      : ListView.builder(
-                          padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
-                          itemCount: _filtered.length,
-                          itemBuilder: (ctx, i) => _buildSaleCard(_filtered[i]),
-                        ),
-            ),
-          ],
-        ),
+          // Filter pills
+          _buildFilterPills(),
+
+          Expanded(
+            child: _isLoading
+                ? const Center(child: CircularProgressIndicator(
+                    valueColor: AlwaysStoppedAnimation<Color>(AppColors.primary)))
+                : filtered.isEmpty
+                    ? _buildEmpty()
+                    : ListView.builder(
+                        padding: const EdgeInsets.fromLTRB(20, 8, 20, 40),
+                        itemCount: filtered.length,
+                        itemBuilder: (_, i) => _buildSaleCard(filtered[i])),
+          ),
+        ]),
       ),
     );
   }
 
   Widget _buildStatsBanner() {
-    final isMerchant = _isMerchantMode;
     final total = _sales.length;
-    final completed = _sales.where((s) {
-      final status = (s['status'] ?? '').toString().toLowerCase();
-      return status == 'completed' || status == 'processing' || status == 'paid' || status == 'confirmed';
-    }).length;
-    final pending = _sales.where((s) {
-      final status = (s['status'] ?? '').toString().toLowerCase();
-      return status == 'pending';
-    }).length;
-    final totalEarnings = _sales
-        .where((s) {
-          final status = (s['status'] ?? '').toString().toLowerCase();
-          return status == 'completed' || status == 'processing' || status == 'paid' || status == 'confirmed';
-        })
-        .fold<double>(0, (sum, s) {
-          final double val = double.tryParse(s['seller_amount']?.toString() ?? s['total']?.toString() ?? '0') ?? 0;
-          return sum + (isMerchant ? val / 100.0 : val);
-        });
+    final completed = _sales.where((s) =>
+        ['completed','paid','processing'].contains(
+            (s['status'] ?? '').toString().toLowerCase())).length;
+    final earnings = _sales
+        .where((s) => ['completed','paid','processing'].contains(
+            (s['status'] ?? '').toString().toLowerCase()))
+        .fold<double>(0, (sum, s) => sum + _parseAmt(s['seller_amount'] ?? s['total']));
 
     return Container(
       color: Colors.white,
-      padding: const EdgeInsets.fromLTRB(20, 12, 20, 16),
-      child: Row(
-        children: [
-          _buildStat('Total Sales', '$total', Icons.receipt_long_rounded),
-          const SizedBox(width: 10),
-          _buildStat('Completed', '$completed', Icons.check_circle_rounded),
-          const SizedBox(width: 10),
-          _buildStat('Pending', '$pending', Icons.schedule_rounded),
-          const SizedBox(width: 10),
-          _buildStat('Earnings', 'S\$${totalEarnings.toStringAsFixed(0)}', Icons.account_balance_wallet_rounded),
-        ],
-      ),
+      padding: const EdgeInsets.fromLTRB(20, 12, 20, 14),
+      child: Row(children: [
+        _stat('Total', '$total', Icons.receipt_long_rounded),
+        const SizedBox(width: 10),
+        _stat('Completed', '$completed', Icons.check_circle_rounded),
+        const SizedBox(width: 10),
+        _stat('Earnings', 'S\$${earnings.toStringAsFixed(0)}',
+            Icons.account_balance_wallet_rounded),
+      ]),
     );
   }
 
-  Widget _buildStat(String label, String value, IconData icon) {
-    return Expanded(
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 6),
-        decoration: BoxDecoration(
-          color: Colors.white,
+  Widget _stat(String label, String value, IconData icon) => Expanded(
+    child: Container(
+      padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 6),
+      decoration: BoxDecoration(color: Colors.white,
           borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: AppColors.borderLight, width: 1.0),
-        ),
-        child: Column(
-          children: [
-            Icon(icon, color: AppColors.primary, size: 18),
-            const SizedBox(height: 6),
-            Text(value, style: const TextStyle(color: AppColors.primary, fontWeight: FontWeight.bold, fontSize: 13)),
-            const SizedBox(height: 2),
-            Text(label, style: TextStyle(color: AppColors.primary.withValues(alpha: 0.6), fontSize: 8), textAlign: TextAlign.center),
-          ],
-        ),
-      ),
-    );
-  }
+          border: Border.all(color: AppColors.borderLight)),
+      child: Column(children: [
+        Icon(icon, color: AppColors.primary, size: 18),
+        const SizedBox(height: 5),
+        Text(value, style: const TextStyle(color: AppColors.primary,
+            fontWeight: FontWeight.bold, fontSize: 13)),
+        const SizedBox(height: 2),
+        Text(label, style: TextStyle(color: AppColors.primary.withValues(alpha: 0.5),
+            fontSize: 8), textAlign: TextAlign.center),
+      ]),
+    ),
+  );
+
+  Widget _buildSearch() => TextField(
+    controller: _searchController,
+    style: const TextStyle(fontSize: 13, color: AppColors.primary),
+    onChanged: (v) => setState(() => _searchQuery = v),
+    decoration: InputDecoration(
+      filled: true, fillColor: Colors.white,
+      hintText: 'Search by order, buyer, package...',
+      hintStyle: TextStyle(color: AppColors.primary.withValues(alpha: 0.35), fontSize: 13),
+      prefixIcon: const Icon(Icons.search_rounded, color: AppColors.primary, size: 19),
+      suffixIcon: _searchQuery.isNotEmpty
+          ? IconButton(icon: const Icon(Icons.close_rounded, size: 17, color: AppColors.primary),
+              onPressed: () { _searchController.clear(); setState(() => _searchQuery = ''); })
+          : null,
+      contentPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+      border: OutlineInputBorder(borderRadius: BorderRadius.circular(30),
+          borderSide: const BorderSide(color: Color(0xFFE5E7EB))),
+      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(30),
+          borderSide: const BorderSide(color: Color(0xFFE5E7EB))),
+      focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(30),
+          borderSide: const BorderSide(color: AppColors.primary, width: 1.5)),
+    ),
+  );
 
   Widget _buildFilterPills() {
+    const pills = ['All','Paid','Completed','Refunded','Cancelled'];
     return Container(
       color: Colors.white,
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-      child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        child: Row(
-          children: _pills.map((p) {
-            final isSelected = _selectedPill == p;
-            return GestureDetector(
-              onTap: () => setState(() => _selectedPill = p),
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 180),
-                margin: const EdgeInsets.only(right: 8),
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 7),
-                decoration: BoxDecoration(
-                  color: isSelected ? AppColors.primary : AppColors.bgLight,
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: isSelected ? AppColors.primary : Colors.black12),
-                ),
-                child: Text(p,
-                    style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w700,
-                        color: isSelected ? Colors.white : AppColors.primary)),
+      padding: const EdgeInsets.fromLTRB(20, 8, 20, 12),
+      child: SingleChildScrollView(scrollDirection: Axis.horizontal,
+        child: Row(children: pills.map((p) {
+          final sel = _selectedPill == p;
+          return GestureDetector(
+            onTap: () => setState(() => _selectedPill = p),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 180),
+              margin: const EdgeInsets.only(right: 8),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+              decoration: BoxDecoration(
+                color: sel ? AppColors.primary : AppColors.bgLight,
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(color: sel ? AppColors.primary : Colors.black12),
               ),
-            );
-          }).toList(),
-        ),
+              child: Text(p, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700,
+                  color: sel ? Colors.white : AppColors.primary)),
+            ),
+          );
+        }).toList()),
       ),
     );
   }
+
+  Widget _buildEmpty() => Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
+    Icon(Icons.sell_rounded, size: 56, color: AppColors.primary.withValues(alpha: 0.15)),
+    const SizedBox(height: 12),
+    Text('No sales yet', style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold,
+        color: AppColors.primary.withValues(alpha: 0.4))),
+  ]));
+
+  // ── Compact sale card (tap → bottom sheet) ───────────────────────────────
 
   Widget _buildSaleCard(Map<String, dynamic> sale) {
-    final isMerchant = _isMerchantMode;
-    final status = (sale['status'] ?? 'pending').toString();
     final orderNum = sale['order_number']?.toString() ?? '#${sale['id']}';
-    
-    final double rawTotal = double.tryParse(sale['total']?.toString() ?? '0') ?? 0.0;
-    final double rawSellerAmt = double.tryParse(sale['seller_amount']?.toString() ?? '0') ?? rawTotal;
-    
-    final total = isMerchant ? rawTotal / 100.0 : rawTotal;
-    final sellerAmt = isMerchant ? rawSellerAmt / 100.0 : rawSellerAmt;
-    
-    final buyer = sale['customer_name']?.toString() ?? sale['buyer_name']?.toString() ?? 'Customer';
-    final currency = sale['currency']?.toString() ?? 'SGD';
-    final createdAt = sale['created_at']?.toString() ?? '';
+    final dateTime = _fmt(sale['created_at']?.toString());
+    final buyer = sale['customer_name']?.toString() ?? 'Customer';
+    final pkgCount = (sale['package_count'] as num?)?.toInt() ??
+        (sale['package_names'] as List?)?.length ?? 1;
+    final total = _parseAmt(sale['total']);
+    final ps = _payStatus(sale);
+    final os = _ordStatus(sale);
+    final firstPkg = (sale['package_names'] as List?)?.isNotEmpty == true
+        ? (sale['package_names'] as List).first.toString() : '';
 
-    String dateStr = '';
-    if (createdAt.isNotEmpty) {
-      try {
-        final dt = DateTime.parse(createdAt);
-        dateStr = '${dt.day}/${dt.month}/${dt.year}';
-      } catch (_) {
-        dateStr = createdAt.split('T').first;
-      }
-    }
+    final badges = ps == os ? [ps] : [ps, os];
+
+    return GestureDetector(
+      onTap: () => _showSaleDetail(sale),
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 12),
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: Colors.black.withValues(alpha: 0.06)),
+          boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.03),
+              blurRadius: 10, offset: const Offset(0, 3))],
+        ),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          // Header
+          Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text('Order #$orderNum', style: const TextStyle(fontSize: 13,
+                  fontWeight: FontWeight.bold, color: AppColors.primary)),
+              if (dateTime.isNotEmpty || firstPkg.isNotEmpty) ...[
+                const SizedBox(height: 3),
+                Row(children: [
+                  Icon(Icons.calendar_today_outlined, size: 10,
+                      color: AppColors.primary.withValues(alpha: 0.4)),
+                  const SizedBox(width: 4),
+                  Expanded(child: Text(
+                    [if (dateTime.isNotEmpty) dateTime,
+                     if (firstPkg.isNotEmpty) firstPkg].join(' · '),
+                    style: TextStyle(fontSize: 10,
+                        color: AppColors.primary.withValues(alpha: 0.45)),
+                    overflow: TextOverflow.ellipsis, maxLines: 1)),
+                ]),
+              ],
+            ])),
+            Wrap(spacing: 4, children: badges.map((b) => _badgeWidget(b, _statusColor(b))).toList()),
+          ]),
+          const SizedBox(height: 10),
+          // Buyer + count + amount
+          Row(children: [
+            Icon(Icons.person_outline_rounded, size: 13,
+                color: AppColors.primary.withValues(alpha: 0.4)),
+            const SizedBox(width: 4),
+            Expanded(child: Text('Buyer: $buyer', style: TextStyle(fontSize: 11,
+                fontWeight: FontWeight.w600,
+                color: AppColors.primary.withValues(alpha: 0.65)),
+                overflow: TextOverflow.ellipsis)),
+            Icon(Icons.inventory_2_outlined, size: 12,
+                color: AppColors.primary.withValues(alpha: 0.4)),
+            const SizedBox(width: 3),
+            Text('$pkgCount pkg', style: TextStyle(fontSize: 10,
+                color: AppColors.primary.withValues(alpha: 0.5))),
+            const SizedBox(width: 10),
+            Text('\$ ${total.toStringAsFixed(2)}',
+                style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w900,
+                    color: Color(0xFF273DB7))),
+          ]),
+          const SizedBox(height: 6),
+          Row(mainAxisAlignment: MainAxisAlignment.end, children: [
+            Text('Tap for details', style: TextStyle(fontSize: 10,
+                color: AppColors.primary.withValues(alpha: 0.3),
+                fontStyle: FontStyle.italic)),
+            const SizedBox(width: 3),
+            Icon(Icons.keyboard_arrow_up_rounded, size: 13,
+                color: AppColors.primary.withValues(alpha: 0.3)),
+          ]),
+        ]),
+      ),
+    );
+  }
+
+  Widget _badgeWidget(String label, Color color) => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+    decoration: BoxDecoration(color: color.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: color.withValues(alpha: 0.3))),
+    child: Row(mainAxisSize: MainAxisSize.min, children: [
+      Icon(Icons.circle, size: 6, color: color),
+      const SizedBox(width: 3),
+      Text(label, style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: color)),
+    ]),
+  );
+}
+
+// ══ Sale Detail Bottom Sheet ══════════════════════════════════════════════════
+
+class _SaleDetailSheet extends StatelessWidget {
+  final Map<String, dynamic> sale;
+  final String Function(String?) fmt;
+  final String payStatus;
+  final String ordStatus;
+  final Color Function(String) statusColor;
+  final double Function(dynamic) parseAmt;
+  final bool isMerchant;
+
+  const _SaleDetailSheet({
+    required this.sale, required this.fmt, required this.payStatus,
+    required this.ordStatus, required this.statusColor, required this.parseAmt,
+    required this.isMerchant,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final orderNum = sale['order_number']?.toString() ?? '#${sale['id']}';
+    final dateTime = fmt(sale['created_at']?.toString());
+    final buyer = sale['customer_name']?.toString() ?? 'Customer';
+    final buyerEmail = sale['customer_email']?.toString() ?? '';
+    final pkgCount = (sale['package_count'] as num?)?.toInt() ??
+        (sale['package_names'] as List?)?.length ?? 1;
+    final total = parseAmt(sale['total']);
+    final sellerAmt = parseAmt(sale['seller_amount'] ?? sale['total']);
+    final currency = sale['currency']?.toString() ?? 'SGD';
+    final pkgNames = (sale['package_names'] as List?)
+        ?.map((p) => p.toString()).toList() ?? [];
+    final payColor = statusColor(payStatus);
+    final ordColor = statusColor(ordStatus);
+    final holdStatus = sale['hold_status']?.toString() ?? '';
+    final redeemedAt = fmt(sale['redeemed_at']?.toString());
+    final cancellationReason = sale['cancellation_reason']?.toString() ?? '';
 
     return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      decoration: BoxDecoration(
+      padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+      decoration: const BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(18),
-        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 10, offset: const Offset(0, 3))],
+        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
       ),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(orderNum,
-                    style: const TextStyle(fontWeight: FontWeight.bold, color: AppColors.primary, fontSize: 13)),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: _statusColor(status).withValues(alpha: 0.12),
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: Text(status.toUpperCase(),
-                      style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: _statusColor(status))),
-                ),
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.fromLTRB(24, 16, 24, 32),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          // Handle
+          Center(child: Container(width: 40, height: 4,
+              decoration: BoxDecoration(color: Colors.black12,
+                  borderRadius: BorderRadius.circular(2)))),
+          const SizedBox(height: 16),
+
+          // Title row
+          Row(children: [
+            Expanded(child: Text('Order #$orderNum',
+                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold,
+                    color: AppColors.primary, fontFamily: 'Recoleta Alt'))),
+            IconButton(icon: const Icon(Icons.close_rounded, color: AppColors.primary, size: 20),
+                onPressed: () => Navigator.of(context).pop()),
+          ]),
+          if (dateTime.isNotEmpty)
+            Padding(padding: const EdgeInsets.only(top: 3),
+              child: Row(children: [
+                Icon(Icons.calendar_today_outlined, size: 11,
+                    color: AppColors.primary.withValues(alpha: 0.4)),
+                const SizedBox(width: 4),
+                Expanded(child: Text(dateTime, style: TextStyle(fontSize: 11,
+                    color: AppColors.primary.withValues(alpha: 0.5)),
+                    overflow: TextOverflow.ellipsis)),
+              ])),
+
+          // Badges
+          const SizedBox(height: 10),
+          Wrap(spacing: 6, runSpacing: 4, children: [
+            _badge(payStatus, payColor),
+            if (ordStatus != payStatus) _badge(ordStatus, ordColor),
+          ]),
+
+          const SizedBox(height: 16),
+
+          // Buyer + count + amount
+          Row(children: [
+            Icon(Icons.person_outline_rounded, size: 14,
+                color: AppColors.primary.withValues(alpha: 0.5)),
+            const SizedBox(width: 5),
+            Expanded(child: Text('Buyer: $buyer',
+                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600,
+                    color: AppColors.primary.withValues(alpha: 0.7)))),
+            Icon(Icons.inventory_2_outlined, size: 13,
+                color: AppColors.primary.withValues(alpha: 0.4)),
+            const SizedBox(width: 3),
+            Text('$pkgCount Package${pkgCount != 1 ? 's' : ''}',
+                style: TextStyle(fontSize: 11,
+                    color: AppColors.primary.withValues(alpha: 0.5))),
+          ]),
+          const SizedBox(height: 6),
+          Align(alignment: Alignment.centerRight,
+              child: Text('\$ ${total.toStringAsFixed(2)}',
+                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w900,
+                      color: Color(0xFF273DB7)))),
+
+          const Divider(height: 24, color: Colors.black12),
+
+          // Two-column details
+          Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            // Order Details
+            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              _sectionTitle('Order Details'),
+              const SizedBox(height: 10),
+              _lbl('ORDER NUMBER'), _val(orderNum),
+              const SizedBox(height: 8),
+              _lbl('BUYER'), _val(buyer),
+              if (buyerEmail.isNotEmpty) ...[
+                const SizedBox(height: 8),
+                _lbl('EMAIL'), _val(buyerEmail),
               ],
-            ),
-            const SizedBox(height: 10),
-            Row(
-              children: [
-                Icon(Icons.person_outline_rounded, size: 14, color: AppColors.primary.withValues(alpha: 0.5)),
-                const SizedBox(width: 5),
-                Expanded(child: Text(buyer, style: TextStyle(fontSize: 12, color: AppColors.primary.withValues(alpha: 0.7)))),
+              const SizedBox(height: 8),
+              _lbl('PURCHASE DATE'), _val(dateTime.isNotEmpty ? dateTime : '—'),
+              if (redeemedAt.isNotEmpty) ...[
+                const SizedBox(height: 8),
+                _lbl('REDEEMED AT'), _val(redeemedAt),
               ],
-            ),
-            if (dateStr.isNotEmpty) ...[
+              if (holdStatus.isNotEmpty) ...[
+                const SizedBox(height: 8),
+                _lbl('HOLD STATUS'), _val(_cap(holdStatus)),
+              ],
+              if (cancellationReason.isNotEmpty) ...[
+                const SizedBox(height: 8),
+                _lbl('CANCELLATION REASON'),
+                _val(_cap(cancellationReason.replaceAll('_', ' '))),
+              ],
+            ])),
+            const SizedBox(width: 16),
+            // Payment Details
+            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              _sectionTitle('Payment Details'),
+              const SizedBox(height: 10),
+              _lbl('TOTAL AMOUNT'),
+              Text('\$${total.toStringAsFixed(2)}',
+                  style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w900,
+                      color: AppColors.primary)),
+              if (!isMerchant && sellerAmt != total) ...[
+                const SizedBox(height: 8),
+                _lbl('YOUR EARNINGS'),
+                Text('$currency ${sellerAmt.toStringAsFixed(2)}',
+                    style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold,
+                        color: Color(0xFF16A34A))),
+              ],
+              const SizedBox(height: 10),
+              _lbl('PAYMENT STATUS'),
               const SizedBox(height: 4),
-              Row(
-                children: [
-                  Icon(Icons.calendar_today_rounded, size: 12, color: AppColors.primary.withValues(alpha: 0.4)),
-                  const SizedBox(width: 5),
-                  Text(dateStr, style: TextStyle(fontSize: 11, color: AppColors.primary.withValues(alpha: 0.4))),
-                ],
-              ),
-            ],
-            const Divider(height: 16),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text('Order Total', style: TextStyle(fontSize: 10, color: AppColors.primary.withValues(alpha: 0.5))),
-                  Text('$currency ${total.toStringAsFixed(2)}',
-                      style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.primary)),
-                ]),
-                Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
-                  Text('Your Earnings', style: TextStyle(fontSize: 10, color: AppColors.primary.withValues(alpha: 0.5))),
-                  Text('$currency ${sellerAmt.toStringAsFixed(2)}',
-                      style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Color(0xFF22C55E))),
-                ]),
-              ],
-            ),
+              _badge(payStatus, payColor),
+              const SizedBox(height: 8),
+              _lbl('ORDER STATUS'),
+              const SizedBox(height: 4),
+              _badge(ordStatus, ordColor),
+            ])),
+          ]),
+
+          // Package list
+          if (pkgNames.isNotEmpty) ...[
+            const Divider(height: 24, color: Colors.black12),
+            _lbl('PACKAGES'),
+            const SizedBox(height: 6),
+            ...pkgNames.map((n) => Padding(padding: const EdgeInsets.only(bottom: 3),
+              child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                const Icon(Icons.circle, size: 5, color: AppColors.primary),
+                const SizedBox(width: 6),
+                Expanded(child: Text(n, style: const TextStyle(fontSize: 11,
+                    color: AppColors.primary, fontWeight: FontWeight.w500))),
+              ]))),
           ],
-        ),
+        ]),
       ),
     );
   }
 
-  Widget _buildEmpty() {
-    return Center(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(Icons.sell_rounded, size: 56, color: AppColors.primary.withValues(alpha: 0.15)),
-          const SizedBox(height: 12),
-          Text('No sales yet', style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: AppColors.primary.withValues(alpha: 0.4))),
-          const SizedBox(height: 4),
-          Text('Your sales will appear here once orders come in',
-              style: TextStyle(fontSize: 12, color: AppColors.primary.withValues(alpha: 0.3))),
-        ],
-      ),
-    );
-  }
+  Widget _badge(String label, Color color) => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+    decoration: BoxDecoration(color: color.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: color.withValues(alpha: 0.3))),
+    child: Row(mainAxisSize: MainAxisSize.min, children: [
+      Icon(Icons.circle, size: 6, color: color),
+      const SizedBox(width: 4),
+      Text(label, style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: color)),
+    ]),
+  );
+
+  Widget _sectionTitle(String t) => Text(t, style: const TextStyle(
+      fontSize: 13, fontWeight: FontWeight.bold, color: AppColors.primary));
+
+  Widget _lbl(String t) => Text(t, style: TextStyle(fontSize: 9, fontWeight: FontWeight.w700,
+      letterSpacing: 0.5, color: AppColors.primary.withValues(alpha: 0.45)));
+
+  Widget _val(String t) => Padding(padding: const EdgeInsets.only(top: 2),
+      child: Text(t, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600,
+          color: AppColors.primary)));
+
+  String _cap(String s) =>
+      s.isEmpty ? s : '${s[0].toUpperCase()}${s.substring(1)}';
 }

@@ -1,8 +1,11 @@
+import 'dart:convert';
 import 'dart:io';
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/services/api_service.dart';
+import '../../../../core/utils/session_manager.dart';
 import '../../../../core/widgets/custom_snackbar.dart';
 
 class AddPackageScreen extends StatefulWidget {
@@ -42,10 +45,13 @@ class _AddPackageScreenState extends State<AddPackageScreen> {
 
   bool _isCustomMerchant = false;
   final TextEditingController _customMerchantController = TextEditingController();
+  final TextEditingController _manualOutletController = TextEditingController();
+  bool _isTransferApprovalConfirmed = false;
   final ImagePicker _picker = ImagePicker();
 
   final TextEditingController _originalPriceController = TextEditingController();
   final TextEditingController _sellingPriceController = TextEditingController();
+  final TextEditingController _discountedPriceController = TextEditingController();
   final TextEditingController _sessionsToSellController = TextEditingController();
   final TextEditingController _totalSessionsController = TextEditingController();
 
@@ -88,88 +94,180 @@ class _AddPackageScreenState extends State<AddPackageScreen> {
     super.initState();
     _loadMerchantsAndCategories();
     if (widget.packageToEdit != null) {
-      final pkg = widget.packageToEdit!;
-      _titleController.text = pkg['title']?.toString() ?? '';
-      _shortDescriptionController.text = pkg['short_description']?.toString() ?? '';
-      _descriptionController.text = pkg['content']?.toString() ?? pkg['description']?.toString() ?? '';
-      _packageStatus = pkg['status']?.toString().toLowerCase() == 'published' ? 'published'
-          : pkg['status']?.toString().toLowerCase() == 'pending' ? 'pending'
+      _populateFormFromPackage(widget.packageToEdit!);
+      final pkgId = int.tryParse(widget.packageToEdit!['id']?.toString() ?? '');
+      if (pkgId != null && pkgId > 0) {
+        _fetchFullPackageDetails(pkgId);
+      }
+    }
+  }
+
+  Future<void> _fetchFullPackageDetails(int packageId) async {
+    try {
+      final res = await ApiService.getPackageById(packageId);
+      if (!mounted) return;
+      if (res['success'] == true && res['data'] is Map<String, dynamic>) {
+        final fullPkg = res['data'] as Map<String, dynamic>;
+        setState(() {
+          _populateFormFromPackage(fullPkg);
+        });
+      }
+    } catch (e) {
+      debugPrint('[DEBUG] Error fetching full package details: $e');
+    }
+  }
+
+  void _populateFormFromPackage(Map<String, dynamic> pkg) {
+    if (pkg['title'] != null && pkg['title'].toString().isNotEmpty) {
+      _titleController.text = pkg['title'].toString();
+    }
+    final shortDesc = pkg['short_description']?.toString() ?? pkg['excerpt']?.toString();
+    if (shortDesc != null && shortDesc.isNotEmpty) _shortDescriptionController.text = shortDesc;
+
+    final desc = pkg['content']?.toString() ?? pkg['description']?.toString() ?? pkg['details']?.toString();
+    if (desc != null && desc.isNotEmpty) _descriptionController.text = desc;
+
+    final st = pkg['status']?.toString().toLowerCase();
+    if (st != null && st.isNotEmpty) {
+      _packageStatus = st == 'published' || st == 'publish' ? 'published'
+          : st == 'pending' || st == 'in_review' ? 'pending'
           : 'draft';
-      
-      final origPrice = pkg['original_purchase_price'] ?? pkg['original_price'] ?? pkg['originalPrice'];
-      final resPrice = pkg['resale_price'] ?? pkg['price'] ?? pkg['resalePrice'];
-      
-      _originalPriceController.text = origPrice?.toString() ?? '';
-      _sellingPriceController.text = resPrice?.toString() ?? '';
-      _sessionsToSellController.text = pkg['sessions_to_sell']?.toString() ?? '';
-      _totalSessionsController.text = pkg['total_sessions']?.toString() ?? '';
-      _validityDaysController.text = pkg['total_validity_days']?.toString() ?? pkg['validity_days']?.toString() ?? '365';
-      _remainingDaysController.text = pkg['remaining_validity_days']?.toString() ?? pkg['remaining_days']?.toString() ?? '180';
+    }
 
-      if (pkg['availability_end'] != null) {
-        try {
-          _expiryDate = DateTime.tryParse(pkg['availability_end'].toString()) ?? _expiryDate;
-        } catch (_) {}
-      } else if (pkg['expiry_date'] != null) {
-        try {
-          _expiryDate = DateTime.tryParse(pkg['expiry_date'].toString()) ?? _expiryDate;
-        } catch (_) {}
-      }
+    final origPrice = pkg['original_purchase_price'] ?? pkg['original_price'] ?? pkg['originalPrice'];
+    final resPrice = pkg['selling_price_per_session'] ?? pkg['price'] ?? pkg['resale_price'] ?? pkg['resalePrice'];
+    final discPrice = pkg['discounted_price'] ?? pkg['discountPrice'];
 
-      if (pkg['category'] != null) {
-        if (pkg['category'] is Map) {
-          _primaryCategory = pkg['category']['slug']?.toString() ?? '';
-        } else {
-          _primaryCategory = pkg['category'].toString();
+    if (origPrice != null) _originalPriceController.text = origPrice.toString();
+    if (resPrice != null) _sellingPriceController.text = resPrice.toString();
+    if (discPrice != null) _discountedPriceController.text = discPrice.toString();
+
+    if (pkg['sessions_to_sell'] != null) _sessionsToSellController.text = pkg['sessions_to_sell'].toString();
+    if (pkg['total_sessions'] != null) _totalSessionsController.text = pkg['total_sessions'].toString();
+    if (pkg['total_validity_days'] != null || pkg['validity_days'] != null) {
+      _validityDaysController.text = (pkg['total_validity_days'] ?? pkg['validity_days']).toString();
+    }
+    if (pkg['remaining_validity_days'] != null || pkg['remaining_days'] != null) {
+      _remainingDaysController.text = (pkg['remaining_validity_days'] ?? pkg['remaining_days']).toString();
+    }
+
+    final expStr = pkg['availability_end']?.toString() ?? pkg['expiry_date']?.toString();
+    if (expStr != null && expStr.isNotEmpty) {
+      try {
+        _expiryDate = DateTime.tryParse(expStr) ?? _expiryDate;
+      } catch (_) {}
+    }
+
+    // Key points
+    if (pkg['key_points'] != null) {
+      _keyPoints.clear();
+      if (pkg['key_points'] is List) {
+        for (var item in (pkg['key_points'] as List)) {
+          final s = item?.toString().trim() ?? '';
+          if (s.isNotEmpty && !_keyPoints.contains(s)) {
+            _keyPoints.add(s);
+          }
         }
-      } else if (pkg['categories'] != null && pkg['categories'] is List) {
-        for (var cat in pkg['categories']) {
-          if (cat is Map) {
-            final slug = cat['slug']?.toString() ?? '';
-            if (slug == 'for-her' || slug == 'for-him' || slug == 'general' || slug == 'biz') {
-              _primaryCategory = slug;
-              break;
+      } else if (pkg['key_points'] is String) {
+        final str = pkg['key_points'] as String;
+        if (str.startsWith('[')) {
+          try {
+            final decoded = json.decode(str) as List;
+            for (var item in decoded) {
+              final s = item?.toString().trim() ?? '';
+              if (s.isNotEmpty && !_keyPoints.contains(s)) _keyPoints.add(s);
             }
+          } catch (_) {}
+        } else {
+          final lines = str.split(RegExp(r'[\n,]'));
+          for (var l in lines) {
+            final s = l.trim();
+            if (s.isNotEmpty && !_keyPoints.contains(s)) _keyPoints.add(s);
           }
         }
       }
-      
-      if (pkg['secondary_category'] != null) {
-        if (pkg['secondary_category'] is Map) {
-          _secondaryCategory = pkg['secondary_category']['slug']?.toString() ?? '';
-        } else {
-          _secondaryCategory = pkg['secondary_category'].toString();
-        }
-      } else if (pkg['categories'] != null && pkg['categories'] is List) {
-        for (var cat in pkg['categories']) {
-          if (cat is Map) {
-            final slug = cat['slug']?.toString() ?? '';
-            if (slug == 'yoga-pilates' || slug == 'spa-massage' || slug == 'beauty-nails' || slug == 'gym-fitness' || slug == 'lifestyle-classes') {
-              _secondaryCategory = slug;
-              break;
-            }
+    }
+
+    // Vendor / Merchant handling
+    final vendorMode = pkg['vendor_mode']?.toString().toLowerCase();
+    final manualVendorName = pkg['manual_vendor_name']?.toString() ?? pkg['custom_merchant']?.toString();
+    final manualOutlet = pkg['manual_outlet']?.toString() ?? pkg['manual_vendor_outlet']?.toString() ?? pkg['outlet']?.toString() ?? pkg['location']?.toString();
+
+    if (vendorMode == 'manual' || (manualVendorName != null && manualVendorName.isNotEmpty)) {
+      _isCustomMerchant = true;
+      _selectedMerchant = 'Not in the list';
+      if (manualVendorName != null) _customMerchantController.text = manualVendorName;
+      if (manualOutlet != null) _manualOutletController.text = manualOutlet;
+    } else {
+      if (pkg['presented_by'] is Map) {
+        final pb = pkg['presented_by'] as Map;
+        _selectedMerchant = pb['name']?.toString() ?? pb['business_name']?.toString() ?? _selectedMerchant;
+      } else if (pkg['merchant_name'] != null && pkg['merchant_name'].toString().isNotEmpty) {
+        _selectedMerchant = pkg['merchant_name'].toString();
+      } else if (pkg['merchant'] is Map) {
+        _selectedMerchant = pkg['merchant']['name']?.toString() ?? pkg['merchant']['business_name']?.toString() ?? _selectedMerchant;
+      } else if (pkg['merchant'] is String && pkg['merchant'].toString().isNotEmpty) {
+        _selectedMerchant = pkg['merchant'].toString();
+      }
+    }
+
+    if (pkg['transfer_approval'] == true || pkg['transfer_permission'] == true) {
+      _isTransferApprovalConfirmed = true;
+    }
+
+    // Primary & Secondary Category
+    if (pkg['primary_category'] != null && pkg['primary_category'].toString().isNotEmpty) {
+      _primaryCategory = pkg['primary_category'].toString();
+    } else if (pkg['category'] != null) {
+      if (pkg['category'] is Map) {
+        _primaryCategory = pkg['category']['slug']?.toString() ?? _primaryCategory;
+      } else if (pkg['category'].toString().isNotEmpty) {
+        _primaryCategory = pkg['category'].toString();
+      }
+    }
+
+    if (pkg['secondary_category'] != null && pkg['secondary_category'].toString().isNotEmpty) {
+      if (pkg['secondary_category'] is Map) {
+        _secondaryCategory = pkg['secondary_category']['slug']?.toString() ?? _secondaryCategory;
+      } else {
+        _secondaryCategory = pkg['secondary_category'].toString();
+      }
+    }
+
+    if (pkg['categories'] != null && pkg['categories'] is List) {
+      for (var cat in (pkg['categories'] as List)) {
+        if (cat is Map) {
+          final slug = cat['slug']?.toString() ?? '';
+          if (['for-her', 'for-him', 'general', 'biz'].contains(slug)) {
+            _primaryCategory = slug;
+          } else if (['yoga-pilates', 'spa-massage', 'beauty-nails', 'gym-fitness', 'lifestyle-classes'].contains(slug)) {
+            _secondaryCategory = slug;
+          }
+        } else if (cat is String) {
+          if (['for-her', 'for-him', 'general', 'biz'].contains(cat)) {
+            _primaryCategory = cat;
+          } else if (['yoga-pilates', 'spa-massage', 'beauty-nails', 'gym-fitness', 'lifestyle-classes'].contains(cat)) {
+            _secondaryCategory = cat;
           }
         }
       }
+    }
 
-      _selectedMerchant = pkg['merchant_name']?.toString() ?? pkg['merchant']?.toString() ?? '';
-
-      if (pkg['key_points'] != null) {
-        try {
-          _keyPoints.addAll(List<String>.from(pkg['key_points'] as List));
-        } catch (_) {}
-      }
-
-      if (pkg['images'] != null && pkg['images'] is List) {
-        for (var img in pkg['images']) {
+    // Gallery images
+    if ((pkg['images'] != null && pkg['images'] is List && (pkg['images'] as List).isNotEmpty) ||
+        (pkg['cover_url'] != null && pkg['cover_url'].toString().isNotEmpty)) {
+      _galleryImages.clear();
+      if (pkg['images'] is List) {
+        for (var img in (pkg['images'] as List)) {
           if (img is Map && img['url'] != null) {
-            _galleryImages.add(img['url']);
-          } else if (img is String) {
+            _galleryImages.add(img['url'].toString());
+          } else if (img is String && img.isNotEmpty) {
             _galleryImages.add(img);
           }
         }
-      } else if (pkg['cover_url'] != null) {
-        _galleryImages.add(pkg['cover_url']);
+      }
+      if (_galleryImages.isEmpty && pkg['cover_url'] != null && pkg['cover_url'].toString().isNotEmpty) {
+        _galleryImages.add(pkg['cover_url'].toString());
       }
     }
   }
@@ -253,10 +351,11 @@ class _AddPackageScreenState extends State<AddPackageScreen> {
           }
         }
         
-        // Populate primary/secondary lists based on slugs
+        // Populate primary/secondary lists based on slugs (Biz+ is restricted to Merchants only)
+        final isMerchantUser = SessionManager.isMerchant;
         _primaryCategories = _apiCategories.where((cat) {
           final slug = cat['slug']?.toString() ?? '';
-          return slug == 'for-her' || slug == 'for-him' || slug == 'general' || slug == 'biz';
+          return slug == 'for-her' || slug == 'for-him' || slug == 'general' || (isMerchantUser && slug == 'biz');
         }).toList();
 
         _secondaryCategories = _apiCategories.where((cat) {
@@ -299,19 +398,20 @@ class _AddPackageScreenState extends State<AddPackageScreen> {
 
     return Row(
       children: [
-        Container(
-          width: 32,
-          height: 32,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            color: logoUrl == null || logoUrl.isEmpty ? avatarColor : Colors.white,
-            border: Border.all(color: Colors.black.withValues(alpha: 0.05)),
-          ),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(16),
+        ClipOval(
+          child: Container(
+            width: 32,
+            height: 32,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: logoUrl == null || logoUrl.isEmpty ? avatarColor : Colors.white,
+              border: Border.all(color: Colors.black.withValues(alpha: 0.05)),
+            ),
             child: logoUrl != null && logoUrl.isNotEmpty
                 ? Image.network(
                     logoUrl,
+                    width: 32,
+                    height: 32,
                     fit: BoxFit.cover,
                     errorBuilder: (context, error, stackTrace) {
                       return Center(
@@ -358,8 +458,10 @@ class _AddPackageScreenState extends State<AddPackageScreen> {
     _descriptionController.dispose();
     _newKeyPointController.dispose();
     _customMerchantController.dispose();
+    _manualOutletController.dispose();
     _originalPriceController.dispose();
     _sellingPriceController.dispose();
+    _discountedPriceController.dispose();
     _sessionsToSellController.dispose();
     _totalSessionsController.dispose();
     _validityDaysController.dispose();
@@ -367,18 +469,69 @@ class _AddPackageScreenState extends State<AddPackageScreen> {
     super.dispose();
   }
 
-  // Dynamic calculations for summary card
+  // Dynamic calculations for C2C price & resale cap according to API spec
   double get _calculatedTotalSellingPrice {
-    final sellingPrice = double.tryParse(_sellingPriceController.text) ?? 0.0;
-    final sessions = double.tryParse(_sessionsToSellController.text) ?? 1.0;
-    return sellingPrice * (sessions > 0 ? sessions : 1.0);
+    final sellingPricePerSession = double.tryParse(_sellingPriceController.text) ?? 0.0;
+    final sessionsToSell = double.tryParse(_sessionsToSellController.text) ?? 0.0;
+    final totalSessions = double.tryParse(_totalSessionsController.text) ?? 0.0;
+
+    if (sessionsToSell > 0 && totalSessions > 0) {
+      return sessionsToSell * sellingPricePerSession;
+    }
+    return sellingPricePerSession;
+  }
+
+  double? get _maxAllowedResalePrice {
+    final origPrice = double.tryParse(_originalPriceController.text) ?? 0.0;
+    if (origPrice <= 0) return null;
+
+    final sessionsToSell = double.tryParse(_sessionsToSellController.text) ?? 0.0;
+    final totalSessions = double.tryParse(_totalSessionsController.text) ?? 0.0;
+    final totalValidity = double.tryParse(_validityDaysController.text) ?? 0.0;
+    final remainingValidity = double.tryParse(_remainingDaysController.text) ?? 0.0;
+
+    double? unitsCap;
+    if (sessionsToSell > 0 && totalSessions > 0) {
+      unitsCap = (origPrice * sessionsToSell / totalSessions).floorToDouble();
+    }
+
+    double? timeCap;
+    if (totalValidity > 0 && remainingValidity > 0) {
+      timeCap = (origPrice * remainingValidity / totalValidity).floorToDouble();
+    }
+
+    if (unitsCap != null && timeCap != null) {
+      return math.min(unitsCap, timeCap);
+    } else if (unitsCap != null) {
+      return unitsCap;
+    } else if (timeCap != null) {
+      return timeCap;
+    }
+    return null;
   }
 
   void _nextStep() {
     if (_currentStep == 1) {
-      if (_selectedMerchant.isEmpty) {
-        _showToast('Please select a merchant', type: SnackBarType.warning);
-        return;
+      if (!SessionManager.isMerchant) {
+        if (_isCustomMerchant) {
+          if (_customMerchantController.text.trim().isEmpty) {
+            _showToast('Merchant name is required', type: SnackBarType.warning);
+            return;
+          }
+          if (_receiptFileName.isEmpty) {
+            _showToast('Please upload clearance evidence file', type: SnackBarType.warning);
+            return;
+          }
+          if (!_isTransferApprovalConfirmed) {
+            _showToast('Please confirm transfer approval details for manual clearance', type: SnackBarType.warning);
+            return;
+          }
+        } else {
+          if (_selectedMerchant.isEmpty) {
+            _showToast('Please select a merchant', type: SnackBarType.warning);
+            return;
+          }
+        }
       }
       if (_titleController.text.trim().isEmpty) {
         _showToast('Package title is required', type: SnackBarType.warning);
@@ -391,7 +544,15 @@ class _AddPackageScreenState extends State<AddPackageScreen> {
       setState(() => _currentStep = 2);
     } else if (_currentStep == 2) {
       if (_sellingPriceController.text.isEmpty) {
-        _showToast('Please enter the selling price', type: SnackBarType.warning);
+        _showToast('Please enter the selling price per session', type: SnackBarType.warning);
+        return;
+      }
+      final maxCap = _maxAllowedResalePrice;
+      if (maxCap != null && _calculatedTotalSellingPrice > maxCap) {
+        _showToast(
+          'Total selling price (\$${_calculatedTotalSellingPrice.toStringAsFixed(2)}) exceeds maximum allowed resale price of ${maxCap.toInt()} SGD',
+          type: SnackBarType.warning,
+        );
         return;
       }
       setState(() => _currentStep = 3);
@@ -419,13 +580,41 @@ class _AddPackageScreenState extends State<AddPackageScreen> {
     final sellingPriceStr = _sellingPriceController.text;
 
     if (sellingPriceStr.isEmpty) {
-      _showToast('Please enter the selling price', type: SnackBarType.warning);
+      _showToast(SessionManager.isMerchant ? 'Please enter the price' : 'Please enter the selling price', type: SnackBarType.warning);
       return;
     }
 
-    if (_receiptFileName.isEmpty) {
-      _showToast('Please upload a submission receipt', type: SnackBarType.warning);
+    if (!SessionManager.isMerchant && _receiptFileName.isEmpty) {
+      _showToast('Please upload clearance evidence / submission receipt', type: SnackBarType.warning);
       return;
+    }
+
+    // Build categories list from primary + secondary slugs
+    final List<String> categoryList = [];
+    if (_primaryCategory.isNotEmpty) categoryList.add(_primaryCategory);
+    if (_secondaryCategory.isNotEmpty) categoryList.add(_secondaryCategory);
+
+    double totalSellingPrice = 0.0;
+    double sellingPricePerSession = 0.0;
+    double discountedPrice = 0.0;
+
+    if (SessionManager.isMerchant) {
+      totalSellingPrice = double.tryParse(sellingPriceStr) ?? 0.0;
+      final discStr = _discountedPriceController.text.trim();
+      discountedPrice = discStr.isNotEmpty ? (double.tryParse(discStr) ?? totalSellingPrice) : totalSellingPrice;
+    } else {
+      sellingPricePerSession = double.tryParse(sellingPriceStr) ?? 0.0;
+      totalSellingPrice = _calculatedTotalSellingPrice;
+      discountedPrice = totalSellingPrice;
+
+      final maxCap = _maxAllowedResalePrice;
+      if (maxCap != null && totalSellingPrice > maxCap) {
+        _showToast(
+          'Total selling price (\$${totalSellingPrice.toStringAsFixed(2)}) exceeds maximum allowed resale price of ${maxCap.toInt()} SGD',
+          type: SnackBarType.warning,
+        );
+        return;
+      }
     }
 
     showDialog(
@@ -436,17 +625,13 @@ class _AddPackageScreenState extends State<AddPackageScreen> {
       ),
     );
 
-    // Build categories list from primary + secondary slugs
-    final List<String> categoryList = [];
-    if (_primaryCategory.isNotEmpty) categoryList.add(_primaryCategory);
-    if (_secondaryCategory.isNotEmpty) categoryList.add(_secondaryCategory);
-
     // Build payload using correct API field names
     final payload = <String, dynamic>{
       'package_title': _titleController.text.trim(),
       'short_description': _shortDescriptionController.text.trim(),
-      'package_price': double.tryParse(sellingPriceStr) ?? 0.0,
-      'discounted_price': double.tryParse(sellingPriceStr) ?? 0.0,
+      'package_price': totalSellingPrice,
+      'price': totalSellingPrice,
+      'discounted_price': discountedPrice,
       'currency': 'SGD',
       'availability_end': '${_expiryDate.year}-${_expiryDate.month.toString().padLeft(2,'0')}-${_expiryDate.day.toString().padLeft(2,'0')}',
       'key_points': _keyPoints,
@@ -457,36 +642,49 @@ class _AddPackageScreenState extends State<AddPackageScreen> {
     if (_descriptionController.text.trim().isNotEmpty) {
       payload['content'] = _descriptionController.text.trim();
     }
-    if (originalPriceStr.isNotEmpty) {
-      payload['original_purchase_price'] = double.tryParse(originalPriceStr) ?? 0.0;
-    }
     if (categoryList.isNotEmpty) {
       payload['categories'] = categoryList;
     }
     if (_secondaryCategory.isNotEmpty) {
       payload['secondary_category'] = _secondaryCategory;
     }
-    if (_sessionsToSellController.text.isNotEmpty) {
-      payload['sessions_to_sell'] = int.tryParse(_sessionsToSellController.text);
+
+    if (!SessionManager.isMerchant) {
+      payload['selling_price_per_session'] = sellingPricePerSession;
+      if (originalPriceStr.isNotEmpty) {
+        payload['original_purchase_price'] = double.tryParse(originalPriceStr) ?? 0.0;
+      }
+      if (_sessionsToSellController.text.isNotEmpty) {
+        payload['sessions_to_sell'] = int.tryParse(_sessionsToSellController.text);
+      }
+      if (_totalSessionsController.text.isNotEmpty) {
+        payload['total_sessions'] = int.tryParse(_totalSessionsController.text);
+      }
+      if (_validityDaysController.text.isNotEmpty) {
+        payload['total_validity_days'] = int.tryParse(_validityDaysController.text);
+      }
+      if (_remainingDaysController.text.isNotEmpty) {
+        payload['remaining_validity_days'] = int.tryParse(_remainingDaysController.text);
+      }
     }
-    if (_totalSessionsController.text.isNotEmpty) {
-      payload['total_sessions'] = int.tryParse(_totalSessionsController.text);
-    }
-    if (_validityDaysController.text.isNotEmpty) {
-      payload['total_validity_days'] = int.tryParse(_validityDaysController.text);
-    }
-    if (_remainingDaysController.text.isNotEmpty) {
-      payload['remaining_validity_days'] = int.tryParse(_remainingDaysController.text);
-    }
-    // Resolve merchant_id from name
-    final matchedMerchant = _apiMerchants.firstWhere(
-      (m) => m['business_name']?.toString() == _selectedMerchant || m['name']?.toString() == _selectedMerchant,
-      orElse: () => <String, dynamic>{},
-    );
-    if (matchedMerchant.isNotEmpty && matchedMerchant['id'] != null) {
-      payload['merchant_id'] = matchedMerchant['id'] is int
-          ? matchedMerchant['id']
-          : int.tryParse(matchedMerchant['id'].toString());
+    // Resolve vendor_mode and merchant_id / manual fields
+    if (_isCustomMerchant) {
+      payload['vendor_mode'] = 'manual';
+      payload['manual_vendor_name'] = _customMerchantController.text.trim();
+      if (_manualOutletController.text.trim().isNotEmpty) {
+        payload['manual_vendor_outlet'] = _manualOutletController.text.trim();
+      }
+    } else {
+      payload['vendor_mode'] = 'self';
+      final matchedMerchant = _apiMerchants.firstWhere(
+        (m) => m['business_name']?.toString() == _selectedMerchant || m['name']?.toString() == _selectedMerchant,
+        orElse: () => <String, dynamic>{},
+      );
+      if (matchedMerchant.isNotEmpty && matchedMerchant['id'] != null) {
+        payload['merchant_id'] = matchedMerchant['id'] is int
+            ? matchedMerchant['id']
+            : int.tryParse(matchedMerchant['id'].toString());
+      }
     }
 
     final isEditing = widget.packageToEdit != null;
@@ -525,12 +723,16 @@ class _AddPackageScreenState extends State<AddPackageScreen> {
         if (widget.onPackageUpdated != null) {
           widget.onPackageUpdated!(localPkg);
         }
-        CustomSnackBar.show(
-          context,
-          message: 'Package updated successfully',
-          type: SnackBarType.success,
-        );
         Navigator.of(context).pop(true);
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) {
+            CustomSnackBar.show(
+              context,
+              message: 'Package updated successfully',
+              type: SnackBarType.success,
+            );
+          }
+        });
       } else {
         if (widget.onPackageAdded != null) {
           widget.onPackageAdded!(localPkg);
@@ -773,130 +975,272 @@ class _AddPackageScreenState extends State<AddPackageScreen> {
 
   // --- MERCHANT SECTION & STEPS BUILDERS ---
   Widget _buildMerchantSection() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        // Merchant Label and Toggle Link
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            _buildSectionHeader(_isCustomMerchant ? 'Custom Merchant Name *' : 'Select Merchant *'),
-            GestureDetector(
-              onTap: () {
-                setState(() {
-                  _isCustomMerchant = !_isCustomMerchant;
-                  if (!_isCustomMerchant) {
-                    _customMerchantController.clear();
-                    _selectedMerchant = '';
-                  } else {
-                    _selectedMerchant = _customMerchantController.text.trim();
-                  }
-                });
-              },
-              child: Text(
-                _isCustomMerchant ? 'Select from list' : 'Not in the list',
-                style: const TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.bold,
-                  color: Color(0xFFFBBD03),
-                  decoration: TextDecoration.underline,
-                ),
-              ),
-            ),
-          ],
-        ),
-        if (_isCustomMerchant) ...[
+    if (SessionManager.isMerchant) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _buildSectionHeader('Merchant'),
           Container(
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: AppColors.primary.withValues(alpha: 0.12)),
-            ),
-            child: TextFormField(
-              controller: _customMerchantController,
-              style: const TextStyle(fontSize: 13, color: AppColors.primary, fontWeight: FontWeight.w500),
-              onChanged: (val) {
-                setState(() {
-                  _selectedMerchant = val.trim();
-                });
-              },
-              decoration: InputDecoration(
-                hintText: 'e.g. Active Fitness Center',
-                hintStyle: TextStyle(color: AppColors.primary.withValues(alpha: 0.35), fontSize: 13),
-                border: InputBorder.none,
-                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-              ),
-            ),
-          ),
-        ] else ...[
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
             decoration: BoxDecoration(
               color: Colors.white,
               borderRadius: BorderRadius.circular(16),
               border: Border.all(color: AppColors.primary.withValues(alpha: 0.1)),
             ),
-            child: DropdownButtonHideUnderline(
-              child: DropdownButtonFormField<String>(
-                isExpanded: true,
-                key: ValueKey(_selectedMerchant),
-                // ignore: deprecated_member_use
-                value: (_apiMerchants.any((m) => (m['business_name'] == _selectedMerchant || m['name'] == _selectedMerchant)) || _fallbackMerchants.contains(_selectedMerchant))
-                    ? (_selectedMerchant.isEmpty ? null : _selectedMerchant)
-                    : null,
-                hint: Text(
-                  _isLoadingData ? 'Loading merchants...' : 'Select a merchant...',
-                  style: TextStyle(color: AppColors.primary.withValues(alpha: 0.4), fontSize: 14),
+            child: Row(
+              children: [
+                const Icon(Icons.storefront_rounded, color: AppColors.primary, size: 20),
+                const SizedBox(width: 10),
+                Text(
+                  (SessionManager.userName ?? '').isNotEmpty ? SessionManager.userName! : 'Merchant Account',
+                  style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: AppColors.primary),
                 ),
-                decoration: const InputDecoration(
-                  border: InputBorder.none,
-                  enabledBorder: InputBorder.none,
-                  focusedBorder: InputBorder.none,
-                  errorBorder: InputBorder.none,
-                  disabledBorder: InputBorder.none,
-                  contentPadding: EdgeInsets.zero,
-                ),
-                items: _apiMerchants.isNotEmpty
-                    ? _apiMerchants.map((merchant) {
-                        final name = merchant['business_name']?.toString() ?? merchant['name']?.toString() ?? '';
-                        return DropdownMenuItem<String>(
-                          value: name,
-                          child: _buildMerchantDropdownItem(merchant),
-                        );
-                      }).toList()
-                    : _fallbackMerchants.map((name) {
-                        return DropdownMenuItem<String>(
-                          value: name,
-                          child: Row(
-                            children: [
-                              Container(
-                                width: 32,
-                                height: 32,
-                                decoration: const BoxDecoration(
-                                  shape: BoxShape.circle,
-                                  color: Color(0xFF8B5CF6),
-                                ),
-                                child: Center(
-                                  child: Text(
-                                    name.substring(0, 1).toUpperCase(),
-                                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(width: 12),
-                              Text(name, style: const TextStyle(fontSize: 14, color: AppColors.primary)),
-                            ],
-                          ),
-                        );
-                      }).toList(),
-                onChanged: (val) {
-                  setState(() => _selectedMerchant = val ?? '');
-                },
-              ),
+              ],
             ),
           ),
         ],
-      ],
+      );
+    }
+
+    return Container(
+      padding: _isCustomMerchant ? const EdgeInsets.all(18) : EdgeInsets.zero,
+      decoration: _isCustomMerchant
+          ? BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: AppColors.primary.withValues(alpha: 0.12)),
+            )
+          : null,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // Header Row: Title & Toggle link
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                _isCustomMerchant ? 'Merchant not listed' : 'Select Merchant *',
+                style: const TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.bold,
+                  color: AppColors.primary,
+                ),
+              ),
+              GestureDetector(
+                onTap: () {
+                  setState(() {
+                    _isCustomMerchant = !_isCustomMerchant;
+                    if (!_isCustomMerchant) {
+                      _customMerchantController.clear();
+                      _manualOutletController.clear();
+                      _selectedMerchant = '';
+                      _isTransferApprovalConfirmed = false;
+                    } else {
+                      _selectedMerchant = _customMerchantController.text.trim();
+                    }
+                  });
+                },
+                child: Text(
+                  _isCustomMerchant ? 'Select from verified list' : 'Not in the list',
+                  style: const TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.bold,
+                    color: Color(0xFFFBBD03),
+                    decoration: TextDecoration.underline,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+
+          if (_isCustomMerchant) ...[
+            // Merchant Name *
+            _buildLabel('Merchant Name *'),
+            Container(
+              decoration: BoxDecoration(
+                color: AppColors.bgLight,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: AppColors.primary.withValues(alpha: 0.1)),
+              ),
+              child: TextFormField(
+                controller: _customMerchantController,
+                style: const TextStyle(fontSize: 13, color: AppColors.primary, fontWeight: FontWeight.w500),
+                onChanged: (val) {
+                  setState(() {
+                    _selectedMerchant = val.trim();
+                  });
+                },
+                decoration: InputDecoration(
+                  hintText: 'Enter merchant name',
+                  hintStyle: TextStyle(color: AppColors.primary.withValues(alpha: 0.35), fontSize: 13),
+                  border: InputBorder.none,
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                ),
+              ),
+            ),
+            const SizedBox(height: 14),
+
+            // Outlet
+            _buildLabel('Outlet'),
+            Container(
+              decoration: BoxDecoration(
+                color: AppColors.bgLight,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: AppColors.primary.withValues(alpha: 0.1)),
+              ),
+              child: TextFormField(
+                controller: _manualOutletController,
+                style: const TextStyle(fontSize: 13, color: AppColors.primary, fontWeight: FontWeight.w500),
+                decoration: InputDecoration(
+                  hintText: 'e.g. Plaza Singapura',
+                  hintStyle: TextStyle(color: AppColors.primary.withValues(alpha: 0.35), fontSize: 13),
+                  border: InputBorder.none,
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                ),
+              ),
+            ),
+            const SizedBox(height: 14),
+
+            // Clearance Evidence *
+            _buildLabel('Clearance Evidence *'),
+            _buildUploadDottedBox(
+              icon: Icons.upload_file_rounded,
+              label: _receiptFileName.isEmpty ? 'Upload evidence file' : _receiptFileName,
+              onTap: () async {
+                try {
+                  final XFile? file = await _picker.pickImage(source: ImageSource.gallery);
+                  if (file != null) {
+                    setState(() {
+                      _receiptFileName = file.name;
+                    });
+                    _showToast('Evidence file attached', type: SnackBarType.success);
+                  }
+                } catch (e) {
+                  _showToast('Failed to pick file: $e', type: SnackBarType.error);
+                }
+              },
+            ),
+            const SizedBox(height: 14),
+
+            // Confirmation Checkbox
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                SizedBox(
+                  width: 24,
+                  height: 24,
+                  child: Checkbox(
+                    value: _isTransferApprovalConfirmed,
+                    activeColor: AppColors.primary,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
+                    onChanged: (val) {
+                      setState(() {
+                        _isTransferApprovalConfirmed = val ?? false;
+                      });
+                    },
+                  ),
+                ),
+                const SizedBox(width: 8),
+                const Expanded(
+                  child: Text(
+                    'I confirm that transfer approval details are accurate for manual clearance.',
+                    style: TextStyle(fontSize: 11, color: AppColors.primary, height: 1.3),
+                  ),
+                ),
+              ],
+            ),
+          ] else ...[
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: AppColors.primary.withValues(alpha: 0.1)),
+              ),
+              child: DropdownButtonHideUnderline(
+                child: DropdownButtonFormField<String>(
+                  isExpanded: true,
+                  key: ValueKey(_selectedMerchant),
+                  // ignore: deprecated_member_use
+                  value: (_apiMerchants.any((m) => (m['business_name'] == _selectedMerchant || m['name'] == _selectedMerchant)) || _fallbackMerchants.contains(_selectedMerchant))
+                      ? (_selectedMerchant.isEmpty ? null : _selectedMerchant)
+                      : null,
+                  hint: Text(
+                    _isLoadingData ? 'Loading merchants...' : 'Select a merchant...',
+                    style: TextStyle(color: AppColors.primary.withValues(alpha: 0.4), fontSize: 14),
+                  ),
+                  decoration: const InputDecoration(
+                    border: InputBorder.none,
+                    enabledBorder: InputBorder.none,
+                    focusedBorder: InputBorder.none,
+                    errorBorder: InputBorder.none,
+                    disabledBorder: InputBorder.none,
+                    contentPadding: EdgeInsets.zero,
+                  ),
+                  items: _apiMerchants.isNotEmpty
+                      ? _apiMerchants.map((merchant) {
+                          final name = merchant['business_name']?.toString() ?? merchant['name']?.toString() ?? '';
+                          return DropdownMenuItem<String>(
+                            value: name,
+                            child: _buildMerchantDropdownItem(merchant),
+                          );
+                        }).toList()
+                      : _fallbackMerchants.map((name) {
+                          final initials = name.isNotEmpty ? name.substring(0, 1).toUpperCase() : '?';
+                          String? logoUrl;
+                          if (name.toLowerCase().contains('synvolv')) {
+                            logoUrl = _merchantLogoOverrides[3];
+                          } else if (name.toLowerCase().contains('tagpools')) {
+                            logoUrl = _merchantLogoOverrides[13];
+                          }
+
+                          return DropdownMenuItem<String>(
+                            value: name,
+                            child: Row(
+                              children: [
+                                ClipOval(
+                                  child: Container(
+                                    width: 32,
+                                    height: 32,
+                                    decoration: const BoxDecoration(
+                                      shape: BoxShape.circle,
+                                      color: Color(0xFF8B5CF6),
+                                    ),
+                                    child: logoUrl != null
+                                        ? Image.network(
+                                            logoUrl,
+                                            width: 32,
+                                            height: 32,
+                                            fit: BoxFit.cover,
+                                            errorBuilder: (_, __, ___) => Center(
+                                              child: Text(initials, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                                            ),
+                                          )
+                                        : Center(
+                                            child: Text(
+                                              initials,
+                                              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                                            ),
+                                          ),
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                Text(name, style: const TextStyle(fontSize: 14, color: AppColors.primary)),
+                              ],
+                            ),
+                          );
+                        }).toList(),
+                  onChanged: (val) {
+                    setState(() => _selectedMerchant = val ?? '');
+                  },
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
     );
   }
 
@@ -990,13 +1334,15 @@ class _AddPackageScreenState extends State<AddPackageScreen> {
         // Input field or Add button
         if (_isAddingKeyPoint) ...[
           Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
               Expanded(
                 child: Container(
+                  height: 46,
                   decoration: BoxDecoration(
                     color: Colors.white,
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: AppColors.primary.withValues(alpha: 0.12)),
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: AppColors.primary.withValues(alpha: 0.15)),
                   ),
                   child: TextFormField(
                     controller: _newKeyPointController,
@@ -1008,43 +1354,52 @@ class _AddPackageScreenState extends State<AddPackageScreen> {
                       hintText: 'e.g., 1-Hour massage session...',
                       hintStyle: TextStyle(color: AppColors.primary.withValues(alpha: 0.35), fontSize: 13),
                       border: InputBorder.none,
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                     ),
                   ),
                 ),
               ),
-              const SizedBox(width: 10),
-              GestureDetector(
+              const SizedBox(width: 6),
+              InkWell(
                 onTap: _addKeyPointInline,
+                borderRadius: BorderRadius.circular(12),
                 child: Container(
-                  width: 48,
-                  height: 48,
+                  width: 38,
+                  height: 38,
                   decoration: BoxDecoration(
                     color: const Color(0xFF1F2E4E),
-                    borderRadius: BorderRadius.circular(16),
+                    borderRadius: BorderRadius.circular(12),
+                    boxShadow: [
+                      BoxShadow(
+                        color: const Color(0xFF1F2E4E).withValues(alpha: 0.15),
+                        blurRadius: 4,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
                   ),
                   alignment: Alignment.center,
-                  child: const Icon(Icons.check_rounded, color: Colors.white, size: 20),
+                  child: const Icon(Icons.check_rounded, color: Colors.white, size: 18),
                 ),
               ),
-              const SizedBox(width: 8),
-              GestureDetector(
+              const SizedBox(width: 6),
+              InkWell(
                 onTap: () {
                   setState(() {
                     _newKeyPointController.clear();
                     _isAddingKeyPoint = false;
                   });
                 },
+                borderRadius: BorderRadius.circular(12),
                 child: Container(
-                  width: 48,
-                  height: 48,
+                  width: 38,
+                  height: 38,
                   decoration: BoxDecoration(
                     color: Colors.red.shade50,
-                    borderRadius: BorderRadius.circular(16),
+                    borderRadius: BorderRadius.circular(12),
                     border: Border.all(color: Colors.red.shade100),
                   ),
                   alignment: Alignment.center,
-                  child: const Icon(Icons.close_rounded, color: Colors.red, size: 20),
+                  child: const Icon(Icons.close_rounded, color: Colors.red, size: 18),
                 ),
               ),
             ],
@@ -1111,7 +1466,7 @@ class _AddPackageScreenState extends State<AddPackageScreen> {
             child: DropdownButtonFormField<String>(
               key: ValueKey(_primaryCategory),
               // ignore: deprecated_member_use
-              value: (_primaryCategories.any((c) => c['slug'] == _primaryCategory) || _primaryFallback.any((c) => c['slug'] == _primaryCategory))
+              value: (_primaryCategories.any((c) => c['slug'] == _primaryCategory) || (SessionManager.isMerchant ? _primaryFallback : _primaryFallback.where((c) => c['slug'] != 'biz')).any((c) => c['slug'] == _primaryCategory))
                   ? (_primaryCategory.isEmpty ? null : _primaryCategory)
                   : null,
               hint: const Text('Primary Category', style: TextStyle(fontSize: 13, color: Colors.black38)),
@@ -1130,7 +1485,7 @@ class _AddPackageScreenState extends State<AddPackageScreen> {
                         child: Text(c['name']?.toString() ?? '', style: const TextStyle(fontSize: 13)),
                       );
                     }).toList()
-                  : _primaryFallback.map((c) {
+                  : (SessionManager.isMerchant ? _primaryFallback : _primaryFallback.where((c) => c['slug'] != 'biz').toList()).map((c) {
                       return DropdownMenuItem(
                         value: c['slug'],
                         child: Text(c['name']!, style: const TextStyle(fontSize: 13)),
@@ -1206,6 +1561,80 @@ class _AddPackageScreenState extends State<AddPackageScreen> {
   }
 
   Widget _buildStep2() {
+    if (SessionManager.isMerchant) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // Pricing Card for Merchants
+          _buildSectionHeader('Pricing Card'),
+          Container(
+            padding: const EdgeInsets.all(18),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: AppColors.primary.withValues(alpha: 0.08)),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _buildLabel('Price *'),
+                _buildPriceInputField(
+                  controller: _sellingPriceController,
+                  onChanged: (val) => setState(() {}),
+                ),
+                const SizedBox(height: 16),
+                _buildLabel('Discounted Price'),
+                _buildPriceInputField(
+                  controller: _discountedPriceController,
+                  hint: '0.00 (Optional)',
+                  onChanged: (val) => setState(() {}),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 24),
+
+          // Validity Card for Merchants
+          _buildSectionHeader('Validity'),
+          Container(
+            padding: const EdgeInsets.all(18),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: AppColors.primary.withValues(alpha: 0.08)),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _buildLabel('Expiry Date *'),
+                GestureDetector(
+                  onTap: _showDatePicker,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                    decoration: BoxDecoration(
+                      color: AppColors.bgLight,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: AppColors.primary.withValues(alpha: 0.1)),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          '${_expiryDate.month.toString().padLeft(2, '0')}/${_expiryDate.day.toString().padLeft(2, '0')}/${_expiryDate.year}',
+                          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
+                        ),
+                        const Icon(Icons.calendar_today_outlined, size: 16, color: AppColors.primary),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      );
+    }
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -1292,12 +1721,7 @@ class _AddPackageScreenState extends State<AddPackageScreen> {
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                     decoration: BoxDecoration(color: Colors.white12, borderRadius: BorderRadius.circular(4)),
-                    child: Row(
-                      children: const [
-                        Text('300', style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold)),
-                        Icon(Icons.arrow_drop_down, color: Colors.white, size: 14),
-                      ],
-                    ),
+                    child: const Text('SGD', style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold)),
                   ),
                 ],
               ),
@@ -1311,18 +1735,51 @@ class _AddPackageScreenState extends State<AddPackageScreen> {
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   const Text(
-                    'Total Selling Price',
+                    'Total Selling Price (Auto Calculated)',
                     style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.white),
                   ),
                   Text(
-                    '\$ ${_calculatedTotalSellingPrice.toStringAsFixed(2)}',
-                    style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: Color(0xFFFBBD03)),
+                    '\$ ${_calculatedTotalSellingPrice.toStringAsFixed(2)} SGD',
+                    style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w900, color: Color(0xFFFBBD03)),
                   ),
                 ],
+              ),
+              const SizedBox(height: 6),
+              Text(
+                'Calculated from ${_sessionsToSellController.text.isNotEmpty && _totalSessionsController.text.isNotEmpty ? "Sessions To Sell x Selling Price Per Session" : "Selling Price Per Session"}.',
+                style: TextStyle(fontSize: 10, color: Colors.white.withValues(alpha: 0.5)),
               ),
             ],
           ),
         ),
+        if (_maxAllowedResalePrice != null) ...[
+          const SizedBox(height: 12),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            decoration: BoxDecoration(
+              color: _calculatedTotalSellingPrice > _maxAllowedResalePrice!
+                  ? Colors.red.shade50
+                  : const Color(0xFFEFF6FF),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: _calculatedTotalSellingPrice > _maxAllowedResalePrice!
+                    ? Colors.red.shade200
+                    : const Color(0xFFBFDBFE),
+              ),
+            ),
+            child: Text(
+              'Your maximum resale price is ${_maxAllowedResalePrice!.toInt()} SGD (rounded down to nearest dollar).',
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+                color: _calculatedTotalSellingPrice > _maxAllowedResalePrice!
+                    ? Colors.red.shade700
+                    : const Color(0xFF1E40AF),
+              ),
+            ),
+          ),
+        ],
         const SizedBox(height: 24),
 
         // Validity Card
@@ -1354,7 +1811,18 @@ class _AddPackageScreenState extends State<AddPackageScreen> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         _buildLabel('Remaining Days'),
-                        _buildPriceInputField(controller: _remainingDaysController, isCurrency: false),
+                        _buildPriceInputField(
+                          controller: _remainingDaysController,
+                          isCurrency: false,
+                          onChanged: (val) {
+                            final days = int.tryParse(val) ?? 0;
+                            final now = DateTime.now();
+                            final today = DateTime(now.year, now.month, now.day);
+                            setState(() {
+                              _expiryDate = today.add(Duration(days: days));
+                            });
+                          },
+                        ),
                       ],
                     ),
                   ),
@@ -1550,14 +2018,34 @@ class _AddPackageScreenState extends State<AddPackageScreen> {
     );
   }
   void _showDatePicker() async {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final initialDate = _expiryDate.isBefore(today) ? today : _expiryDate;
+
     final picked = await showDatePicker(
       context: context,
-      initialDate: _expiryDate,
-      firstDate: DateTime.now(),
-      lastDate: DateTime.now().add(const Duration(days: 3650)),
+      initialDate: initialDate,
+      firstDate: today,
+      lastDate: today.add(const Duration(days: 3650)),
+      builder: (context, child) {
+        return Theme(
+          data: Theme.of(context).copyWith(
+            colorScheme: const ColorScheme.light(
+              primary: AppColors.primary,
+              onPrimary: Colors.white,
+              onSurface: AppColors.primary,
+            ),
+          ),
+          child: child!,
+        );
+      },
     );
     if (picked != null) {
-      setState(() => _expiryDate = picked);
+      final diff = picked.difference(today).inDays;
+      setState(() {
+        _expiryDate = picked;
+        _remainingDaysController.text = (diff >= 0 ? diff : 0).toString();
+      });
     }
   }
 

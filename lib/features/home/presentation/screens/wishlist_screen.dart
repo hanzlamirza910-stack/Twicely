@@ -154,7 +154,6 @@ class _WishlistScreenState extends State<WishlistScreen> {
     return {
       'id': apiPkg['id']?.toString() ?? '',
       'title': apiPkg['title'] ?? 'Package Listing',
-      'description': apiPkg['description'] ?? 'No description available',
       'category': category,
       'price': priceVal,
       'imageUrl': imageUrl,
@@ -387,26 +386,6 @@ class _WishlistScreenState extends State<WishlistScreen> {
                       );
                     },
                   ),
-                  // Category Pill floating on top of image
-                  Positioned(
-                    left: 10,
-                    bottom: 10,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: item['pillColor'] as Color? ?? const Color(0xFFF3F4F6),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Text(
-                        item['category'] as String,
-                        style: TextStyle(
-                          fontSize: 9,
-                          fontWeight: FontWeight.bold,
-                          color: item['pillTextColor'] as Color? ?? const Color(0xFF374151),
-                        ),
-                      ),
-                    ),
-                  ),
                   // Floating Heart Icon Button (Active Wishlist)
                   Positioned(
                     right: 8,
@@ -428,7 +407,7 @@ class _WishlistScreenState extends State<WishlistScreen> {
                         ),
                         child: const Icon(
                           Icons.favorite_rounded,
-                          color: Color(0xFF1F2E4E),
+                          color: Colors.red,
                           size: 16,
                         ),
                       ),
@@ -448,18 +427,15 @@ class _WishlistScreenState extends State<WishlistScreen> {
                   children: [
                     _buildCategoryRichText(item['tag'] as String? ?? item['category'] as String? ?? 'General'),
                     const SizedBox(height: 3),
-                    SizedBox(
-                      height: 32,
-                      child: Text(
-                        item['title'] as String,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.bold,
-                          color: Color(0xFF1A1A2E),
-                          height: 1.3,
-                        ),
+                    Text(
+                      item['title'] as String,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFF1A1A2E),
+                        height: 1.3,
                       ),
                     ),
                     const SizedBox(height: 4),

@@ -87,7 +87,7 @@ class _PayoutScreenState extends State<PayoutScreen> {
         final data = res['data'] as Map;
         final rawBal = double.tryParse(data['available_balance']?.toString() ?? '0') ?? 0.0;
         setState(() {
-          _availableBalance = isMerchant ? rawBal / 100.0 : rawBal;
+          _availableBalance = rawBal;
           _currency = data['currency']?.toString() ?? 'SGD';
         });
       }

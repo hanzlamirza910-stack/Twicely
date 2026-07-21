@@ -45,6 +45,7 @@ class _CategoryDetailScreenState extends State<CategoryDetailScreen> {
     final res = await ApiService.getPackages(category: widget.categoryName);
     if (res['success'] == true && res['data'] != null) {
       final List<dynamic> pkgs = res['data'];
+      await ApiService.prefetchOwners(pkgs);
       if (mounted) {
         setState(() {
           _apiPackages = pkgs.map((p) => _mapApiPackage(p as Map<String, dynamic>)).toList();
@@ -224,20 +225,9 @@ class _CategoryDetailScreenState extends State<CategoryDetailScreen> {
 
     String tag = _buildDynamicTag(apiPkg);
 
-    final merchantIdVal = int.tryParse(apiPkg['merchant_id']?.toString() ?? '');
-    String merchantName = 'Twicely Merchant';
-    String merchantLogo = '';
-    if (merchantIdVal != null && ApiService.merchantsCache.containsKey(merchantIdVal)) {
-      final m = ApiService.merchantsCache[merchantIdVal]!;
-      merchantName = m['business_name']?.toString() ?? 'Twicely Merchant';
-      merchantLogo = ApiService.getMerchantLogo(merchantIdVal, m['logo_url']?.toString());
-    } else if (apiPkg['merchant'] is Map && apiPkg['merchant']['name'] != null) {
-      merchantName = apiPkg['merchant']['name'].toString();
-      merchantLogo = ApiService.getMerchantLogo(merchantIdVal, apiPkg['merchant']['logo']?.toString());
-    } else if (apiPkg['merchant_name'] != null) {
-      merchantName = apiPkg['merchant_name'].toString();
-      merchantLogo = ApiService.getMerchantLogo(merchantIdVal, '');
-    }
+    final ownerInfo = ApiService.resolveOwnerInfo(apiPkg);
+    final String merchantName = ownerInfo['name'] ?? 'Twicely';
+    final String merchantLogo = ownerInfo['avatar'] ?? '';
 
     return {
       'id': apiPkg['id'],
@@ -264,7 +254,7 @@ class _CategoryDetailScreenState extends State<CategoryDetailScreen> {
       },
       'merchantName': merchantName,
       'merchantLogo': merchantLogo,
-      'merchant_id': merchantIdVal,
+      'merchant_id': ownerInfo['merchant_id'],
     };
   }
 

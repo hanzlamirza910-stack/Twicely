@@ -12,6 +12,7 @@ import 'my_sales_screen.dart';
 import 'my_orders_screen.dart';
 import 'wishlist_screen.dart';
 import 'payout_screen.dart';
+import 'my_listings_screen.dart';
 import 'add_package_screen.dart';
 import 'package_detail_screen.dart';
 import 'notifications_screen.dart';
@@ -49,6 +50,7 @@ class _HomeScreenState extends State<HomeScreen> {
   int _wishlistCount = 0;
   int _salesCount = 0;
   int _ordersCount = 0;
+  int _packagesCount = 0;
   final ImagePicker _picker = ImagePicker();
   bool _isUploadingAvatar = false;
   int _avatarCacheBuster = 0;
@@ -209,15 +211,20 @@ class _HomeScreenState extends State<HomeScreen> {
     if (_profileData.isEmpty) {
       setState(() => _isLoadingProfile = true);
     }
-    // Load user profile
+    // Load user profile — use setState so phone_number and all fields update the UI
     final profileRes = await ApiService.getUserMe();
     if (!mounted) return;
     if (profileRes['success'] == true && profileRes['data'] != null) {
-      _profileData = Map<String, dynamic>.from(profileRes['data'] as Map);
+      setState(() {
+        _profileData = Map<String, dynamic>.from(profileRes['data'] as Map);
+      });
     } else if (profileRes.containsKey('id') || profileRes.containsKey('email')) {
-      _profileData = Map<String, dynamic>.from(profileRes);
+      setState(() {
+        _profileData = Map<String, dynamic>.from(profileRes);
+      });
     }
-    // Load wallet balance — merchants get balance in cents, divide by 100
+    // API always returns wallet balance as integer CENTS (balance: 525 = SGD 5.25)
+    // This applies to BOTH /payments/wallet and /merchants/me/wallet endpoints
     final isMerchantWallet = SessionManager.isMerchant;
     final walletRes = isMerchantWallet
         ? await ApiService.getMerchantWallet()
@@ -226,16 +233,28 @@ class _HomeScreenState extends State<HomeScreen> {
     if (walletRes['success'] == true && walletRes['data'] != null) {
       final wd = walletRes['data'] as Map;
       final rawBalance = double.tryParse(wd['balance']?.toString() ?? '0') ?? 0.0;
-      _walletBalance = isMerchantWallet ? rawBalance / 100.0 : rawBalance;
+      _walletBalance = rawBalance;
     } else if (walletRes.containsKey('balance')) {
       final rawBalance = double.tryParse(walletRes['balance']?.toString() ?? '0') ?? 0.0;
-      _walletBalance = isMerchantWallet ? rawBalance / 100.0 : rawBalance;
+      _walletBalance = rawBalance;
     }
     // Load wishlist count
     final wishRes = await ApiService.getUserWishlist(perPage: 1);
     if (!mounted) return;
     if (wishRes['success'] == true) {
       _wishlistCount = (wishRes['meta']?['total'] ?? (wishRes['data'] as List?)?.length ?? 0) as int;
+    }
+    // For merchant users, also load /merchants/me to get business details
+    if (SessionManager.isMerchant) {
+      final merchantRes = await ApiService.getMerchantMe();
+      if (!mounted) return;
+      if (merchantRes['success'] == true && merchantRes['data'] != null) {
+        final mData = Map<String, dynamic>.from(merchantRes['data'] as Map);
+        setState(() {
+          // Merge merchant fields — phone_number from merchants/me takes priority
+          _profileData = {..._profileData, ...mData};
+        });
+      }
     }
     // Load sales count
     final isMerchant = SessionManager.isMerchant;
@@ -252,6 +271,16 @@ class _HomeScreenState extends State<HomeScreen> {
     if (ordersRes['success'] == true) {
       _ordersCount = (ordersRes['meta']?['total'] ?? (ordersRes['data'] as List?)?.length ?? 0) as int;
     }
+
+    // Load listed packages count
+    final pkgsRes = isMerchant
+        ? await ApiService.getMerchantPackages(perPage: 1)
+        : await ApiService.getUserPackages(perPage: 1);
+    if (!mounted) return;
+    if (pkgsRes['success'] == true) {
+      _packagesCount = (pkgsRes['meta']?['total'] ?? (pkgsRes['data'] as List?)?.length ?? 0) as int;
+    }
+
     if (mounted) setState(() => _isLoadingProfile = false);
   }
 
@@ -265,6 +294,7 @@ class _HomeScreenState extends State<HomeScreen> {
       );
       if (res['success'] == true && res['data'] != null) {
         final List<dynamic> pkgs = res['data'];
+        await ApiService.prefetchOwners(pkgs);
         if (mounted) {
           setState(() {
             _apiPackages = pkgs
@@ -429,23 +459,12 @@ class _HomeScreenState extends State<HomeScreen> {
     final secondarySlug = apiPkg['secondary_category']?.toString() ?? '';
     final subcatLabel = _subcatLabels[secondarySlug] ?? '';
 
-    final merchantIdVal = int.tryParse(apiPkg['merchant_id']?.toString() ?? '');
-    String merchantName = 'Twicely';
-    String merchantLogo = '';
-    if (merchantIdVal != null && ApiService.merchantsCache.containsKey(merchantIdVal)) {
-      final m = ApiService.merchantsCache[merchantIdVal]!;
-      merchantName = m['business_name']?.toString() ?? 'Twicely';
-      merchantLogo = ApiService.getMerchantLogo(merchantIdVal, m['logo_url']?.toString());
-    } else if (apiPkg['merchant'] is Map && apiPkg['merchant']['name'] != null) {
-      merchantName = apiPkg['merchant']['name'].toString();
-      merchantLogo = ApiService.getMerchantLogo(merchantIdVal, apiPkg['merchant']['logo']?.toString());
-    } else if (apiPkg['merchant'] is Map && apiPkg['merchant']['display_name'] != null) {
-      merchantName = apiPkg['merchant']['display_name'].toString();
-      merchantLogo = ApiService.getMerchantLogo(merchantIdVal, '');
-    } else if (apiPkg['merchant_name'] != null) {
-      merchantName = apiPkg['merchant_name'].toString();
-      merchantLogo = ApiService.getMerchantLogo(merchantIdVal, '');
-    }
+    final ownerInfo = ApiService.resolveOwnerInfo(apiPkg);
+    final String merchantName = ownerInfo['name'] ?? 'Twicely';
+    final String merchantLogo = ownerInfo['avatar'] ?? '';
+    final bool isMerchantOwner = ownerInfo['is_merchant'] == true;
+    final int? activeMerchantId = ownerInfo['merchant_id'] as int?;
+    final int? activeOwnerId = ownerInfo['owner_id'] as int?;
 
     int likesCount = int.tryParse(apiPkg['likes_count']?.toString() ?? '') ??
                      (apiPkg['likes'] != null ? int.tryParse(apiPkg['likes'].toString()) : null) ??
@@ -476,7 +495,9 @@ class _HomeScreenState extends State<HomeScreen> {
       },
       'merchantName': merchantName,
       'merchantLogo': merchantLogo,
-      'merchant_id': merchantIdVal,
+      'merchant_id': activeMerchantId,
+      'owner_id': activeOwnerId,
+      'isMerchantOwner': isMerchantOwner,
       'secondaryCategory': secondarySlug,
       'secondaryCategoryLabel': subcatLabel,
       'likesCount': likesCount,
@@ -2296,6 +2317,17 @@ class _HomeScreenState extends State<HomeScreen> {
               onTap: () async {
                 await Navigator.of(context).push(MaterialPageRoute(
                   builder: (_) => WalletScreen(isMerchant: isMerchant),
+                ));
+                _loadProfile();
+              },
+            ),
+            _buildProfileOption(
+              title: 'My Listings',
+              subtitle: _isLoadingProfile ? 'Loading...' : '$_packagesCount listed package${_packagesCount != 1 ? 's' : ''}',
+              icon: Icons.inventory_2_outlined,
+              onTap: () async {
+                await Navigator.of(context).push(MaterialPageRoute(
+                  builder: (_) => MyListingsScreen(isMerchant: isMerchant),
                 ));
                 _loadProfile();
               },
