@@ -598,8 +598,9 @@ class _WishlistScreenState extends State<WishlistScreen> {
   }
 
   Widget _buildMerchantAvatar(String? name, String? logoUrl, {double radius = 12}) {
+    final displayName = (name != null && name.trim().isNotEmpty) ? name.trim() : 'Twicely';
     final hasLogo = logoUrl != null && logoUrl.isNotEmpty;
-    final initial = (name != null && name.isNotEmpty) ? name[0].toUpperCase() : 'T';
+    final initial = displayName[0].toUpperCase();
     const colors = [
       Color(0xFF4A6FA5),
       Color(0xFF3D8B5E),
@@ -610,9 +611,9 @@ class _WishlistScreenState extends State<WishlistScreen> {
     ];
     final Color avatarColor = hasLogo
         ? Colors.grey.shade100
-        : (name?.toLowerCase() == 'twicely'
+        : (displayName.toLowerCase() == 'twicely'
             ? const Color(0xFF273DB7)
-            : colors[(name?.hashCode.abs() ?? 0) % colors.length]);
+            : colors[displayName.hashCode.abs() % colors.length]);
     return CircleAvatar(
       radius: radius,
       backgroundColor: avatarColor,

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/services/api_service.dart';
 import '../../../../core/widgets/custom_snackbar.dart';
+import '../../../../core/widgets/shimmer_effect.dart';
 import 'package_detail_screen.dart';
 
 class SellerProfileScreen extends StatefulWidget {
@@ -57,8 +58,29 @@ class _SellerProfileScreenState extends State<SellerProfileScreen> {
 
     if (res['success'] == true && res['data'] != null) {
       final rawList = res['data'] as List<dynamic>;
+      final filteredList = rawList.where((p) {
+        if (p is! Map<String, dynamic>) return false;
+        final ownerInfo = ApiService.resolveOwnerInfo(p);
+
+        if (widget.merchantId != null && widget.merchantId! > 0) {
+          final pMerchantId = int.tryParse(ownerInfo['merchant_id']?.toString() ?? '') ??
+                              int.tryParse(p['merchant_id']?.toString() ?? '');
+          return pMerchantId == widget.merchantId;
+        }
+
+        if (widget.ownerId != null && widget.ownerId! > 0) {
+          final pOwnerId = int.tryParse(ownerInfo['owner_id']?.toString() ?? '') ??
+                           int.tryParse(p['owner_id']?.toString() ?? '');
+          return pOwnerId == widget.ownerId;
+        }
+
+        final resName = ownerInfo['name']?.toString().toLowerCase().trim() ?? '';
+        final targetName = widget.merchantName.toLowerCase().trim();
+        return resName.isNotEmpty && targetName.isNotEmpty && resName == targetName;
+      }).toList();
+
       setState(() {
-        _packages = rawList.map((p) => _mapPkg(p as Map<String, dynamic>)).toList();
+        _packages = filteredList.map((p) => _mapPkg(p as Map<String, dynamic>)).toList();
         _isLoading = false;
       });
     } else {
@@ -71,12 +93,96 @@ class _SellerProfileScreenState extends State<SellerProfileScreen> {
     }
   }
 
+  String _buildDynamicTag(Map<String, dynamic> apiPkg) {
+    final List<String> mainCats = [];
+    final int idVal = int.tryParse(apiPkg['id']?.toString() ?? '') ?? 0;
+    if (idVal != 0 && ApiService.packageCategoriesCache.containsKey(idVal)) {
+      final cached = List<String>.from(ApiService.packageCategoriesCache[idVal]!);
+      if (cached.isNotEmpty) {
+        const priority = ['For Her', 'For Him', 'Biz+', 'General'];
+        cached.sort((a, b) {
+          final ia = priority.indexOf(a);
+          final ib = priority.indexOf(b);
+          return (ia == -1 ? 99 : ia).compareTo(ib == -1 ? 99 : ib);
+        });
+        mainCats.add(cached.first);
+      }
+    }
+
+    if (mainCats.isEmpty && apiPkg['categories'] is List) {
+      for (final cat in apiPkg['categories']) {
+        if (cat is Map) {
+          final slug = (cat['slug']?.toString() ?? '').toLowerCase();
+          if (slug.contains('her') || slug.contains('women')) {
+            if (!mainCats.contains('For Her')) mainCats.add('For Her');
+          } else if (slug.contains('him') || slug.contains('men')) {
+            if (!mainCats.contains('For Him')) mainCats.add('For Him');
+          } else if (slug.contains('biz') || slug.contains('corporate')) {
+            if (!mainCats.contains('Biz+')) mainCats.add('Biz+');
+          } else if (slug.contains('general')) {
+            if (!mainCats.contains('General')) mainCats.add('General');
+          }
+        }
+      }
+    }
+
+    if (mainCats.isEmpty) {
+      final secondarySlug = apiPkg['secondary_category']?.toString() ?? '';
+      if (secondarySlug == 'yoga-pilates' || secondarySlug == 'spa-massage' || secondarySlug == 'beauty-nails') {
+        mainCats.add('For Her');
+      } else if (secondarySlug == 'gym-fitness') {
+        mainCats.add('For Him');
+      } else {
+        mainCats.add('General');
+      }
+    }
+
+    final secondarySlug = apiPkg['secondary_category']?.toString() ?? '';
+    String subcatLabel = _subcatLabels[secondarySlug] ?? '';
+
+    if (subcatLabel.isEmpty && apiPkg['categories'] is List) {
+      for (final cat in apiPkg['categories']) {
+        if (cat is Map) {
+          final name = (cat['name']?.toString() ?? '').replaceAll('&amp;', '&');
+          final slug = (cat['slug']?.toString() ?? '').toLowerCase();
+          if (!slug.contains('her') && !slug.contains('women') &&
+              !slug.contains('him') && !slug.contains('men') &&
+              !slug.contains('biz') && !slug.contains('corporate') &&
+              !slug.contains('general')) {
+            subcatLabel = name;
+            break;
+          }
+        }
+      }
+    }
+
+    if (subcatLabel.isNotEmpty) {
+      return '${mainCats.join(' > ')} > $subcatLabel';
+    } else {
+      return mainCats.join(' > ');
+    }
+  }
+
   Map<String, dynamic> _mapPkg(Map<String, dynamic> p) {
     String imageUrl = '';
     if (p['cover_url'] != null && p['cover_url'].toString().isNotEmpty) {
       imageUrl = p['cover_url'];
     } else if (p['images'] != null && (p['images'] as List).isNotEmpty) {
       imageUrl = (p['images'] as List)[0]['url']?.toString() ?? '';
+    }
+
+    final List<String> allImages = [];
+    if (p['images'] != null && (p['images'] as List).isNotEmpty) {
+      for (var img in p['images'] as List) {
+        if (img is Map && img['url'] != null && img['url'].toString().isNotEmpty) {
+          allImages.add(img['url'].toString());
+        } else if (img is String && img.isNotEmpty) {
+          allImages.add(img);
+        }
+      }
+    }
+    if (allImages.isEmpty && imageUrl.isNotEmpty) {
+      allImages.add(imageUrl);
     }
 
     final double basePrice = double.tryParse(p['price']?.toString() ?? '') ?? 0.0;
@@ -93,29 +199,31 @@ class _SellerProfileScreenState extends State<SellerProfileScreen> {
     }
 
     final secondarySlug = p['secondary_category']?.toString() ?? '';
-    
-    // Breadcrumb tag
-    String parentCat = 'General';
-    if (secondarySlug == 'yoga-pilates' || secondarySlug == 'spa-massage' || secondarySlug == 'beauty-nails') {
-      parentCat = 'For Her';
-    } else if (secondarySlug == 'gym-fitness') {
-      parentCat = 'For Him';
-    }
-    final tag = '$parentCat > ${_subcatLabels[secondarySlug] ?? secondarySlug.replaceAll('-', ' ')}';
+    final tag = _buildDynamicTag(p);
+
+    final ownerInfo = ApiService.resolveOwnerInfo(p);
+    final String pkgMerchantName = (ownerInfo['name'] != null && ownerInfo['name'].toString().trim().isNotEmpty)
+        ? ownerInfo['name'].toString().trim()
+        : _displayName;
+    final String pkgMerchantLogo = (ownerInfo['avatar'] != null && ownerInfo['avatar'].toString().isNotEmpty)
+        ? ownerInfo['avatar'].toString()
+        : widget.merchantLogo;
 
     return {
       'id': p['id'],
       'title': p['title'] ?? 'Package',
       'imageUrl': imageUrl.isNotEmpty ? imageUrl : 'assets/images/package_spa.jpg',
+      'allImages': allImages,
       'originalPrice': 'S\$${originalPrice.toStringAsFixed(2)}',
       'resalePrice': 'S\$${resalePrice.toStringAsFixed(2)}',
       'originalPriceVal': originalPrice,
       'resalePriceVal': resalePrice,
       'discountBadge': discountBadge,
       'tag': tag,
-      'merchant': _displayName,
-      'merchantLogo': widget.merchantLogo,
-      'merchant_id': widget.merchantId,
+      'merchant': pkgMerchantName,
+      'merchantLogo': pkgMerchantLogo,
+      'merchant_id': ownerInfo['merchant_id'] ?? widget.merchantId,
+      'owner_id': ownerInfo['owner_id'] ?? widget.ownerId,
       'category': secondarySlug,
       'secondary_category': secondarySlug,
     };
@@ -188,10 +296,17 @@ class _SellerProfileScreenState extends State<SellerProfileScreen> {
             // 2. Grid of Listings
             Expanded(
               child: _isLoading
-                  ? const Center(
-                      child: CircularProgressIndicator(
-                        valueColor: AlwaysStoppedAnimation<Color>(AppColors.primary),
+                  ? GridView.builder(
+                      physics: const NeverScrollableScrollPhysics(),
+                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                        crossAxisCount: 2,
+                        childAspectRatio: 0.70,
+                        crossAxisSpacing: 12,
+                        mainAxisSpacing: 12,
                       ),
+                      itemCount: 4,
+                      itemBuilder: (context, index) => const PackageCardSkeleton(),
                     )
                   : _packages.isEmpty
                       ? _buildEmptyState()
@@ -497,7 +612,9 @@ class _SellerProfileScreenState extends State<SellerProfileScreen> {
                         const SizedBox(width: 5),
                         Expanded(
                           child: Text(
-                            item['merchant']?.toString() ?? 'Twicely',
+                            (item['merchant'] != null && item['merchant'].toString().trim().isNotEmpty)
+                                ? item['merchant'].toString().trim()
+                                : 'Twicely',
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: TextStyle(
@@ -548,9 +665,9 @@ class _SellerProfileScreenState extends State<SellerProfileScreen> {
     );
   }
 
-  Color _merchantAvatarColor(String name) {
-    // Fixed brand color for Twicely internal packages
-    if (name.toLowerCase() == 'twicely') return const Color(0xFF273DB7);
+  Color _merchantAvatarColor(String? name) {
+    final displayName = (name != null && name.trim().isNotEmpty) ? name.trim() : 'Twicely';
+    if (displayName.toLowerCase() == 'twicely') return const Color(0xFF273DB7);
     const colors = [
       Color(0xFF4A6FA5),
       Color(0xFF3D8B5E),
@@ -559,13 +676,14 @@ class _SellerProfileScreenState extends State<SellerProfileScreen> {
       Color(0xFF8B6E3C),
       Color(0xFF4A7C59),
     ];
-    return colors[name.hashCode.abs() % colors.length];
+    return colors[displayName.hashCode.abs() % colors.length];
   }
 
   Widget _buildMerchantAvatar(String? name, String? logoUrl, {double radius = 12}) {
+    final displayName = (name != null && name.trim().isNotEmpty) ? name.trim() : 'Twicely';
     final hasLogo = logoUrl != null && logoUrl.isNotEmpty;
-    final initial = (name != null && name.isNotEmpty) ? name[0].toUpperCase() : 'T';
-    final avatarColor = hasLogo ? Colors.grey.shade100 : _merchantAvatarColor(name ?? '');
+    final initial = displayName[0].toUpperCase();
+    final avatarColor = hasLogo ? Colors.grey.shade100 : _merchantAvatarColor(displayName);
     return CircleAvatar(
       radius: radius,
       backgroundColor: avatarColor,

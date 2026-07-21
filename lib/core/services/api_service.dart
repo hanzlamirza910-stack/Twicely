@@ -13,12 +13,11 @@ class ApiService {
   static Map<int, Map<String, dynamic>> merchantsCache = {};
 
   static String getMerchantLogo(int? id, String? logoUrl) {
-    if (logoUrl != null && logoUrl.isNotEmpty) return logoUrl;
-    // Staging merchants with known logo overrides (API returns empty logo_url)
+    // Staging merchants with official brand logo overrides
     if (id == 3) return 'https://staging.twicely.sg/wp-content/uploads/2025/11/sysnvolv-1-150x150.png'; // Synvolv
     if (id == 13) return 'https://staging.twicely.sg/wp-content/uploads/2026/03/cropped-favicon-removebg-preview-150x150.webp'; // Tagpools
     if (id == 14) return 'https://staging.twicely.sg/wp-content/uploads/2026/03/images-150x150.jpeg'; // test test dfrnt
-    // id=12 (Rolys) and id=21/23 (Test Business Ltd) have no known logo — return empty to use initial avatar
+    if (logoUrl != null && logoUrl.isNotEmpty) return logoUrl;
     return '';
   }
 
@@ -885,6 +884,9 @@ class ApiService {
     bool? featured,
     int? merchantId,
     int? ownerId,
+    String? ownerType,
+    String? vendorMode,
+    String? sort,
   }) async {
     try {
       final queryParams = <String, String>{
@@ -897,6 +899,9 @@ class ApiService {
       if (featured == true) queryParams['featured'] = 'true';
       if (merchantId != null) queryParams['merchant_id'] = merchantId.toString();
       if (ownerId != null) queryParams['owner_id'] = ownerId.toString();
+      if (ownerType != null && ownerType.isNotEmpty) queryParams['owner_type'] = ownerType;
+      if (vendorMode != null && vendorMode.isNotEmpty) queryParams['vendor_mode'] = vendorMode;
+      if (sort != null && sort.isNotEmpty) queryParams['sort'] = sort;
 
       final queryString = Uri(queryParameters: queryParams).query;
       final path = '/packages${queryString.isNotEmpty ? '?$queryString' : ''}';
@@ -1589,6 +1594,8 @@ class ApiService {
 
   static Future<void> prefetchOwners(List<dynamic> packages) async {
     final Set<int> missingUserIds = {};
+    final Set<int> missingMerchantIds = {};
+
     for (final pkg in packages) {
       if (pkg is! Map) continue;
       final ownerId = int.tryParse(pkg['owner_id']?.toString() ?? '') ?? 0;
@@ -1596,12 +1603,12 @@ class ApiService {
       final ownerType = pkg['owner_type']?.toString() ?? '';
 
       if (merchantId > 0 && !merchantsCache.containsKey(merchantId)) {
-        getPublicMerchantProfile(merchantId);
+        missingMerchantIds.add(merchantId);
       }
       if (ownerId > 0) {
-        if (ownerType == 'merchant' || merchantsCache.containsKey(ownerId)) {
+        if (ownerType == 'merchant') {
           if (!merchantsCache.containsKey(ownerId)) {
-            getPublicMerchantProfile(ownerId);
+            missingMerchantIds.add(ownerId);
           }
         } else if (!usersCache.containsKey(ownerId)) {
           missingUserIds.add(ownerId);
@@ -1609,8 +1616,15 @@ class ApiService {
       }
     }
 
-    if (missingUserIds.isNotEmpty) {
-      await Future.wait(missingUserIds.map((id) => getPublicUserProfile(id)));
+    final futures = <Future>[];
+    for (final mId in missingMerchantIds) {
+      futures.add(getPublicMerchantProfile(mId));
+    }
+    for (final uId in missingUserIds) {
+      futures.add(getPublicUserProfile(uId));
+    }
+    if (futures.isNotEmpty) {
+      await Future.wait(futures);
     }
   }
 
@@ -1622,7 +1636,10 @@ class ApiService {
     int? ownerId;
 
     final ownerIdVal = int.tryParse(pkg['owner_id']?.toString() ?? '');
-    final merchantIdVal = int.tryParse(pkg['merchant_id']?.toString() ?? '');
+    int? merchantIdVal = int.tryParse(pkg['merchant_id']?.toString() ?? '');
+    if (merchantIdVal == null && pkg['presented_by'] is Map) {
+      merchantIdVal = int.tryParse((pkg['presented_by'] as Map)['merchant_id']?.toString() ?? '');
+    }
     final ownerTypeVal = pkg['owner_type']?.toString() ?? '';
 
     if (ownerIdVal != null && ownerIdVal > 0) {
@@ -1632,13 +1649,18 @@ class ApiService {
       merchantId = merchantIdVal;
     }
 
+    Map<String, dynamic> buildResult(String resName, String resAvatar, bool resIsMerchant) {
+      final sanitizedName = resName.trim().isNotEmpty ? resName.trim() : (resIsMerchant ? 'Twicely Merchant' : 'Twicely');
+      return {'name': sanitizedName, 'avatar': resAvatar, 'is_merchant': resIsMerchant, 'merchant_id': merchantId, 'owner_id': ownerId};
+    }
+
     // 1. Explicit owner object in payload
     if (pkg['owner'] is Map) {
       final o = pkg['owner'] as Map;
       name = o['name']?.toString() ?? o['business_name']?.toString() ?? o['display_name']?.toString() ?? name;
       avatar = o['avatar']?.toString() ?? o['avatar_url']?.toString() ?? o['logo_url']?.toString() ?? o['photo']?.toString() ?? avatar;
       if (o['is_merchant'] == true || ownerTypeVal == 'merchant') isMerchant = true;
-      return {'name': name, 'avatar': avatar, 'is_merchant': isMerchant, 'merchant_id': merchantId, 'owner_id': ownerId};
+      return buildResult(name, avatar, isMerchant);
     }
 
     // 2. Explicit owner_name / owner_avatar in payload
@@ -1646,50 +1668,72 @@ class ApiService {
       name = pkg['owner_name'].toString();
       avatar = pkg['owner_avatar']?.toString() ?? pkg['owner_photo']?.toString() ?? '';
       isMerchant = ownerTypeVal == 'merchant';
-      return {'name': name, 'avatar': avatar, 'is_merchant': isMerchant, 'merchant_id': merchantId, 'owner_id': ownerId};
+      return buildResult(name, avatar, isMerchant);
     }
 
-    // 3. Check User Cache via ownerIdVal
-    if (ownerIdVal != null && ownerIdVal > 0 && ownerTypeVal != 'merchant' && usersCache.containsKey(ownerIdVal)) {
-      final u = usersCache[ownerIdVal]!;
-      name = u['name']?.toString() ?? u['display_name']?.toString() ?? name;
-      final avatarUrls = u['avatar_urls'];
-      if (avatarUrls is Map) {
-        avatar = avatarUrls['96']?.toString() ?? avatarUrls['48']?.toString() ?? avatarUrls['24']?.toString() ?? '';
-      } else if (u['avatar'] != null) {
-        avatar = u['avatar'].toString();
+    // 3. User Owner Case (owner_type == 'user' or owner_id > 0 with non-merchant owner_type)
+    if (ownerIdVal != null && ownerIdVal > 0 && ownerTypeVal != 'merchant') {
+      if (usersCache.containsKey(ownerIdVal)) {
+        final u = usersCache[ownerIdVal]!;
+        name = u['name']?.toString() ?? u['display_name']?.toString() ?? 'Twicely Member';
+        final avatarUrls = u['avatar_urls'];
+        if (avatarUrls is Map) {
+          avatar = avatarUrls['96']?.toString() ?? avatarUrls['48']?.toString() ?? avatarUrls['24']?.toString() ?? '';
+        } else if (u['avatar'] != null) {
+          avatar = u['avatar'].toString();
+        }
+        isMerchant = false;
+        return buildResult(name, avatar, isMerchant);
       }
-      isMerchant = false;
-      return {'name': name, 'avatar': avatar, 'is_merchant': isMerchant, 'merchant_id': merchantId, 'owner_id': ownerId};
     }
 
-    // 4. Merchant object or merchant_id
-    final targetMerchantId = (ownerTypeVal == 'merchant' ? ownerIdVal : null) ?? merchantIdVal;
-    if (targetMerchantId != null && merchantsCache.containsKey(targetMerchantId)) {
-      final m = merchantsCache[targetMerchantId]!;
-      name = m['business_name']?.toString() ?? 'Twicely';
-      avatar = getMerchantLogo(targetMerchantId, m['logo_url']?.toString());
-      isMerchant = true;
+    // 4. Merchant Owner Case (owner_type == 'merchant' OR merchant_id > 0)
+    final targetMerchantId = (ownerTypeVal == 'merchant' && ownerIdVal != null && ownerIdVal > 0 ? ownerIdVal : null) ?? merchantIdVal;
+    if (targetMerchantId != null && targetMerchantId > 0) {
       merchantId = targetMerchantId;
-      return {'name': name, 'avatar': avatar, 'is_merchant': isMerchant, 'merchant_id': merchantId, 'owner_id': ownerId};
+      isMerchant = true;
+      if (merchantsCache.containsKey(targetMerchantId)) {
+        final m = merchantsCache[targetMerchantId]!;
+        name = m['business_name']?.toString() ?? m['name']?.toString() ?? 'Twicely Merchant';
+        avatar = getMerchantLogo(targetMerchantId, m['logo_url']?.toString());
+        return buildResult(name, avatar, isMerchant);
+      }
+
+      // Explicit merchant object or merchantName field in pkg payload
+      if (pkg['merchant'] is Map) {
+        final m = pkg['merchant'] as Map;
+        name = m['name']?.toString() ?? m['business_name']?.toString() ?? m['display_name']?.toString() ?? name;
+        avatar = getMerchantLogo(targetMerchantId, m['logo']?.toString() ?? m['logo_url']?.toString());
+        return buildResult(name, avatar, isMerchant);
+      }
+      if (pkg['merchantName'] != null && pkg['merchantName'].toString().isNotEmpty) {
+        name = pkg['merchantName'].toString();
+        avatar = getMerchantLogo(targetMerchantId, pkg['merchantLogo']?.toString());
+        return buildResult(name, avatar, isMerchant);
+      }
+
+      // Fallback logo override check for known merchant IDs
+      final knownLogo = getMerchantLogo(targetMerchantId, null);
+      if (knownLogo.isNotEmpty) {
+        avatar = knownLogo;
+      }
+      // Known merchant fallback names
+      if (targetMerchantId == 3) {
+        name = 'Synvolv';
+      } else if (targetMerchantId == 12) {
+        name = 'Rolys';
+      } else if (targetMerchantId == 13) {
+        name = 'Tagpools';
+      } else if (targetMerchantId == 14) {
+        name = 'test test dfrnt';
+      } else {
+        name = 'Twicely Merchant';
+      }
+
+      return buildResult(name, avatar, isMerchant);
     }
 
-    // 5. Explicit merchant name field
-    if (pkg['merchantName'] != null && pkg['merchantName'].toString().isNotEmpty) {
-      name = pkg['merchantName'].toString();
-      avatar = pkg['merchantLogo']?.toString() ?? '';
-      isMerchant = targetMerchantId != null;
-      return {'name': name, 'avatar': avatar, 'is_merchant': isMerchant, 'merchant_id': merchantId, 'owner_id': ownerId};
-    }
-    if (pkg['merchant'] is Map && (pkg['merchant']['name'] != null || pkg['merchant']['business_name'] != null)) {
-      final m = pkg['merchant'] as Map;
-      name = m['name']?.toString() ?? m['business_name']?.toString() ?? m['display_name']?.toString() ?? name;
-      avatar = getMerchantLogo(targetMerchantId, m['logo']?.toString() ?? m['logo_url']?.toString());
-      isMerchant = targetMerchantId != null;
-      return {'name': name, 'avatar': avatar, 'is_merchant': isMerchant, 'merchant_id': merchantId, 'owner_id': ownerId};
-    }
-
-    // 6. Presented by (fallback for vendor info if owner profile not resolved)
+    // 5. Presented by (fallback for vendor info if owner profile not resolved)
     if (pkg['presented_by'] is Map) {
       final pb = pkg['presented_by'] as Map;
       name = pb['name']?.toString() ?? pb['display_name']?.toString() ?? pb['business_name']?.toString() ?? name;
@@ -1699,18 +1743,19 @@ class ApiService {
         merchantId = pbMerchantId;
         isMerchant = true;
       }
-      return {'name': name, 'avatar': avatar, 'is_merchant': isMerchant, 'merchant_id': merchantId, 'owner_id': ownerId};
+      return buildResult(name, avatar, isMerchant);
     }
 
-    // 7. Manual vendor mode (C2C package with non-listed vendor)
+    // 6. Manual vendor mode (C2C package with non-listed vendor)
     if ((pkg['vendor_mode'] == 'manual' || pkg['manual_vendor_name'] != null) && pkg['manual_vendor_name'].toString().isNotEmpty) {
       name = pkg['manual_vendor_name'].toString();
       avatar = '';
       isMerchant = false;
-      return {'name': name, 'avatar': avatar, 'is_merchant': isMerchant, 'merchant_id': merchantId, 'owner_id': ownerId};
+      return buildResult(name, avatar, isMerchant);
     }
 
-    return {'name': name, 'avatar': avatar, 'is_merchant': isMerchant, 'merchant_id': merchantId, 'owner_id': ownerId};
+    // 7. Default fallback for unassigned / missing owner packages
+    return buildResult(name, avatar, isMerchant);
   }
 }
 

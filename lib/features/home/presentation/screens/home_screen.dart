@@ -21,6 +21,7 @@ import '../../../../core/services/api_service.dart';
 import 'merchant_dashboard.dart';
 import '../../../../core/widgets/custom_snackbar.dart';
 import '../../../../core/widgets/package_image_carousel.dart';
+import '../../../../core/widgets/shimmer_effect.dart';
 import 'package:image_picker/image_picker.dart';
 
 
@@ -1305,9 +1306,14 @@ class _HomeScreenState extends State<HomeScreen> {
           SizedBox(
             height: 220,
             child: _isLoadingPackages
-                ? const Center(
-                    child: CircularProgressIndicator(
-                      valueColor: AlwaysStoppedAnimation<Color>(AppColors.primary),
+                ? ListView.builder(
+                    scrollDirection: Axis.horizontal,
+                    physics: const BouncingScrollPhysics(),
+                    padding: const EdgeInsets.symmetric(horizontal: 20.0),
+                    itemCount: 4,
+                    itemBuilder: (context, index) => const Padding(
+                      padding: EdgeInsets.only(right: 14.0),
+                      child: PackageCardSkeleton(),
                     ),
                   )
                 : _filteredPackages.isEmpty
@@ -1643,7 +1649,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         const SizedBox(width: 5),
                         Expanded(
                           child: Text(
-                            merchantName ?? 'Twicely',
+                            (merchantName != null && merchantName.trim().isNotEmpty) ? merchantName.trim() : 'Twicely',
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: TextStyle(
@@ -1683,36 +1689,66 @@ class _HomeScreenState extends State<HomeScreen> {
   // Builds a merchant avatar: logo image if available, otherwise initials
   // with a consistent color derived from the merchant name hash.
   Widget _buildMerchantAvatar(String? name, String? logoUrl, {double radius = 12}) {
+    final displayName = (name != null && name.trim().isNotEmpty) ? name.trim() : 'Twicely';
     final hasLogo = logoUrl != null && logoUrl.isNotEmpty;
-    final initial = (name != null && name.isNotEmpty) ? name[0].toUpperCase() : 'T';
-    // Fixed brand color for Twicely, deterministic neutral palette for real merchants
+    final initial = displayName[0].toUpperCase();
     const colors = [
-      Color(0xFF4A6FA5), // Navy blue
-      Color(0xFF3D8B5E), // Forest green
-      Color(0xFF7B5EA7), // Soft purple
-      Color(0xFF5B8DB8), // Sky blue
-      Color(0xFF8B6E3C), // Warm brown
-      Color(0xFF4A7C59), // Sage green
+      Color(0xFF4A6FA5),
+      Color(0xFF3D8B5E),
+      Color(0xFF7B5EA7),
+      Color(0xFF5B8DB8),
+      Color(0xFF8B6E3C),
+      Color(0xFF4A7C59),
     ];
-    final Color avatarColor = hasLogo
-        ? Colors.grey.shade100
-        : (name?.toLowerCase() == 'twicely'
-            ? const Color(0xFF273DB7)
-            : colors[(name?.hashCode.abs() ?? 0) % colors.length]);
-    return CircleAvatar(
-      radius: radius,
-      backgroundColor: avatarColor,
-      backgroundImage: hasLogo ? NetworkImage(logoUrl) : null,
-      child: hasLogo
-          ? null
-          : Text(
-              initial,
-              style: TextStyle(
-                fontSize: radius * 0.85,
-                color: Colors.white,
-                fontWeight: FontWeight.bold,
+    final Color avatarColor = displayName.toLowerCase() == 'twicely'
+        ? const Color(0xFF273DB7)
+        : colors[displayName.hashCode.abs() % colors.length];
+
+    if (hasLogo) {
+      return ClipOval(
+        child: SizedBox(
+          width: radius * 2,
+          height: radius * 2,
+          child: Image.network(
+            logoUrl,
+            fit: BoxFit.cover,
+            loadingBuilder: (context, child, loadingProgress) {
+              if (loadingProgress == null) return child;
+              return ShimmerEffect.circular(size: radius * 2);
+            },
+            errorBuilder: (context, error, stackTrace) => Container(
+              color: avatarColor,
+              alignment: Alignment.center,
+              child: Text(
+                initial,
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: radius * 0.85,
+                  fontWeight: FontWeight.bold,
+                ),
               ),
             ),
+          ),
+        ),
+      );
+    }
+
+    return Container(
+      width: radius * 2,
+      height: radius * 2,
+      decoration: BoxDecoration(
+        color: avatarColor,
+        shape: BoxShape.circle,
+      ),
+      alignment: Alignment.center,
+      child: Text(
+        initial,
+        style: TextStyle(
+          color: Colors.white,
+          fontSize: radius * 0.85,
+          fontWeight: FontWeight.bold,
+        ),
+      ),
     );
   }
 

@@ -9,6 +9,7 @@ import 'seller_profile_screen.dart';
 import '../../../../core/services/api_service.dart';
 import '../../../../core/widgets/custom_snackbar.dart';
 import '../../../../core/widgets/package_image_carousel.dart';
+import '../../../../core/widgets/shimmer_effect.dart';
 
 class PackageDetailScreen extends StatefulWidget {
   final Map<String, dynamic> package;
@@ -397,20 +398,13 @@ class _PackageDetailScreenState extends State<PackageDetailScreen> {
       final pct = ((original - resale) / original * 100).round();
       if (pct > 0) { badge = '$pct% OFF'; }
     }
-    final merchantIdVal = int.tryParse(p['merchant_id']?.toString() ?? '');
-    String merchantName = 'Twicely Merchant';
-    String merchantLogo = '';
-    if (merchantIdVal != null && ApiService.merchantsCache.containsKey(merchantIdVal)) {
-      final m = ApiService.merchantsCache[merchantIdVal]!;
-      merchantName = m['business_name']?.toString() ?? 'Twicely Merchant';
-      merchantLogo = ApiService.getMerchantLogo(merchantIdVal, m['logo_url']?.toString());
-    } else if (p['merchant'] is Map && p['merchant']['name'] != null) {
-      merchantName = p['merchant']['name'].toString();
-      merchantLogo = ApiService.getMerchantLogo(merchantIdVal, p['merchant']['logo']?.toString());
-    } else if (p['merchant_name'] != null) {
-      merchantName = p['merchant_name'].toString();
-      merchantLogo = ApiService.getMerchantLogo(merchantIdVal, '');
-    }
+
+    final ownerInfo = ApiService.resolveOwnerInfo(p);
+    final String merchantName = ownerInfo['name'] ?? 'Twicely';
+    final String merchantLogo = ownerInfo['avatar'] ?? '';
+    final int? activeMerchantId = ownerInfo['merchant_id'] as int?;
+    final int? activeOwnerId = ownerInfo['owner_id'] as int?;
+
     return {
       'id': p['id'],
       'title': p['title'] ?? 'Package',
@@ -425,7 +419,8 @@ class _PackageDetailScreenState extends State<PackageDetailScreen> {
       'tag': _buildDynamicTag(p),
       'merchant': merchantName,
       'merchantLogo': merchantLogo,
-      'merchant_id': merchantIdVal,
+      'merchant_id': activeMerchantId,
+      'owner_id': activeOwnerId,
       'category': p['secondary_category'] ?? '',
       'secondary_category': p['secondary_category'] ?? '',
     };
@@ -847,13 +842,19 @@ class _PackageDetailScreenState extends State<PackageDetailScreen> {
                   } else if (pkg['merchant'] is Map) {
                     presentedByMap = Map<String, dynamic>.from(pkg['merchant'] as Map);
                   }
-                  final String presentedName = presentedByMap?['name']?.toString() ??
+                  String presentedName = presentedByMap?['name']?.toString() ??
                       presentedByMap?['business_name']?.toString() ??
                       presentedByMap?['display_name']?.toString() ??
                       pkg['manual_vendor_name']?.toString() ?? '';
-                  final String presentedLogo = presentedByMap?['logo']?.toString() ??
+                  String presentedLogo = presentedByMap?['logo']?.toString() ??
                       presentedByMap?['logo_url']?.toString() ??
                       presentedByMap?['avatar']?.toString() ?? '';
+
+                  if (presentedName.isEmpty) {
+                    final ownerInfo = ApiService.resolveOwnerInfo(pkg);
+                    presentedName = ownerInfo['name']?.toString() ?? 'Twicely';
+                    presentedLogo = ownerInfo['avatar']?.toString() ?? '';
+                  }
                   if (presentedName.isEmpty) return const SizedBox.shrink();
                   return Column(
                     crossAxisAlignment: CrossAxisAlignment.end,
@@ -1060,15 +1061,15 @@ class _PackageDetailScreenState extends State<PackageDetailScreen> {
       merchantName = _fetchedOwner!['name']?.toString() ?? 'Twicely';
       merchantLogo = _fetchedOwner!['avatar']?.toString() ?? '';
       isRealMerchant = _fetchedOwner!['is_merchant'] == true;
-      activeMerchantId = _fetchedOwner!['merchant_id'] as int?;
-      activeOwnerId = _fetchedOwner!['owner_id'] as int?;
+      activeMerchantId = int.tryParse(_fetchedOwner!['merchant_id']?.toString() ?? '');
+      activeOwnerId = int.tryParse(_fetchedOwner!['owner_id']?.toString() ?? '');
     } else {
       final ownerInfo = ApiService.resolveOwnerInfo(pkg);
       merchantName = ownerInfo['name']?.toString() ?? 'Twicely';
       merchantLogo = ownerInfo['avatar']?.toString() ?? '';
       isRealMerchant = ownerInfo['is_merchant'] == true;
-      activeMerchantId = ownerInfo['merchant_id'] as int?;
-      activeOwnerId = ownerInfo['owner_id'] as int?;
+      activeMerchantId = int.tryParse(ownerInfo['merchant_id']?.toString() ?? '');
+      activeOwnerId = int.tryParse(ownerInfo['owner_id']?.toString() ?? '');
     }
 
     final Widget cardContent = Container(
@@ -1191,10 +1192,16 @@ class _PackageDetailScreenState extends State<PackageDetailScreen> {
         ),
         const SizedBox(height: 14),
         if (_loadingSimilar)
-          const Center(
-            child: Padding(
-              padding: EdgeInsets.symmetric(vertical: 20),
-              child: CircularProgressIndicator(valueColor: AlwaysStoppedAnimation<Color>(AppColors.primary)),
+          SizedBox(
+            height: 220,
+            child: ListView.builder(
+              scrollDirection: Axis.horizontal,
+              physics: const BouncingScrollPhysics(),
+              itemCount: 3,
+              itemBuilder: (context, index) => const Padding(
+                padding: EdgeInsets.only(right: 14.0),
+                child: PackageCardSkeleton(),
+              ),
             ),
           )
         else if (_similarPackages.isEmpty)
@@ -1460,9 +1467,9 @@ class _PackageDetailScreenState extends State<PackageDetailScreen> {
     );
   }
 
-  Color _merchantAvatarColor(String name) {
-    // Fixed brand color for Twicely internal packages
-    if (name.toLowerCase() == 'twicely') return const Color(0xFF273DB7);
+  Color _merchantAvatarColor(String? name) {
+    final displayName = (name != null && name.trim().isNotEmpty) ? name.trim() : 'Twicely';
+    if (displayName.toLowerCase() == 'twicely') return const Color(0xFF273DB7);
     const colors = [
       Color(0xFF4A6FA5),
       Color(0xFF3D8B5E),
@@ -1471,13 +1478,14 @@ class _PackageDetailScreenState extends State<PackageDetailScreen> {
       Color(0xFF8B6E3C),
       Color(0xFF4A7C59),
     ];
-    return colors[name.hashCode.abs() % colors.length];
+    return colors[displayName.hashCode.abs() % colors.length];
   }
 
   Widget _buildMerchantAvatar(String? name, String? logoUrl, {double radius = 12}) {
+    final displayName = (name != null && name.trim().isNotEmpty) ? name.trim() : 'Twicely';
     final hasLogo = logoUrl != null && logoUrl.isNotEmpty;
-    final initial = (name != null && name.isNotEmpty) ? name[0].toUpperCase() : 'T';
-    final avatarColor = hasLogo ? Colors.grey.shade100 : _merchantAvatarColor(name ?? '');
+    final initial = displayName[0].toUpperCase();
+    final avatarColor = hasLogo ? Colors.grey.shade100 : _merchantAvatarColor(displayName);
     return CircleAvatar(
       radius: radius,
       backgroundColor: avatarColor,

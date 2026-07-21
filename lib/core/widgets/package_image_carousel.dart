@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'shimmer_effect.dart';
 
 class PackageImageCarousel extends StatefulWidget {
   final List<String> images;
@@ -69,6 +70,12 @@ class _PackageImageCarouselState extends State<PackageImageCarousel> {
         return Image.network(
           imgUrl,
           fit: BoxFit.cover,
+          loadingBuilder: (context, child, loadingProgress) {
+            if (loadingProgress == null) return child;
+            return const ShimmerEffect(
+              borderRadius: BorderRadius.zero,
+            );
+          },
           errorBuilder: (context, error, stackTrace) => Container(
             color: const Color(0xFFE8EFF8),
             child: const Icon(Icons.image_not_supported_rounded, color: Colors.black26, size: 32),

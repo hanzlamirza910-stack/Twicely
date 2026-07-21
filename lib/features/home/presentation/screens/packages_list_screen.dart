@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/services/api_service.dart';
 import '../../../../core/widgets/package_image_carousel.dart';
+import '../../../../core/widgets/shimmer_effect.dart';
 import 'package_detail_screen.dart';
 
 class PackagesListScreen extends StatefulWidget {
@@ -645,8 +646,20 @@ class _PackagesListScreenState extends State<PackagesListScreen> {
 
           // GRID
           if (_isLoading)
-            const SliverFillRemaining(
-              child: Center(child: CircularProgressIndicator(valueColor: AlwaysStoppedAnimation<Color>(AppColors.primary))),
+            SliverPadding(
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+              sliver: SliverGrid(
+                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: 2,
+                  childAspectRatio: 0.70,
+                  crossAxisSpacing: 12,
+                  mainAxisSpacing: 12,
+                ),
+                delegate: SliverChildBuilderDelegate(
+                  (context, index) => const PackageCardSkeleton(),
+                  childCount: 6,
+                ),
+              ),
             )
           else if (displayed.isEmpty)
             SliverFillRemaining(
@@ -880,7 +893,9 @@ class _PackagesListScreenState extends State<PackagesListScreen> {
                         const SizedBox(width: 5),
                         Expanded(
                           child: Text(
-                            pkg['merchant'] ?? 'Twicely',
+                            (pkg['merchant'] != null && pkg['merchant'].toString().trim().isNotEmpty)
+                                ? pkg['merchant'].toString().trim()
+                                : 'Twicely',
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: TextStyle(
@@ -920,8 +935,9 @@ class _PackagesListScreenState extends State<PackagesListScreen> {
   // Builds a merchant avatar: logo image if available, otherwise initials with
   // a consistent color derived from the merchant name hash (no pink/bright colors).
   Widget _buildMerchantAvatar(String? name, String? logoUrl, {double radius = 12}) {
+    final displayName = (name != null && name.trim().isNotEmpty) ? name.trim() : 'Twicely';
     final hasLogo = logoUrl != null && logoUrl.isNotEmpty;
-    final initial = (name != null && name.isNotEmpty) ? name[0].toUpperCase() : 'T';
+    final initial = displayName[0].toUpperCase();
     // Fixed brand color for Twicely, deterministic neutral palette for real merchants
     const colors = [
       Color(0xFF4A6FA5),
@@ -933,9 +949,9 @@ class _PackagesListScreenState extends State<PackagesListScreen> {
     ];
     final Color avatarColor = hasLogo
         ? Colors.grey.shade100
-        : (name?.toLowerCase() == 'twicely'
+        : (displayName.toLowerCase() == 'twicely'
             ? const Color(0xFF273DB7)
-            : colors[(name?.hashCode.abs() ?? 0) % colors.length]);
+            : colors[displayName.hashCode.abs() % colors.length]);
     return CircleAvatar(
       radius: radius,
       backgroundColor: avatarColor,
