@@ -370,9 +370,18 @@ class _PackagesListScreenState extends State<PackagesListScreen> {
       likesCount = 1;
     }
 
+    final String cleanTitle = ApiService.unescapeHtml(p['title']?.toString() ?? 'Package');
+    final String cleanDescription = ApiService.unescapeHtml(p['description']?.toString() ?? '');
+    final String cleanMerchantName = ApiService.unescapeHtml(merchantName);
+    final String rawCategory = (selectedFilter != null && selectedFilter != 'All Categories' && selectedFilter != 'All')
+        ? selectedFilter
+        : _getPkgTrueCategory(p);
+    final String cleanCategory = ApiService.unescapeHtml(rawCategory);
+    final String cleanTag = ApiService.unescapeHtml(_buildDynamicTag(p, selectedFilter: selectedFilter));
+
     return {
       'id': p['id'],
-      'title': p['title'] ?? 'Package',
+      'title': cleanTitle,
       'imageUrl': imageUrl,
       'allImages': allImages,
       'originalPrice': originalPrice,
@@ -380,20 +389,18 @@ class _PackagesListScreenState extends State<PackagesListScreen> {
       'discountBadge': discountBadge,
       'subcategorySlug': secondarySlug,
       'subcategoryLabel': subcatLabel,
-      'merchant': merchantName,
+      'merchant': cleanMerchantName,
       'merchantLogo': merchantLogo,
       'currency': p['currency'] ?? 'SGD',
-      'description': p['description'] ?? '',
+      'description': cleanDescription,
       'validity': p['validity_date'] ?? p['valid_until'] ?? '',
       'hasHeart': p['liked'] == true,
       'likesCount': likesCount,
       'merchant_id': ownerInfo['merchant_id'],
       'owner_id': p['owner_id'],
       'owner_type': p['owner_type'],
-      'category': (selectedFilter != null && selectedFilter != 'All Categories' && selectedFilter != 'All')
-          ? selectedFilter
-          : _getPkgTrueCategory(p),
-      'tag': _buildDynamicTag(p, selectedFilter: selectedFilter),
+      'category': cleanCategory,
+      'tag': cleanTag,
     };
   }
 

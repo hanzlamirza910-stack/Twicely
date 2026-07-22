@@ -3,8 +3,10 @@ import '../../../../core/constants/app_colors.dart';
 import '../../../../core/services/api_service.dart';
 import '../../../../core/utils/cart_manager.dart';
 import '../../../../core/widgets/package_image_carousel.dart';
+import '../../../../core/widgets/shimmer_effect.dart';
 import 'shopping_cart_screen.dart';
 import 'package_detail_screen.dart';
+import 'seller_profile_screen.dart';
 import '../../../../core/widgets/custom_snackbar.dart';
 
 class WishlistScreen extends StatefulWidget {
@@ -31,12 +33,18 @@ class _WishlistScreenState extends State<WishlistScreen> {
     });
     try {
       final res = await ApiService.getUserWishlist();
-      if (mounted) {
+      if (!mounted) return;
+      if (res['success'] == true && res['data'] != null) {
+        final List<dynamic> rawItems = res['data'];
+        await ApiService.prefetchOwners(rawItems);
+        if (!mounted) return;
+        final mapped = rawItems.map((p) => _mapApiPackage(p as Map<String, dynamic>)).toList();
         setState(() {
-          if (res['success'] == true && res['data'] != null) {
-            final List<dynamic> rawItems = res['data'];
-            _wishlistItems = rawItems.map((p) => _mapApiPackage(p as Map<String, dynamic>)).toList();
-          }
+          _wishlistItems = mapped;
+          _isLoading = false;
+        });
+      } else {
+        setState(() {
           _isLoading = false;
         });
       }
@@ -131,30 +139,26 @@ class _WishlistScreenState extends State<WishlistScreen> {
 
     final colors = _getCategoryColors(category);
 
-    final merchantIdVal = int.tryParse(apiPkg['merchant_id']?.toString() ?? '');
-    String merchantName = 'Twicely Merchant';
-    String merchantLogo = '';
-    if (merchantIdVal != null && ApiService.merchantsCache.containsKey(merchantIdVal)) {
-      final m = ApiService.merchantsCache[merchantIdVal]!;
-      merchantName = m['business_name']?.toString() ?? 'Twicely Merchant';
-      merchantLogo = ApiService.getMerchantLogo(merchantIdVal, m['logo_url']?.toString());
-    } else if (apiPkg['merchant'] is Map && apiPkg['merchant']['name'] != null) {
-      merchantName = apiPkg['merchant']['name'].toString();
-      merchantLogo = ApiService.getMerchantLogo(merchantIdVal, apiPkg['merchant']['logo']?.toString());
-    } else if (apiPkg['merchant_name'] != null) {
-      merchantName = apiPkg['merchant_name'].toString();
-      merchantLogo = ApiService.getMerchantLogo(merchantIdVal, '');
-    }
+    final ownerInfo = ApiService.resolveOwnerInfo(apiPkg);
+    final String merchantName = ownerInfo['name'] ?? 'Twicely';
+    final String merchantLogo = ownerInfo['avatar'] ?? '';
+    final bool isMerchantOwner = ownerInfo['is_merchant'] == true;
+    final int? activeMerchantId = ownerInfo['merchant_id'] as int?;
+    final int? activeOwnerId = ownerInfo['owner_id'] as int?;
 
     // Build the dynamic tag path (e.g. category > subcategory)
     final secondarySlug = apiPkg['secondary_category']?.toString() ?? '';
     final subcatLabel = secondarySlug.isNotEmpty ? secondarySlug.replaceAll('-', ' ') : '';
     final tag = subcatLabel.isNotEmpty ? '$category > $subcatLabel' : category;
 
+    final String cleanTitle = ApiService.unescapeHtml(apiPkg['title']?.toString() ?? 'Package Listing');
+    final String cleanCategory = ApiService.unescapeHtml(category);
+    final String cleanMerchantName = ApiService.unescapeHtml(merchantName);
+
     return {
       'id': apiPkg['id']?.toString() ?? '',
-      'title': apiPkg['title'] ?? 'Package Listing',
-      'category': category,
+      'title': cleanTitle,
+      'category': cleanCategory,
       'price': priceVal,
       'imageUrl': imageUrl,
       'allImages': allImages,
@@ -166,11 +170,19 @@ class _WishlistScreenState extends State<WishlistScreen> {
       'resalePriceVal': resale,
       'discountBadge': discountBadge,
       'hasHeart': true,
-      'merchant_id': merchantIdVal,
-      'merchantName': merchantName,
+      'merchant_id': activeMerchantId,
+      'owner_id': activeOwnerId,
+      'isMerchantOwner': isMerchantOwner,
+      'merchantName': cleanMerchantName,
       'merchantLogo': merchantLogo,
-      'merchant': merchantName,
+      'merchant': {
+        'name': cleanMerchantName,
+        'logo': merchantLogo,
+        'logo_url': merchantLogo,
+      },
       'tag': tag,
+      'description': apiPkg['description'] ?? '',
+      'validity': apiPkg['validity_date'] ?? apiPkg['valid_until'] ?? '',
     };
   }
 
@@ -471,21 +483,48 @@ class _WishlistScreenState extends State<WishlistScreen> {
                     const Spacer(),
                     Row(
                       children: [
-                        _buildMerchantAvatar(
-                          item['merchantName'] as String? ?? item['merchant'] as String? ?? 'Twicely',
-                          item['merchantLogo'] as String? ?? '',
-                          radius: 7,
-                        ),
-                        const SizedBox(width: 5),
                         Expanded(
-                          child: Text(
-                            item['merchantName'] as String? ?? item['merchant'] as String? ?? 'Twicely',
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              fontSize: 9,
-                              color: Colors.black.withValues(alpha: 0.6),
-                              fontWeight: FontWeight.w400,
+                          child: GestureDetector(
+                            onTap: () {
+                              final merchantId = item['merchant_id'] as int?;
+                              final ownerId = item['owner_id'] as int?;
+                              final mName = item['merchantName'] as String? ?? 'Twicely';
+                              final mLogo = item['merchantLogo'] as String? ?? '';
+                              if (merchantId != null || ownerId != null) {
+                                Navigator.of(context).push(
+                                  MaterialPageRoute(
+                                    builder: (context) => SellerProfileScreen(
+                                      merchantId: merchantId,
+                                      ownerId: ownerId,
+                                      merchantName: mName,
+                                      merchantLogo: mLogo,
+                                    ),
+                                  ),
+                                );
+                              }
+                            },
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                _buildMerchantAvatar(
+                                  item['merchantName'] as String?,
+                                  item['merchantLogo'] as String?,
+                                  radius: 7,
+                                ),
+                                const SizedBox(width: 5),
+                                Expanded(
+                                  child: Text(
+                                    item['merchantName'] as String? ?? 'Twicely',
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(
+                                      fontSize: 9,
+                                      color: Colors.black.withValues(alpha: 0.6),
+                                      fontWeight: FontWeight.w400,
+                                    ),
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
                         ),
@@ -609,25 +648,55 @@ class _WishlistScreenState extends State<WishlistScreen> {
       Color(0xFF8B6E3C),
       Color(0xFF4A7C59),
     ];
-    final Color avatarColor = hasLogo
-        ? Colors.grey.shade100
-        : (displayName.toLowerCase() == 'twicely'
-            ? const Color(0xFF273DB7)
-            : colors[displayName.hashCode.abs() % colors.length]);
-    return CircleAvatar(
-      radius: radius,
-      backgroundColor: avatarColor,
-      backgroundImage: hasLogo ? NetworkImage(logoUrl) : null,
-      child: !hasLogo
-          ? Text(
-              initial,
-              style: TextStyle(
-                fontSize: radius * 0.9,
-                fontWeight: FontWeight.bold,
-                color: Colors.white,
+    final Color avatarColor = displayName.toLowerCase() == 'twicely'
+        ? const Color(0xFF273DB7)
+        : colors[displayName.hashCode.abs() % colors.length];
+
+    if (hasLogo) {
+      return ClipOval(
+        child: SizedBox(
+          width: radius * 2,
+          height: radius * 2,
+          child: Image.network(
+            logoUrl,
+            fit: BoxFit.cover,
+            loadingBuilder: (context, child, loadingProgress) {
+              if (loadingProgress == null) return child;
+              return ShimmerEffect.circular(size: radius * 2);
+            },
+            errorBuilder: (context, error, stackTrace) => Container(
+              color: avatarColor,
+              alignment: Alignment.center,
+              child: Text(
+                initial,
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: radius * 0.85,
+                  fontWeight: FontWeight.bold,
+                ),
               ),
-            )
-          : null,
+            ),
+          ),
+        ),
+      );
+    }
+
+    return Container(
+      width: radius * 2,
+      height: radius * 2,
+      decoration: BoxDecoration(
+        color: avatarColor,
+        shape: BoxShape.circle,
+      ),
+      alignment: Alignment.center,
+      child: Text(
+        initial,
+        style: TextStyle(
+          fontSize: radius * 0.9,
+          fontWeight: FontWeight.bold,
+          color: Colors.white,
+        ),
+      ),
     );
   }
 }

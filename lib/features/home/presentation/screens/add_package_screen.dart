@@ -119,13 +119,13 @@ class _AddPackageScreenState extends State<AddPackageScreen> {
 
   void _populateFormFromPackage(Map<String, dynamic> pkg) {
     if (pkg['title'] != null && pkg['title'].toString().isNotEmpty) {
-      _titleController.text = pkg['title'].toString();
+      _titleController.text = ApiService.unescapeHtml(pkg['title'].toString());
     }
     final shortDesc = pkg['short_description']?.toString() ?? pkg['excerpt']?.toString();
-    if (shortDesc != null && shortDesc.isNotEmpty) _shortDescriptionController.text = shortDesc;
+    if (shortDesc != null && shortDesc.isNotEmpty) _shortDescriptionController.text = ApiService.unescapeHtml(shortDesc);
 
     final desc = pkg['content']?.toString() ?? pkg['description']?.toString() ?? pkg['details']?.toString();
-    if (desc != null && desc.isNotEmpty) _descriptionController.text = desc;
+    if (desc != null && desc.isNotEmpty) _descriptionController.text = ApiService.unescapeHtml(desc);
 
     final st = pkg['status']?.toString().toLowerCase();
     if (st != null && st.isNotEmpty) {
@@ -833,7 +833,7 @@ class _AddPackageScreenState extends State<AddPackageScreen> {
 
     final result = Map<String, dynamic>.from(apiPkg);
     result['id'] = apiPkg['id'] ?? widget.packageToEdit?['id'];
-    result['title'] = apiPkg['title'] ?? _titleController.text;
+    result['title'] = ApiService.unescapeHtml(apiPkg['title']?.toString() ?? _titleController.text);
     result['category'] = category;
     result['price'] = priceVal.toStringAsFixed(2);
     result['status'] = (apiPkg['status']?.toString().toUpperCase() ?? 'PUBLISHED');

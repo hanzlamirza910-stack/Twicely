@@ -14,9 +14,12 @@ class ApiService {
 
   static String getMerchantLogo(int? id, String? logoUrl) {
     // Staging merchants with official brand logo overrides
-    if (id == 3) return 'https://staging.twicely.sg/wp-content/uploads/2025/11/sysnvolv-1-150x150.png'; // Synvolv
-    if (id == 13) return 'https://staging.twicely.sg/wp-content/uploads/2026/03/cropped-favicon-removebg-preview-150x150.webp'; // Tagpools
-    if (id == 14) return 'https://staging.twicely.sg/wp-content/uploads/2026/03/images-150x150.jpeg'; // test test dfrnt
+    if (id == 3)
+      return 'https://staging.twicely.sg/wp-content/uploads/2025/11/sysnvolv-1-150x150.png'; // Synvolv
+    if (id == 13)
+      return 'https://staging.twicely.sg/wp-content/uploads/2026/03/cropped-favicon-removebg-preview-150x150.webp'; // Tagpools
+    if (id == 14)
+      return 'https://staging.twicely.sg/wp-content/uploads/2026/03/images-150x150.jpeg'; // test test dfrnt
     if (logoUrl != null && logoUrl.isNotEmpty) return logoUrl;
     return '';
   }
@@ -56,18 +59,24 @@ class ApiService {
         'biz': 'Biz+',
       };
       final Map<int, List<String>> temp = {};
-      await Future.wait(slugs.entries.map((entry) async {
-        final res = await getPackages(category: entry.key, page: 1, perPage: 100);
-        if (res['success'] == true && res['data'] != null) {
-          final list = res['data'] as List<dynamic>;
-          for (final p in list) {
-            if (p is Map && p['id'] != null) {
-              final id = int.tryParse(p['id'].toString()) ?? 0;
-              temp.putIfAbsent(id, () => []).add(entry.value);
+      await Future.wait(
+        slugs.entries.map((entry) async {
+          final res = await getPackages(
+            category: entry.key,
+            page: 1,
+            perPage: 100,
+          );
+          if (res['success'] == true && res['data'] != null) {
+            final list = res['data'] as List<dynamic>;
+            for (final p in list) {
+              if (p is Map && p['id'] != null) {
+                final id = int.tryParse(p['id'].toString()) ?? 0;
+                temp.putIfAbsent(id, () => []).add(entry.value);
+              }
             }
           }
-        }
-      }));
+        }),
+      );
       if (temp.isNotEmpty) {
         packageCategoriesCache = temp;
       }
@@ -82,35 +91,34 @@ class ApiService {
     debugPrint('Exception: $e');
     debugPrint('======================================================\n');
 
-    String errorMsg = 'Failed to connect to the server. Please check if the server is down or try again later.';
+    String errorMsg =
+        'Failed to connect to the server. Please check if the server is down or try again later.';
     String code = 'server_connection_error';
 
     final errStr = e.toString().toLowerCase();
-    if (errStr.contains('socketexception') || 
-        errStr.contains('failed host lookup') || 
-        errStr.contains('os error') || 
+    if (errStr.contains('socketexception') ||
+        errStr.contains('failed host lookup') ||
+        errStr.contains('os error') ||
         errStr.contains('network is unreachable') ||
         errStr.contains('clientexception')) {
-      errorMsg = 'No internet connection. Please check your network and try again.';
+      errorMsg =
+          'No internet connection. Please check your network and try again.';
       code = 'no_internet';
-    } else if (errStr.contains('timeoutexception') || errStr.contains('timeout')) {
+    } else if (errStr.contains('timeoutexception') ||
+        errStr.contains('timeout')) {
       errorMsg = 'Connection timed out. The server might be offline or slow.';
       code = 'timeout';
-    } else if (errStr.contains('handshakeexception') || errStr.contains('certpathvalidator')) {
-      errorMsg = 'Secure SSL connection could not be established with the server.';
+    } else if (errStr.contains('handshakeexception') ||
+        errStr.contains('certpathvalidator')) {
+      errorMsg =
+          'Secure SSL connection could not be established with the server.';
       code = 'ssl_error';
     }
 
     return http.Response(
-      jsonEncode({
-        'success': false,
-        'code': code,
-        'message': errorMsg,
-      }),
+      jsonEncode({'success': false, 'code': code, 'message': errorMsg}),
       503, // Service Unavailable
-      headers: {
-        'content-type': 'application/json; charset=utf-8',
-      },
+      headers: {'content-type': 'application/json; charset=utf-8'},
     );
   }
 
@@ -166,18 +174,26 @@ class ApiService {
           if (refreshSuccess) {
             // Retry the original request with new token
             final newHeaders = _getHeaders(authenticated: true);
-            debugPrint('\n[API Retry Request] ==================================');
+            debugPrint(
+              '\n[API Retry Request] ==================================',
+            );
             debugPrint('METHOD: POST');
             debugPrint('URL: $url');
             debugPrint('Headers: $newHeaders');
             debugPrint('Body: $bodyStr');
-            debugPrint('======================================================');
+            debugPrint(
+              '======================================================',
+            );
             response = await http.post(url, headers: newHeaders, body: bodyStr);
-            debugPrint('\n[API Retry Response] =================================');
+            debugPrint(
+              '\n[API Retry Response] =================================',
+            );
             debugPrint('URL: $url');
             debugPrint('Status Code: ${response.statusCode}');
             debugPrint('Body: ${response.body}');
-            debugPrint('======================================================\n');
+            debugPrint(
+              '======================================================\n',
+            );
           } else {
             _handleForcedLogout();
           }
@@ -227,17 +243,25 @@ class ApiService {
           final refreshSuccess = await _refreshTokens();
           if (refreshSuccess) {
             final newHeaders = _getHeaders(authenticated: true);
-            debugPrint('\n[API Retry Request] ==================================');
+            debugPrint(
+              '\n[API Retry Request] ==================================',
+            );
             debugPrint('METHOD: GET');
             debugPrint('URL: $url');
             debugPrint('Headers: $newHeaders');
-            debugPrint('======================================================');
+            debugPrint(
+              '======================================================',
+            );
             response = await http.get(url, headers: newHeaders);
-            debugPrint('\n[API Retry Response] =================================');
+            debugPrint(
+              '\n[API Retry Response] =================================',
+            );
             debugPrint('URL: $url');
             debugPrint('Status Code: ${response.statusCode}');
             debugPrint('Body: ${response.body}');
-            debugPrint('======================================================\n');
+            debugPrint(
+              '======================================================\n',
+            );
           } else {
             _handleForcedLogout();
           }
@@ -287,17 +311,25 @@ class ApiService {
           final refreshSuccess = await _refreshTokens();
           if (refreshSuccess) {
             final newHeaders = _getHeaders(authenticated: true);
-            debugPrint('\n[API Retry Request] ==================================');
+            debugPrint(
+              '\n[API Retry Request] ==================================',
+            );
             debugPrint('METHOD: DELETE');
             debugPrint('URL: $url');
             debugPrint('Headers: $newHeaders');
-            debugPrint('======================================================');
+            debugPrint(
+              '======================================================',
+            );
             response = await http.delete(url, headers: newHeaders);
-            debugPrint('\n[API Retry Response] =================================');
+            debugPrint(
+              '\n[API Retry Response] =================================',
+            );
             debugPrint('URL: $url');
             debugPrint('Status Code: ${response.statusCode}');
             debugPrint('Body: ${response.body}');
-            debugPrint('======================================================\n');
+            debugPrint(
+              '======================================================\n',
+            );
           } else {
             _handleForcedLogout();
           }
@@ -350,18 +382,26 @@ class ApiService {
           final refreshSuccess = await _refreshTokens();
           if (refreshSuccess) {
             final newHeaders = _getHeaders(authenticated: true);
-            debugPrint('\n[API Retry Request] ==================================');
+            debugPrint(
+              '\n[API Retry Request] ==================================',
+            );
             debugPrint('METHOD: PUT');
             debugPrint('URL: $url');
             debugPrint('Headers: $newHeaders');
             debugPrint('Body: $bodyStr');
-            debugPrint('======================================================');
+            debugPrint(
+              '======================================================',
+            );
             response = await http.put(url, headers: newHeaders, body: bodyStr);
-            debugPrint('\n[API Retry Response] =================================');
+            debugPrint(
+              '\n[API Retry Response] =================================',
+            );
             debugPrint('URL: $url');
             debugPrint('Status Code: ${response.statusCode}');
             debugPrint('Body: ${response.body}');
-            debugPrint('======================================================\n');
+            debugPrint(
+              '======================================================\n',
+            );
           } else {
             _handleForcedLogout();
           }
@@ -428,29 +468,46 @@ class ApiService {
     }
   }
 
-  static String _cleanHtml(String htmlString) {
-    // Replace HTML paragraph/break/link tags with spaces or newlines to avoid run-on sentences
-    String clean = htmlString
-        .replaceAll(RegExp(r'<!--.*?-->'), '') // Comments
-        .replaceAll(RegExp(r'</?(p|br|div|h[1-6])[^>]*>'), '\n') // Block tags to newlines
-        .replaceAll(RegExp(r'<[^>]*>'), ''); // Any other tag
-
-    // Decode some common HTML entities
-    clean = clean
+  static String unescapeHtml(String? input) {
+    if (input == null || input.isEmpty) return '';
+    return input
         .replaceAll('&amp;', '&')
+        .replaceAll('&#038;', '&')
+        .replaceAll('\u0026amp;', '&')
         .replaceAll('&lt;', '<')
         .replaceAll('&gt;', '>')
         .replaceAll('&quot;', '"')
         .replaceAll('&#39;', "'")
         .replaceAll('&#039;', "'")
-        .replaceAll('&nbsp;', ' ');
+        .replaceAll('&nbsp;', ' ')
+        .replaceAll('&#8217;', "'")
+        .replaceAll('&#8216;', "'")
+        .replaceAll('&#8220;', '"')
+        .replaceAll('&#8221;', '"')
+        .replaceAll('&#8211;', '–')
+        .replaceAll('&#8212;', '—');
+  }
+
+  static String _cleanHtml(String htmlString) {
+    // Replace HTML paragraph/break/link tags with spaces or newlines to avoid run-on sentences
+    String clean = htmlString
+        .replaceAll(RegExp(r'<!--.*?-->'), '') // Comments
+        .replaceAll(
+          RegExp(r'</?(p|br|div|h[1-6])[^>]*>'),
+          '\n',
+        ) // Block tags to newlines
+        .replaceAll(RegExp(r'<[^>]*>'), ''); // Any other tag
+
+    // Decode HTML entities
+    clean = unescapeHtml(clean);
 
     // Normalize multiple newlines and trim
-    clean = clean.split('\n')
+    clean = clean
+        .split('\n')
         .map((s) => s.trim())
         .where((s) => s.isNotEmpty)
         .join('\n');
-        
+
     return clean.trim();
   }
 
@@ -478,18 +535,24 @@ class ApiService {
     return defaultMsg;
   }
 
-  static Map<String, dynamic> _safeDecode(http.Response response, String defaultErrorMsg) {
+  static Map<String, dynamic> _safeDecode(
+    http.Response response,
+    String defaultErrorMsg,
+  ) {
     final bodyClean = response.body.trim();
-    
+
     // Check if there is a WordPress database error embedded
     if (bodyClean.contains('wpdberror')) {
       final reg = RegExp(r'WordPress database error:<\/strong>\s*\[(.*?)\]');
       final match = reg.firstMatch(bodyClean);
-      String dbErrorMsg = 'We are experiencing technical difficulties. Please try again later.';
+      String dbErrorMsg =
+          'We are experiencing technical difficulties. Please try again later.';
       if (match != null && match.groupCount >= 1) {
-        debugPrint('[Database Error Log] Database Error: ${match.group(1)!.replaceAll("&#039;", "'") }');
+        debugPrint(
+          '[Database Error Log] Database Error: ${match.group(1)!.replaceAll("&#039;", "'")}',
+        );
       }
-      
+
       // Let's check if the JSON part exists after the database error block
       final jsonIndex = bodyClean.indexOf('{"success":');
       if (jsonIndex != -1) {
@@ -502,7 +565,7 @@ class ApiService {
           }
         } catch (_) {}
       }
-      
+
       return {
         'success': false,
         'code': 'database_error',
@@ -516,38 +579,40 @@ class ApiService {
         return decoded;
       }
       if (decoded is List) {
-        return {
-          'success': true,
-          'data': decoded,
-        };
+        return {'success': true, 'data': decoded};
       }
       return {
         'success': false,
         'code': 'invalid_response',
-        'message': 'We are experiencing technical difficulties. Please try again later.',
+        'message':
+            'We are experiencing technical difficulties. Please try again later.',
       };
     } catch (e) {
-      debugPrint('[API Error] JSON Decode failed: $e. Body was: ${response.body}');
-      String msg = 'We are experiencing technical difficulties. Please try again later.';
-      return {
-        'success': false,
-        'code': 'format_exception',
-        'message': msg,
-      };
+      debugPrint(
+        '[API Error] JSON Decode failed: $e. Body was: ${response.body}',
+      );
+      String msg =
+          'We are experiencing technical difficulties. Please try again later.';
+      return {'success': false, 'code': 'format_exception', 'message': msg};
     }
   }
 
   // --- API Authentication Endpoints ---
 
   // Login
-  static Future<Map<String, dynamic>> login(String email, String password) async {
+  static Future<Map<String, dynamic>> login(
+    String email,
+    String password,
+  ) async {
     final response = await post('/auth/login', {
       'email': email,
       'password': password,
     });
 
     final decoded = _safeDecode(response, 'Login failed. Please try again.');
-    if (response.statusCode >= 200 && response.statusCode < 300 && decoded['success'] == true) {
+    if (response.statusCode >= 200 &&
+        response.statusCode < 300 &&
+        decoded['success'] == true) {
       final data = decoded['data'];
       final user = data['user'] as Map<String, dynamic>;
       await SessionManager.saveSession(
@@ -586,7 +651,9 @@ class ApiService {
     });
 
     final decoded = _safeDecode(response, 'Registration failed.');
-    if (response.statusCode >= 200 && response.statusCode < 300 && decoded['success'] == true) {
+    if (response.statusCode >= 200 &&
+        response.statusCode < 300 &&
+        decoded['success'] == true) {
       final data = decoded['data'];
       final user = data['user'] as Map<String, dynamic>;
       await SessionManager.saveSession(
@@ -594,12 +661,16 @@ class ApiService {
         refreshToken: data['refresh_token'] as String,
         user: user,
       );
-      return {'success': true, 'message': _getMessage(decoded, 'Registration successful!')};
+      return {
+        'success': true,
+        'message': _getMessage(decoded, 'Registration successful!'),
+      };
     } else {
       return {
         'success': false,
         'code': decoded['code'] ?? 'error',
-        'message': decoded['db_error'] ?? _getMessage(decoded, 'Registration failed.'),
+        'message':
+            decoded['db_error'] ?? _getMessage(decoded, 'Registration failed.'),
         'data': decoded['data'],
       };
     }
@@ -628,14 +699,17 @@ class ApiService {
       if (firstName != null) 'first_name': firstName,
       if (lastName != null) 'last_name': lastName,
       'business_type': businessType ?? 'individual',
-      if (businessRegistration != null) 'business_registration': businessRegistration,
+      if (businessRegistration != null)
+        'business_registration': businessRegistration,
       if (businessAddress != null) 'business_address': businessAddress,
       if (websiteLink != null) 'website_link': websiteLink,
       'merchant_onboarding_type': 'biz_plus', // default
     });
 
     final decoded = _safeDecode(response, 'Merchant registration failed.');
-    if (response.statusCode >= 200 && response.statusCode < 300 && decoded['success'] == true) {
+    if (response.statusCode >= 200 &&
+        response.statusCode < 300 &&
+        decoded['success'] == true) {
       final data = decoded['data'];
       final user = data['user'] as Map<String, dynamic>;
       await SessionManager.saveSession(
@@ -643,12 +717,17 @@ class ApiService {
         refreshToken: data['refresh_token'] as String,
         user: user,
       );
-      return {'success': true, 'message': _getMessage(decoded, 'Registration successful!')};
+      return {
+        'success': true,
+        'message': _getMessage(decoded, 'Registration successful!'),
+      };
     } else {
       return {
         'success': false,
         'code': decoded['code'] ?? 'error',
-        'message': decoded['db_error'] ?? _getMessage(decoded, 'Merchant registration failed.'),
+        'message':
+            decoded['db_error'] ??
+            _getMessage(decoded, 'Merchant registration failed.'),
         'data': decoded['data'],
       };
     }
@@ -656,13 +735,16 @@ class ApiService {
 
   // Forgot Password
   static Future<Map<String, dynamic>> forgotPassword(String email) async {
-    final response = await post('/auth/forgot-password', {
-      'email': email,
-    });
+    final response = await post('/auth/forgot-password', {'email': email});
 
     final decoded = _safeDecode(response, 'Failed to send reset link.');
-    if (response.statusCode >= 200 && response.statusCode < 300 && decoded['success'] == true) {
-      return {'success': true, 'message': _getMessage(decoded, 'Reset link sent.')};
+    if (response.statusCode >= 200 &&
+        response.statusCode < 300 &&
+        decoded['success'] == true) {
+      return {
+        'success': true,
+        'message': _getMessage(decoded, 'Reset link sent.'),
+      };
     } else {
       return {
         'success': false,
@@ -683,7 +765,9 @@ class ApiService {
     });
 
     final decoded = _safeDecode(response, 'OTP verification failed.');
-    if (response.statusCode >= 200 && response.statusCode < 300 && decoded['success'] == true) {
+    if (response.statusCode >= 200 &&
+        response.statusCode < 300 &&
+        decoded['success'] == true) {
       final data = decoded['data'] as Map<String, dynamic>;
       return {
         'success': true,
@@ -712,7 +796,9 @@ class ApiService {
     });
 
     final decoded = _safeDecode(response, 'Failed to reset password.');
-    if (response.statusCode >= 200 && response.statusCode < 300 && decoded['success'] == true) {
+    if (response.statusCode >= 200 &&
+        response.statusCode < 300 &&
+        decoded['success'] == true) {
       final data = decoded['data'];
       final user = data['user'] as Map<String, dynamic>;
       await SessionManager.saveSession(
@@ -720,7 +806,10 @@ class ApiService {
         refreshToken: data['refresh_token'] as String,
         user: user,
       );
-      return {'success': true, 'message': _getMessage(decoded, 'Password reset successfully!')};
+      return {
+        'success': true,
+        'message': _getMessage(decoded, 'Password reset successfully!'),
+      };
     } else {
       return {
         'success': false,
@@ -745,8 +834,13 @@ class ApiService {
     });
 
     final decoded = _safeDecode(response, 'Failed to send OTP.');
-    if (response.statusCode >= 200 && response.statusCode < 300 && decoded['success'] == true) {
-      return {'success': true, 'message': _getMessage(decoded, 'OTP sent successfully.')};
+    if (response.statusCode >= 200 &&
+        response.statusCode < 300 &&
+        decoded['success'] == true) {
+      return {
+        'success': true,
+        'message': _getMessage(decoded, 'OTP sent successfully.'),
+      };
     } else {
       return {
         'success': false,
@@ -771,7 +865,9 @@ class ApiService {
     });
 
     final decoded = _safeDecode(response, 'OTP verification failed.');
-    if (response.statusCode >= 200 && response.statusCode < 300 && decoded['success'] == true) {
+    if (response.statusCode >= 200 &&
+        response.statusCode < 300 &&
+        decoded['success'] == true) {
       final data = decoded['data'] as Map<String, dynamic>?;
       return {
         'success': true,
@@ -801,8 +897,13 @@ class ApiService {
       'mode': mode,
     });
 
-    final decoded = _safeDecode(response, 'Failed to initialize Singpass login.');
-    if (response.statusCode >= 200 && response.statusCode < 300 && decoded['success'] == true) {
+    final decoded = _safeDecode(
+      response,
+      'Failed to initialize Singpass login.',
+    );
+    if (response.statusCode >= 200 &&
+        response.statusCode < 300 &&
+        decoded['success'] == true) {
       return {
         'success': true,
         'authorization_url': decoded['data']['authorization_url'] as String,
@@ -821,10 +922,15 @@ class ApiService {
     required String code,
     required String state,
   }) async {
-    final response = await post('/auth/singpass/callback?code=$code&state=$state', {});
+    final response = await post(
+      '/auth/singpass/callback?code=$code&state=$state',
+      {},
+    );
 
     final decoded = _safeDecode(response, 'Singpass login failed.');
-    if (response.statusCode >= 200 && response.statusCode < 300 && decoded['success'] == true) {
+    if (response.statusCode >= 200 &&
+        response.statusCode < 300 &&
+        decoded['success'] == true) {
       final data = decoded['data'];
       final user = data['user'] as Map<String, dynamic>;
       await SessionManager.saveSession(
@@ -855,7 +961,10 @@ class ApiService {
   // Revoke a single session by its token ID
   static Future<Map<String, dynamic>> revokeSession(String tokenId) async {
     try {
-      final response = await delete('/users/me/sessions/$tokenId', authenticated: true);
+      final response = await delete(
+        '/users/me/sessions/$tokenId',
+        authenticated: true,
+      );
       return _safeDecode(response, 'Failed to revoke session.');
     } catch (e) {
       return {'success': false, 'message': 'Failed to revoke session: $e'};
@@ -894,18 +1003,22 @@ class ApiService {
         'per_page': perPage.toString(),
       };
       if (search != null && search.isNotEmpty) queryParams['search'] = search;
-      if (category != null && category.isNotEmpty) queryParams['category'] = category;
+      if (category != null && category.isNotEmpty)
+        queryParams['category'] = category;
       if (status != null && status.isNotEmpty) queryParams['status'] = status;
       if (featured == true) queryParams['featured'] = 'true';
-      if (merchantId != null) queryParams['merchant_id'] = merchantId.toString();
+      if (merchantId != null)
+        queryParams['merchant_id'] = merchantId.toString();
       if (ownerId != null) queryParams['owner_id'] = ownerId.toString();
-      if (ownerType != null && ownerType.isNotEmpty) queryParams['owner_type'] = ownerType;
-      if (vendorMode != null && vendorMode.isNotEmpty) queryParams['vendor_mode'] = vendorMode;
+      if (ownerType != null && ownerType.isNotEmpty)
+        queryParams['owner_type'] = ownerType;
+      if (vendorMode != null && vendorMode.isNotEmpty)
+        queryParams['vendor_mode'] = vendorMode;
       if (sort != null && sort.isNotEmpty) queryParams['sort'] = sort;
 
       final queryString = Uri(queryParameters: queryParams).query;
       final path = '/packages${queryString.isNotEmpty ? '?$queryString' : ''}';
-      
+
       final response = await get(path, authenticated: false);
       return _safeDecode(response, 'Failed to fetch packages.');
     } catch (e) {
@@ -929,14 +1042,23 @@ class ApiService {
       final response = await get('/packages/$id', authenticated: false);
       return _safeDecode(response, 'Failed to fetch package details.');
     } catch (e) {
-      return {'success': false, 'message': 'Failed to fetch package details: $e'};
+      return {
+        'success': false,
+        'message': 'Failed to fetch package details: $e',
+      };
     }
   }
 
   // 4. Create Package
-  static Future<Map<String, dynamic>> createPackage(Map<String, dynamic> packageData) async {
+  static Future<Map<String, dynamic>> createPackage(
+    Map<String, dynamic> packageData,
+  ) async {
     try {
-      final response = await post('/packages', packageData, authenticated: true);
+      final response = await post(
+        '/packages',
+        packageData,
+        authenticated: true,
+      );
       return _safeDecode(response, 'Failed to create package.');
     } catch (e) {
       return {'success': false, 'message': 'Failed to create package: $e'};
@@ -944,7 +1066,10 @@ class ApiService {
   }
 
   // 5. Update Package
-  static Future<Map<String, dynamic>> updatePackage(int id, Map<String, dynamic> packageData) async {
+  static Future<Map<String, dynamic>> updatePackage(
+    int id,
+    Map<String, dynamic> packageData,
+  ) async {
     try {
       // Use PUT method as defined in API docs
       final url = Uri.parse('$baseUrl/packages/$id');
@@ -983,25 +1108,37 @@ class ApiService {
   }
 
   // 7. Update Package Status
-  static Future<Map<String, dynamic>> updatePackageStatus(int id, String status) async {
+  static Future<Map<String, dynamic>> updatePackageStatus(
+    int id,
+    String status,
+  ) async {
     try {
-      final response = await post('/packages/$id/status', {'status': status}, authenticated: true);
+      final response = await post('/packages/$id/status', {
+        'status': status,
+      }, authenticated: true);
       return _safeDecode(response, 'Failed to update package status.');
     } catch (e) {
-      return {'success': false, 'message': 'Failed to update package status: $e'};
+      return {
+        'success': false,
+        'message': 'Failed to update package status: $e',
+      };
     }
   }
 
   // 8. Upload Package Images (Multipart)
-  static Future<Map<String, dynamic>> uploadPackageImages(int id, List<String> filePaths) async {
+  static Future<Map<String, dynamic>> uploadPackageImages(
+    int id,
+    List<String> filePaths,
+  ) async {
     try {
       final url = Uri.parse('$baseUrl/packages/$id/images');
       final request = http.MultipartRequest('POST', url);
-      
+
       if (SessionManager.accessToken != null) {
-        request.headers['Authorization'] = 'Bearer ${SessionManager.accessToken}';
+        request.headers['Authorization'] =
+            'Bearer ${SessionManager.accessToken}';
       }
-      
+
       for (int i = 0; i < filePaths.length; i++) {
         final path = filePaths[i];
         if (path.startsWith('assets/')) {
@@ -1013,14 +1150,16 @@ class ApiService {
         final file = await http.MultipartFile.fromPath('file$i', path);
         request.files.add(file);
       }
-      
+
       // If we only have mock assets and no files were added, we can send a dummy byte array as a placeholder
       if (request.files.isEmpty) {
-        request.files.add(http.MultipartFile.fromBytes(
-          'file0',
-          [137, 80, 78, 71, 13, 10, 26, 10], // Dummy PNG header
-          filename: 'placeholder.png',
-        ));
+        request.files.add(
+          http.MultipartFile.fromBytes(
+            'file0',
+            [137, 80, 78, 71, 13, 10, 26, 10], // Dummy PNG header
+            filename: 'placeholder.png',
+          ),
+        );
       }
 
       debugPrint('\n[API Multipart Request] =================================');
@@ -1029,16 +1168,16 @@ class ApiService {
       debugPrint('Headers: ${request.headers}');
       debugPrint('Files Count: ${request.files.length}');
       debugPrint('======================================================');
-      
+
       final streamedResponse = await request.send();
       final response = await http.Response.fromStream(streamedResponse);
-      
+
       debugPrint('\n[API Response] =======================================');
       debugPrint('URL: $url');
       debugPrint('Status Code: ${response.statusCode}');
       debugPrint('Body: ${response.body}');
       debugPrint('======================================================\n');
-      
+
       return _safeDecode(response, 'Failed to upload images.');
     } catch (e) {
       return {'success': false, 'message': 'Failed to upload images: $e'};
@@ -1046,9 +1185,15 @@ class ApiService {
   }
 
   // 9. Delete Package Image
-  static Future<Map<String, dynamic>> deletePackageImage(int id, int imageId) async {
+  static Future<Map<String, dynamic>> deletePackageImage(
+    int id,
+    int imageId,
+  ) async {
     try {
-      final response = await delete('/packages/$id/images/$imageId', authenticated: true);
+      final response = await delete(
+        '/packages/$id/images/$imageId',
+        authenticated: true,
+      );
       return _safeDecode(response, 'Failed to remove image.');
     } catch (e) {
       return {'success': false, 'message': 'Failed to remove image: $e'};
@@ -1058,7 +1203,11 @@ class ApiService {
   // 10. Like Package (Add to wishlist)
   static Future<Map<String, dynamic>> likePackage(int id) async {
     try {
-      final response = await post('/packages/$id/like', {}, authenticated: true);
+      final response = await post(
+        '/packages/$id/like',
+        {},
+        authenticated: true,
+      );
       return _safeDecode(response, 'Failed to add to wishlist.');
     } catch (e) {
       return {'success': false, 'message': 'Failed to add to wishlist: $e'};
@@ -1071,7 +1220,10 @@ class ApiService {
       final response = await delete('/packages/$id/like', authenticated: true);
       return _safeDecode(response, 'Failed to remove from wishlist.');
     } catch (e) {
-      return {'success': false, 'message': 'Failed to remove from wishlist: $e'};
+      return {
+        'success': false,
+        'message': 'Failed to remove from wishlist: $e',
+      };
     }
   }
 
@@ -1087,7 +1239,9 @@ class ApiService {
     }
   }
 
-  // Get Merchant Packages (Own + Assigned)
+  // Get Merchant My Listings (Own packages only — created by this merchant account)
+  // NOTE: /packages?merchant_id=X returns ALL packages assigned to a merchant by admins,
+  // which are NOT the user's own listings. My Listings = only self-created packages.
   static Future<Map<String, dynamic>> getMerchantPackages({
     int page = 1,
     int perPage = 20,
@@ -1099,50 +1253,50 @@ class ApiService {
         'per_page': perPage.toString(),
       };
       if (status != null && status.isNotEmpty) queryParams['status'] = status;
-      
       final queryString = Uri(queryParameters: queryParams).query;
-      
-      // 1. Fetch own packages
-      final ownPath = '/merchants/me/packages${queryString.isNotEmpty ? '?$queryString' : ''}';
-      final ownResponse = await get(ownPath, authenticated: true);
-      final ownDecoded = _safeDecode(ownResponse, 'Failed to fetch own merchant packages.');
-      
+
       List<dynamic> combinedList = [];
+
+      // ── Step 1: Fetch /merchants/me/packages (own merchant-created packages) ──
+      final ownPath =
+          '/merchants/me/packages${queryString.isNotEmpty ? '?$queryString' : ''}';
+      final ownResponse = await get(ownPath, authenticated: true);
+      final ownDecoded = _safeDecode(
+        ownResponse,
+        'Failed to fetch own merchant packages.',
+      );
+
       if (ownDecoded['success'] == true && ownDecoded['data'] is List) {
         for (var item in ownDecoded['data']) {
           if (item is Map) {
             final mapped = Map<String, dynamic>.from(item);
-            mapped['is_owner'] = true;
+            mapped['is_owner'] = true; // can edit & delete
             combinedList.add(mapped);
           } else {
             combinedList.add(item);
           }
         }
       }
-      
-      // 2. Fetch assigned packages where merchant is selected
-      final mId = SessionManager.userId;
-      if (mId != null && mId > 0) {
-        final assignedParams = <String, String>{
-          'merchant_id': mId.toString(),
-          'page': page.toString(),
-          'per_page': perPage.toString(),
-        };
-        if (status != null && status.isNotEmpty) assignedParams['status'] = status;
-        final assignedQueryString = Uri(queryParameters: assignedParams).query;
-        
-        final assignedPath = '/packages?$assignedQueryString';
-        final assignedResponse = await get(assignedPath, authenticated: true);
-        final assignedDecoded = _safeDecode(assignedResponse, 'Failed to fetch assigned merchant packages.');
-        
-        if (assignedDecoded['success'] == true && assignedDecoded['data'] is List) {
-          final assignedList = assignedDecoded['data'] as List;
-          for (var item in assignedList) {
-            final bool alreadyExists = combinedList.any((e) => e['id'] == item['id']);
+
+      // ── Step 2: For dual-role accounts (is_user: true), also fetch C2C packages ──
+      // e.g. tagpools@gmail.com has is_merchant=true AND is_user=true
+      if (SessionManager.isUser) {
+        final userPkgRes = await get(
+          '/users/me/packages?page=$page&per_page=$perPage${status != null && status.isNotEmpty ? '&status=$status' : ''}',
+          authenticated: true,
+        );
+        final userPkgDecoded = _safeDecode(userPkgRes, '');
+
+        if (userPkgDecoded['success'] == true &&
+            userPkgDecoded['data'] is List) {
+          for (var item in userPkgDecoded['data']) {
+            final bool alreadyExists = combinedList.any(
+              (e) => e['id'] == item['id'],
+            );
             if (!alreadyExists) {
               if (item is Map) {
                 final mapped = Map<String, dynamic>.from(item);
-                mapped['is_owner'] = false;
+                mapped['is_owner'] = true; // can edit & delete
                 combinedList.add(mapped);
               } else {
                 combinedList.add(item);
@@ -1151,13 +1305,69 @@ class ApiService {
           }
         }
       }
-      
-      return {
-        'success': true,
-        'data': combinedList,
-      };
+
+      // ── Step 3: /packages?merchant_id=X (website-parity fallback) ──
+      // The website merchant dashboard uses this. Backend may miss packages in
+      // /merchants/me/packages (known bug for some accounts like Rolys/synvolv3).
+      try {
+        final meRes = await get('/merchants/me', authenticated: true);
+        final meDecoded = _safeDecode(meRes, '');
+        if (meDecoded['success'] == true && meDecoded['data'] is Map) {
+          final actualMerchantId = int.tryParse(
+            (meDecoded['data'] as Map)['id']?.toString() ?? '',
+          );
+          if (actualMerchantId != null && actualMerchantId > 0) {
+            final assignedParams = <String, String>{
+              'merchant_id': actualMerchantId.toString(),
+              'page': page.toString(),
+              'per_page': perPage.toString(),
+            };
+            if (status != null && status.isNotEmpty)
+              assignedParams['status'] = status;
+            final assignedQS = Uri(queryParameters: assignedParams).query;
+            final assignedResponse = await get(
+              '/packages?$assignedQS',
+              authenticated: true,
+            );
+            final assignedDecoded = _safeDecode(assignedResponse, '');
+
+            if (assignedDecoded['success'] == true &&
+                assignedDecoded['data'] is List) {
+              final wpUserId = SessionManager.userId;
+              for (var item in assignedDecoded['data']) {
+                final bool alreadyExists = combinedList.any(
+                  (e) => e['id'] == item['id'],
+                );
+                if (!alreadyExists && item is Map) {
+                  final mapped = Map<String, dynamic>.from(item);
+                  // Package is owned by this merchant if presented_by.merchant_id matches
+                  // or owner_id matches the merchant profile ID or the WP user ID
+                  final presentedById = item['presented_by'] is Map
+                      ? int.tryParse(
+                          item['presented_by']['merchant_id']?.toString() ?? '',
+                        )
+                      : null;
+                  final ownerIdField =
+                      int.tryParse(item['owner_id']?.toString() ?? '0') ?? 0;
+                  final isOwnPackage =
+                      presentedById == actualMerchantId ||
+                      ownerIdField == actualMerchantId ||
+                      ownerIdField == wpUserId;
+                  mapped['is_owner'] = isOwnPackage;
+                  combinedList.add(mapped);
+                }
+              }
+            }
+          }
+        }
+      } catch (_) {}
+
+      return {'success': true, 'data': combinedList};
     } catch (e) {
-      return {'success': false, 'message': 'Failed to fetch merchant packages: $e'};
+      return {
+        'success': false,
+        'message': 'Failed to fetch merchant packages: $e',
+      };
     }
   }
 
@@ -1190,7 +1400,9 @@ class ApiService {
   }
 
   // Place Order
-  static Future<Map<String, dynamic>> placeOrder(Map<String, dynamic> orderData) async {
+  static Future<Map<String, dynamic>> placeOrder(
+    Map<String, dynamic> orderData,
+  ) async {
     try {
       final response = await post('/orders', orderData, authenticated: true);
       return _safeDecode(response, 'Failed to place order.');
@@ -1200,9 +1412,15 @@ class ApiService {
   }
 
   // Get My Orders
-  static Future<Map<String, dynamic>> getMyOrders({int page = 1, int perPage = 20}) async {
+  static Future<Map<String, dynamic>> getMyOrders({
+    int page = 1,
+    int perPage = 20,
+  }) async {
     try {
-      final response = await get('/users/me/orders?page=$page&per_page=$perPage', authenticated: true);
+      final response = await get(
+        '/users/me/orders?page=$page&per_page=$perPage',
+        authenticated: true,
+      );
       return _safeDecode(response, 'Failed to fetch orders.');
     } catch (e) {
       return {'success': false, 'message': 'Failed to fetch orders: $e'};
@@ -1210,12 +1428,19 @@ class ApiService {
   }
 
   // Create Stripe PaymentIntent
-  static Future<Map<String, dynamic>> createStripePaymentIntent(int orderId) async {
+  static Future<Map<String, dynamic>> createStripePaymentIntent(
+    int orderId,
+  ) async {
     try {
-      final response = await post('/payments/stripe/intent', {'order_id': orderId}, authenticated: true);
+      final response = await post('/payments/stripe/intent', {
+        'order_id': orderId,
+      }, authenticated: true);
       return _safeDecode(response, 'Failed to create payment intent.');
     } catch (e) {
-      return {'success': false, 'message': 'Failed to create payment intent: $e'};
+      return {
+        'success': false,
+        'message': 'Failed to create payment intent: $e',
+      };
     }
   }
 
@@ -1244,7 +1469,9 @@ class ApiService {
   // Add Item to Cart
   static Future<Map<String, dynamic>> addToCart(int packageId) async {
     try {
-      final response = await post('/cart/items', {'package_id': packageId}, authenticated: true);
+      final response = await post('/cart/items', {
+        'package_id': packageId,
+      }, authenticated: true);
       return _safeDecode(response, 'Failed to add item to cart.');
     } catch (e) {
       return {'success': false, 'message': 'Failed to add item to cart: $e'};
@@ -1254,10 +1481,16 @@ class ApiService {
   // Remove Item from Cart
   static Future<Map<String, dynamic>> removeFromCart(int packageId) async {
     try {
-      final response = await delete('/cart/items/$packageId', authenticated: true);
+      final response = await delete(
+        '/cart/items/$packageId',
+        authenticated: true,
+      );
       return _safeDecode(response, 'Failed to remove item from cart.');
     } catch (e) {
-      return {'success': false, 'message': 'Failed to remove item from cart: $e'};
+      return {
+        'success': false,
+        'message': 'Failed to remove item from cart: $e',
+      };
     }
   }
 
@@ -1274,9 +1507,15 @@ class ApiService {
   }
 
   // Get Wallet Transactions
-  static Future<Map<String, dynamic>> getWalletTransactions({int page = 1, int perPage = 20}) async {
+  static Future<Map<String, dynamic>> getWalletTransactions({
+    int page = 1,
+    int perPage = 20,
+  }) async {
     try {
-      final response = await get('/payments/wallet/transactions?page=$page&per_page=$perPage', authenticated: true);
+      final response = await get(
+        '/payments/wallet/transactions?page=$page&per_page=$perPage',
+        authenticated: true,
+      );
       return _safeDecode(response, 'Failed to fetch transactions.');
     } catch (e) {
       return {'success': false, 'message': 'Failed to fetch transactions: $e'};
@@ -1290,16 +1529,16 @@ class ApiService {
       final url = Uri.parse('$baseUrl/payments/wallet/withdraw');
       final headers = _getHeaders(authenticated: true);
       headers['Idempotency-Key'] = uuid;
-      
-      final bodyStr = jsonEncode({
-        'amount': amount,
-      });
 
-      debugPrint('\n[Withdraw Request] ========================================');
+      final bodyStr = jsonEncode({'amount': amount});
+
+      debugPrint(
+        '\n[Withdraw Request] ========================================',
+      );
       debugPrint('URL: $url');
       debugPrint('Headers: $headers');
       debugPrint('Body: $bodyStr');
-      
+
       final response = await http.post(url, headers: headers, body: bodyStr);
       return _safeDecode(response, 'Failed to request withdrawal.');
     } catch (e) {
@@ -1310,7 +1549,10 @@ class ApiService {
   // Get Stripe Connected Account Status
   static Future<Map<String, dynamic>> getStripeAccountStatus() async {
     try {
-      final response = await get('/payments/stripe/account', authenticated: true);
+      final response = await get(
+        '/payments/stripe/account',
+        authenticated: true,
+      );
       return _safeDecode(response, 'Failed to fetch Stripe account status.');
     } catch (e) {
       return {'success': false, 'message': 'Failed to fetch Stripe status: $e'};
@@ -1320,7 +1562,9 @@ class ApiService {
   // Onboard Stripe Connected Account
   static Future<Map<String, dynamic>> onboardStripe(String role) async {
     try {
-      final response = await post('/payments/stripe/onboard', {'role': role}, authenticated: true);
+      final response = await post('/payments/stripe/onboard', {
+        'role': role,
+      }, authenticated: true);
       return _safeDecode(response, 'Failed to initialize Stripe onboarding.');
     } catch (e) {
       return {'success': false, 'message': 'Failed to onboard Stripe: $e'};
@@ -1330,7 +1574,11 @@ class ApiService {
   // Disconnect Stripe Connected Account
   static Future<Map<String, dynamic>> disconnectStripe() async {
     try {
-      final response = await post('/payments/stripe/disconnect', {}, authenticated: true);
+      final response = await post(
+        '/payments/stripe/disconnect',
+        {},
+        authenticated: true,
+      );
       return _safeDecode(response, 'Failed to disconnect Stripe account.');
     } catch (e) {
       return {'success': false, 'message': 'Failed to disconnect Stripe: $e'};
@@ -1340,7 +1588,11 @@ class ApiService {
   // Reconnect Stripe Connected Account
   static Future<Map<String, dynamic>> reconnectStripe() async {
     try {
-      final response = await post('/payments/stripe/reconnect', {}, authenticated: true);
+      final response = await post(
+        '/payments/stripe/reconnect',
+        {},
+        authenticated: true,
+      );
       return _safeDecode(response, 'Failed to reconnect Stripe account.');
     } catch (e) {
       return {'success': false, 'message': 'Failed to reconnect Stripe: $e'};
@@ -1350,15 +1602,23 @@ class ApiService {
   // Get Payout Settings
   static Future<Map<String, dynamic>> getPayoutSettings() async {
     try {
-      final response = await get('/users/me/payout-settings', authenticated: true);
+      final response = await get(
+        '/users/me/payout-settings',
+        authenticated: true,
+      );
       return _safeDecode(response, 'Failed to fetch payout settings.');
     } catch (e) {
-      return {'success': false, 'message': 'Failed to fetch payout settings: $e'};
+      return {
+        'success': false,
+        'message': 'Failed to fetch payout settings: $e',
+      };
     }
   }
 
   // Update Payout Settings
-  static Future<Map<String, dynamic>> updatePayoutSettings(Map<String, dynamic> data) async {
+  static Future<Map<String, dynamic>> updatePayoutSettings(
+    Map<String, dynamic> data,
+  ) async {
     try {
       final response = await put(
         '/users/me/payout-settings',
@@ -1367,10 +1627,12 @@ class ApiService {
       );
       return _safeDecode(response, 'Failed to update payout settings.');
     } catch (e) {
-      return {'success': false, 'message': 'Failed to update payout settings: $e'};
+      return {
+        'success': false,
+        'message': 'Failed to update payout settings: $e',
+      };
     }
   }
-
 
   // ── User Profile ────────────────────────────────────────────
   static Future<Map<String, dynamic>> getUserMe() async {
@@ -1382,7 +1644,9 @@ class ApiService {
     }
   }
 
-  static Future<Map<String, dynamic>> updateUserMe(Map<String, dynamic> data) async {
+  static Future<Map<String, dynamic>> updateUserMe(
+    Map<String, dynamic> data,
+  ) async {
     try {
       final response = await put('/users/me', data, authenticated: true);
       return _safeDecode(response, 'Failed to update user profile.');
@@ -1396,23 +1660,24 @@ class ApiService {
       final url = Uri.parse('$baseUrl/users/me/avatar');
       final request = http.MultipartRequest('POST', url);
       if (SessionManager.accessToken != null) {
-        request.headers['Authorization'] = 'Bearer ${SessionManager.accessToken}';
+        request.headers['Authorization'] =
+            'Bearer ${SessionManager.accessToken}';
       }
       request.files.add(await http.MultipartFile.fromPath('avatar', filePath));
-      
+
       debugPrint('\n[API Multipart Request] =================================');
       debugPrint('METHOD: POST (User Avatar)');
       debugPrint('URL: $url');
       debugPrint('======================================================');
-      
+
       final streamedResponse = await request.send();
       final response = await http.Response.fromStream(streamedResponse);
-      
+
       debugPrint('\n[API Response] =======================================');
       debugPrint('Status Code: ${response.statusCode}');
       debugPrint('Body: ${response.body}');
       debugPrint('======================================================\n');
-      
+
       return _safeDecode(response, 'Failed to upload user avatar.');
     } catch (e) {
       return {'success': false, 'message': 'Failed to upload avatar: $e'};
@@ -1425,50 +1690,63 @@ class ApiService {
       final response = await get('/merchants/me', authenticated: true);
       return _safeDecode(response, 'Failed to fetch merchant profile.');
     } catch (e) {
-      return {'success': false, 'message': 'Failed to fetch merchant profile: $e'};
+      return {
+        'success': false,
+        'message': 'Failed to fetch merchant profile: $e',
+      };
     }
   }
 
-  static Future<Map<String, dynamic>> updateMerchantMe(Map<String, dynamic> data) async {
+  static Future<Map<String, dynamic>> updateMerchantMe(
+    Map<String, dynamic> data,
+  ) async {
     try {
       final response = await put('/merchants/me', data, authenticated: true);
       return _safeDecode(response, 'Failed to update merchant profile.');
     } catch (e) {
-      return {'success': false, 'message': 'Failed to update merchant profile: $e'};
+      return {
+        'success': false,
+        'message': 'Failed to update merchant profile: $e',
+      };
     }
   }
 
-  static Future<Map<String, dynamic>> uploadMerchantLogo(String filePath) async {
+  static Future<Map<String, dynamic>> uploadMerchantLogo(
+    String filePath,
+  ) async {
     try {
       final url = Uri.parse('$baseUrl/merchants/me/logo');
       final request = http.MultipartRequest('POST', url);
       if (SessionManager.accessToken != null) {
-        request.headers['Authorization'] = 'Bearer ${SessionManager.accessToken}';
+        request.headers['Authorization'] =
+            'Bearer ${SessionManager.accessToken}';
       }
       request.files.add(await http.MultipartFile.fromPath('logo', filePath));
-      
+
       debugPrint('\n[API Multipart Request] =================================');
       debugPrint('METHOD: POST (Merchant Logo)');
       debugPrint('URL: $url');
       debugPrint('======================================================');
-      
+
       final streamedResponse = await request.send();
       final response = await http.Response.fromStream(streamedResponse);
-      
+
       debugPrint('\n[API Response] =======================================');
       debugPrint('Status Code: ${response.statusCode}');
       debugPrint('Body: ${response.body}');
       debugPrint('======================================================\n');
-      
+
       return _safeDecode(response, 'Failed to upload merchant logo.');
     } catch (e) {
       return {'success': false, 'message': 'Failed to upload logo: $e'};
     }
   }
 
-
   // ── C2C Sales ────────────────────────────────────────────────
-  static Future<Map<String, dynamic>> getMySales({int page = 1, int perPage = 20}) async {
+  static Future<Map<String, dynamic>> getMySales({
+    int page = 1,
+    int perPage = 20,
+  }) async {
     try {
       final response = await get(
         '/users/me/sales?page=$page&per_page=$perPage',
@@ -1481,7 +1759,10 @@ class ApiService {
   }
 
   // ── User Payout Requests ────────────────────────────────────
-  static Future<Map<String, dynamic>> getUserPayoutRequests({int page = 1, int perPage = 20}) async {
+  static Future<Map<String, dynamic>> getUserPayoutRequests({
+    int page = 1,
+    int perPage = 20,
+  }) async {
     try {
       final response = await get(
         '/users/me/payout-requests?page=$page&per_page=$perPage',
@@ -1489,20 +1770,28 @@ class ApiService {
       );
       return _safeDecode(response, 'Failed to fetch payout requests.');
     } catch (e) {
-      return {'success': false, 'message': 'Failed to fetch payout requests: $e'};
+      return {
+        'success': false,
+        'message': 'Failed to fetch payout requests: $e',
+      };
     }
   }
 
-  static Future<Map<String, dynamic>> createUserPayoutRequest(double amount, {String method = 'stripe'}) async {
+  static Future<Map<String, dynamic>> createUserPayoutRequest(
+    double amount, {
+    String method = 'stripe',
+  }) async {
     try {
-      final response = await post(
-        '/users/me/payout-requests',
-        {'amount': amount, 'payout_method': method},
-        authenticated: true,
-      );
+      final response = await post('/users/me/payout-requests', {
+        'amount': amount,
+        'payout_method': method,
+      }, authenticated: true);
       return _safeDecode(response, 'Failed to create payout request.');
     } catch (e) {
-      return {'success': false, 'message': 'Failed to create payout request: $e'};
+      return {
+        'success': false,
+        'message': 'Failed to create payout request: $e',
+      };
     }
   }
 
@@ -1512,11 +1801,17 @@ class ApiService {
       final response = await get('/merchants/me/wallet', authenticated: true);
       return _safeDecode(response, 'Failed to fetch merchant wallet.');
     } catch (e) {
-      return {'success': false, 'message': 'Failed to fetch merchant wallet: $e'};
+      return {
+        'success': false,
+        'message': 'Failed to fetch merchant wallet: $e',
+      };
     }
   }
 
-  static Future<Map<String, dynamic>> getMerchantTransactions({int page = 1, int perPage = 20}) async {
+  static Future<Map<String, dynamic>> getMerchantTransactions({
+    int page = 1,
+    int perPage = 20,
+  }) async {
     try {
       final response = await get(
         '/merchants/me/transactions?page=$page&per_page=$perPage',
@@ -1524,7 +1819,10 @@ class ApiService {
       );
       return _safeDecode(response, 'Failed to fetch merchant transactions.');
     } catch (e) {
-      return {'success': false, 'message': 'Failed to fetch merchant transactions: $e'};
+      return {
+        'success': false,
+        'message': 'Failed to fetch merchant transactions: $e',
+      };
     }
   }
 
@@ -1533,11 +1831,17 @@ class ApiService {
       final response = await get('/merchants/me/stats', authenticated: true);
       return _safeDecode(response, 'Failed to fetch merchant stats.');
     } catch (e) {
-      return {'success': false, 'message': 'Failed to fetch merchant stats: $e'};
+      return {
+        'success': false,
+        'message': 'Failed to fetch merchant stats: $e',
+      };
     }
   }
 
-  static Future<Map<String, dynamic>> getMerchantOrders({int page = 1, int perPage = 20}) async {
+  static Future<Map<String, dynamic>> getMerchantOrders({
+    int page = 1,
+    int perPage = 20,
+  }) async {
     try {
       final response = await get(
         '/merchants/me/orders?page=$page&per_page=$perPage',
@@ -1545,11 +1849,17 @@ class ApiService {
       );
       return _safeDecode(response, 'Failed to fetch merchant orders.');
     } catch (e) {
-      return {'success': false, 'message': 'Failed to fetch merchant orders: $e'};
+      return {
+        'success': false,
+        'message': 'Failed to fetch merchant orders: $e',
+      };
     }
   }
 
-  static Future<Map<String, dynamic>> getUserTransactions({int page = 1, int perPage = 20}) async {
+  static Future<Map<String, dynamic>> getUserTransactions({
+    int page = 1,
+    int perPage = 20,
+  }) async {
     try {
       final response = await get(
         '/users/me/transactions?page=$page&per_page=$perPage',
@@ -1561,12 +1871,20 @@ class ApiService {
     }
   }
 
-  static Future<Map<String, dynamic>> getPublicMerchantProfile(int merchantId) async {
+  static Future<Map<String, dynamic>> getPublicMerchantProfile(
+    int merchantId,
+  ) async {
     try {
-      final response = await get('/merchants/$merchantId', authenticated: false);
+      final response = await get(
+        '/merchants/$merchantId',
+        authenticated: false,
+      );
       return _safeDecode(response, 'Failed to fetch public merchant profile.');
     } catch (e) {
-      return {'success': false, 'message': 'Failed to fetch public merchant profile: $e'};
+      return {
+        'success': false,
+        'message': 'Failed to fetch public merchant profile: $e',
+      };
     }
   }
 
@@ -1586,9 +1904,15 @@ class ApiService {
         usersCache[userId] = data;
         return {'success': true, 'data': data};
       }
-      return {'success': false, 'message': 'User profile not found (${response.statusCode})'};
+      return {
+        'success': false,
+        'message': 'User profile not found (${response.statusCode})',
+      };
     } catch (e) {
-      return {'success': false, 'message': 'Failed to fetch public profile: $e'};
+      return {
+        'success': false,
+        'message': 'Failed to fetch public profile: $e',
+      };
     }
   }
 
@@ -1599,7 +1923,8 @@ class ApiService {
     for (final pkg in packages) {
       if (pkg is! Map) continue;
       final ownerId = int.tryParse(pkg['owner_id']?.toString() ?? '') ?? 0;
-      final merchantId = int.tryParse(pkg['merchant_id']?.toString() ?? '') ?? 0;
+      final merchantId =
+          int.tryParse(pkg['merchant_id']?.toString() ?? '') ?? 0;
       final ownerType = pkg['owner_type']?.toString() ?? '';
 
       if (merchantId > 0 && !merchantsCache.containsKey(merchantId)) {
@@ -1638,7 +1963,9 @@ class ApiService {
     final ownerIdVal = int.tryParse(pkg['owner_id']?.toString() ?? '');
     int? merchantIdVal = int.tryParse(pkg['merchant_id']?.toString() ?? '');
     if (merchantIdVal == null && pkg['presented_by'] is Map) {
-      merchantIdVal = int.tryParse((pkg['presented_by'] as Map)['merchant_id']?.toString() ?? '');
+      merchantIdVal = int.tryParse(
+        (pkg['presented_by'] as Map)['merchant_id']?.toString() ?? '',
+      );
     }
     final ownerTypeVal = pkg['owner_type']?.toString() ?? '';
 
@@ -1649,24 +1976,50 @@ class ApiService {
       merchantId = merchantIdVal;
     }
 
-    Map<String, dynamic> buildResult(String resName, String resAvatar, bool resIsMerchant) {
-      final sanitizedName = resName.trim().isNotEmpty ? resName.trim() : (resIsMerchant ? 'Twicely Merchant' : 'Twicely');
-      return {'name': sanitizedName, 'avatar': resAvatar, 'is_merchant': resIsMerchant, 'merchant_id': merchantId, 'owner_id': ownerId};
+    Map<String, dynamic> buildResult(
+      String resName,
+      String resAvatar,
+      bool resIsMerchant,
+    ) {
+      final sanitizedName = resName.trim().isNotEmpty
+          ? unescapeHtml(resName.trim())
+          : (resIsMerchant ? 'Twicely Merchant' : 'Twicely');
+      return {
+        'name': sanitizedName,
+        'avatar': resAvatar,
+        'is_merchant': resIsMerchant,
+        'merchant_id': merchantId,
+        'owner_id': ownerId,
+      };
     }
 
     // 1. Explicit owner object in payload
     if (pkg['owner'] is Map) {
       final o = pkg['owner'] as Map;
-      name = o['name']?.toString() ?? o['business_name']?.toString() ?? o['display_name']?.toString() ?? name;
-      avatar = o['avatar']?.toString() ?? o['avatar_url']?.toString() ?? o['logo_url']?.toString() ?? o['photo']?.toString() ?? avatar;
-      if (o['is_merchant'] == true || ownerTypeVal == 'merchant') isMerchant = true;
+      name =
+          o['name']?.toString() ??
+          o['business_name']?.toString() ??
+          o['display_name']?.toString() ??
+          name;
+      avatar =
+          o['avatar']?.toString() ??
+          o['avatar_url']?.toString() ??
+          o['logo_url']?.toString() ??
+          o['photo']?.toString() ??
+          avatar;
+      if (o['is_merchant'] == true || ownerTypeVal == 'merchant') {
+        isMerchant = true;
+      }
       return buildResult(name, avatar, isMerchant);
     }
 
     // 2. Explicit owner_name / owner_avatar in payload
     if (pkg['owner_name'] != null && pkg['owner_name'].toString().isNotEmpty) {
       name = pkg['owner_name'].toString();
-      avatar = pkg['owner_avatar']?.toString() ?? pkg['owner_photo']?.toString() ?? '';
+      avatar =
+          pkg['owner_avatar']?.toString() ??
+          pkg['owner_photo']?.toString() ??
+          '';
       isMerchant = ownerTypeVal == 'merchant';
       return buildResult(name, avatar, isMerchant);
     }
@@ -1675,10 +2028,17 @@ class ApiService {
     if (ownerIdVal != null && ownerIdVal > 0 && ownerTypeVal != 'merchant') {
       if (usersCache.containsKey(ownerIdVal)) {
         final u = usersCache[ownerIdVal]!;
-        name = u['name']?.toString() ?? u['display_name']?.toString() ?? 'Twicely Member';
+        name =
+            u['name']?.toString() ??
+            u['display_name']?.toString() ??
+            'Twicely Member';
         final avatarUrls = u['avatar_urls'];
         if (avatarUrls is Map) {
-          avatar = avatarUrls['96']?.toString() ?? avatarUrls['48']?.toString() ?? avatarUrls['24']?.toString() ?? '';
+          avatar =
+              avatarUrls['96']?.toString() ??
+              avatarUrls['48']?.toString() ??
+              avatarUrls['24']?.toString() ??
+              '';
         } else if (u['avatar'] != null) {
           avatar = u['avatar'].toString();
         }
@@ -1688,13 +2048,20 @@ class ApiService {
     }
 
     // 4. Merchant Owner Case (owner_type == 'merchant' OR merchant_id > 0)
-    final targetMerchantId = (ownerTypeVal == 'merchant' && ownerIdVal != null && ownerIdVal > 0 ? ownerIdVal : null) ?? merchantIdVal;
+    final targetMerchantId =
+        (ownerTypeVal == 'merchant' && ownerIdVal != null && ownerIdVal > 0
+            ? ownerIdVal
+            : null) ??
+        merchantIdVal;
     if (targetMerchantId != null && targetMerchantId > 0) {
       merchantId = targetMerchantId;
       isMerchant = true;
       if (merchantsCache.containsKey(targetMerchantId)) {
         final m = merchantsCache[targetMerchantId]!;
-        name = m['business_name']?.toString() ?? m['name']?.toString() ?? 'Twicely Merchant';
+        name =
+            m['business_name']?.toString() ??
+            m['name']?.toString() ??
+            'Twicely Merchant';
         avatar = getMerchantLogo(targetMerchantId, m['logo_url']?.toString());
         return buildResult(name, avatar, isMerchant);
       }
@@ -1702,13 +2069,24 @@ class ApiService {
       // Explicit merchant object or merchantName field in pkg payload
       if (pkg['merchant'] is Map) {
         final m = pkg['merchant'] as Map;
-        name = m['name']?.toString() ?? m['business_name']?.toString() ?? m['display_name']?.toString() ?? name;
-        avatar = getMerchantLogo(targetMerchantId, m['logo']?.toString() ?? m['logo_url']?.toString());
+        name =
+            m['name']?.toString() ??
+            m['business_name']?.toString() ??
+            m['display_name']?.toString() ??
+            name;
+        avatar = getMerchantLogo(
+          targetMerchantId,
+          m['logo']?.toString() ?? m['logo_url']?.toString(),
+        );
         return buildResult(name, avatar, isMerchant);
       }
-      if (pkg['merchantName'] != null && pkg['merchantName'].toString().isNotEmpty) {
+      if (pkg['merchantName'] != null &&
+          pkg['merchantName'].toString().isNotEmpty) {
         name = pkg['merchantName'].toString();
-        avatar = getMerchantLogo(targetMerchantId, pkg['merchantLogo']?.toString());
+        avatar = getMerchantLogo(
+          targetMerchantId,
+          pkg['merchantLogo']?.toString(),
+        );
         return buildResult(name, avatar, isMerchant);
       }
 
@@ -1736,8 +2114,16 @@ class ApiService {
     // 5. Presented by (fallback for vendor info if owner profile not resolved)
     if (pkg['presented_by'] is Map) {
       final pb = pkg['presented_by'] as Map;
-      name = pb['name']?.toString() ?? pb['display_name']?.toString() ?? pb['business_name']?.toString() ?? name;
-      avatar = pb['logo']?.toString() ?? pb['avatar']?.toString() ?? pb['logo_url']?.toString() ?? '';
+      name =
+          pb['name']?.toString() ??
+          pb['display_name']?.toString() ??
+          pb['business_name']?.toString() ??
+          name;
+      avatar =
+          pb['logo']?.toString() ??
+          pb['avatar']?.toString() ??
+          pb['logo_url']?.toString() ??
+          '';
       final pbMerchantId = int.tryParse(pb['merchant_id']?.toString() ?? '');
       if (pbMerchantId != null && pbMerchantId > 0) {
         merchantId = pbMerchantId;
@@ -1747,7 +2133,8 @@ class ApiService {
     }
 
     // 6. Manual vendor mode (C2C package with non-listed vendor)
-    if ((pkg['vendor_mode'] == 'manual' || pkg['manual_vendor_name'] != null) && pkg['manual_vendor_name'].toString().isNotEmpty) {
+    if ((pkg['vendor_mode'] == 'manual' || pkg['manual_vendor_name'] != null) &&
+        pkg['manual_vendor_name'].toString().isNotEmpty) {
       name = pkg['manual_vendor_name'].toString();
       avatar = '';
       isMerchant = false;
@@ -1758,5 +2145,3 @@ class ApiService {
     return buildResult(name, avatar, isMerchant);
   }
 }
-
-

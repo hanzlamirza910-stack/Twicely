@@ -407,7 +407,7 @@ class _PackageDetailScreenState extends State<PackageDetailScreen> {
 
     return {
       'id': p['id'],
-      'title': p['title'] ?? 'Package',
+      'title': ApiService.unescapeHtml(p['title']?.toString() ?? 'Package'),
       'imageUrl': imageUrl.isNotEmpty ? imageUrl : 'assets/images/package_spa.jpg',
       'allImages': allImages,
       'originalPrice': 'S\$${original.toStringAsFixed(2)}',
@@ -416,8 +416,8 @@ class _PackageDetailScreenState extends State<PackageDetailScreen> {
       'resalePriceVal': resale,
       'discountBadge': badge,
       'hasHeart': p['liked'] == true,
-      'tag': _buildDynamicTag(p),
-      'merchant': merchantName,
+      'tag': ApiService.unescapeHtml(_buildDynamicTag(p)),
+      'merchant': ApiService.unescapeHtml(merchantName),
       'merchantLogo': merchantLogo,
       'merchant_id': activeMerchantId,
       'owner_id': activeOwnerId,
@@ -606,8 +606,8 @@ class _PackageDetailScreenState extends State<PackageDetailScreen> {
   @override
   Widget build(BuildContext context) {
     final pkg = _detailedPackage ?? widget.package;
-    final title = pkg['title'] ?? 'Package details';
-    final String tag = (pkg['tag'] ?? _buildDynamicTag(pkg)).toString().replaceAll('•', '>');
+    final title = ApiService.unescapeHtml(pkg['title']?.toString() ?? 'Package details');
+    final String tag = ApiService.unescapeHtml((pkg['tag'] ?? _buildDynamicTag(pkg)).toString()).replaceAll('•', '>');
 
     final double basePrice = double.tryParse(pkg['price']?.toString() ?? '') ?? 
                              double.tryParse(pkg['originalPriceVal']?.toString() ?? '') ??

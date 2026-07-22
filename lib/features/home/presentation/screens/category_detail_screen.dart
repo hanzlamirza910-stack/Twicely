@@ -229,13 +229,19 @@ class _CategoryDetailScreenState extends State<CategoryDetailScreen> {
     final String merchantName = ownerInfo['name'] ?? 'Twicely';
     final String merchantLogo = ownerInfo['avatar'] ?? '';
 
+    final String cleanTitle = ApiService.unescapeHtml(apiPkg['title']?.toString() ?? 'Package Listing');
+    final String cleanDescription = ApiService.unescapeHtml(apiPkg['description']?.toString() ?? '');
+    final String cleanMerchantName = ApiService.unescapeHtml(merchantName);
+    final String cleanCategory = ApiService.unescapeHtml(category);
+    final String cleanTag = ApiService.unescapeHtml(tag);
+
     return {
       'id': apiPkg['id'],
       'imageUrl': imageUrl,
       'image': imageUrl,
       'allImages': allImages,
-      'tag': tag,
-      'title': apiPkg['title'] ?? 'Package Listing',
+      'tag': cleanTag,
+      'title': cleanTitle,
       'originalPrice': 'S\$${originalPrice.toStringAsFixed(2)}',
       'resalePrice': 'S\$${resalePrice.toStringAsFixed(2)}',
       'originalPriceVal': originalPrice,
@@ -244,15 +250,15 @@ class _CategoryDetailScreenState extends State<CategoryDetailScreen> {
       'hasHeart': apiPkg['liked'] == true || apiPkg['hasHeart'] == true,
       'discountBadge': discountBadge,
       'discount': discountBadge,
-      'category': category,
-      'description': apiPkg['description'] ?? '',
+      'category': cleanCategory,
+      'description': cleanDescription,
       'validity': apiPkg['validity_date'] ?? apiPkg['valid_until'] ?? '',
       'merchant': {
-        'name': merchantName,
+        'name': cleanMerchantName,
         'logo': merchantLogo,
         'logo_url': merchantLogo,
       },
-      'merchantName': merchantName,
+      'merchantName': cleanMerchantName,
       'merchantLogo': merchantLogo,
       'merchant_id': ownerInfo['merchant_id'],
     };

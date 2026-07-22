@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/services/api_service.dart';
 import '../../../../core/utils/session_manager.dart';
+import 'sale_detail_screen.dart';
 
 class MySalesScreen extends StatefulWidget {
   final bool? isMerchant;
@@ -115,14 +116,12 @@ class _MySalesScreenState extends State<MySalesScreen> {
   }
 
   void _showSaleDetail(Map<String, dynamic> sale) {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (_) => _SaleDetailSheet(
-        sale: sale, fmt: _fmt, payStatus: _payStatus(sale),
-        ordStatus: _ordStatus(sale), statusColor: _statusColor,
-        parseAmt: _parseAmt, isMerchant: _isMerchantMode,
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => SaleDetailScreen(
+          sale: sale,
+          isMerchant: _isMerchantMode,
+        ),
       ),
     );
   }
@@ -379,204 +378,4 @@ class _MySalesScreenState extends State<MySalesScreen> {
   );
 }
 
-// ══ Sale Detail Bottom Sheet ══════════════════════════════════════════════════
 
-class _SaleDetailSheet extends StatelessWidget {
-  final Map<String, dynamic> sale;
-  final String Function(String?) fmt;
-  final String payStatus;
-  final String ordStatus;
-  final Color Function(String) statusColor;
-  final double Function(dynamic) parseAmt;
-  final bool isMerchant;
-
-  const _SaleDetailSheet({
-    required this.sale, required this.fmt, required this.payStatus,
-    required this.ordStatus, required this.statusColor, required this.parseAmt,
-    required this.isMerchant,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final orderNum = sale['order_number']?.toString() ?? '#${sale['id']}';
-    final dateTime = fmt(sale['created_at']?.toString());
-    final buyer = sale['customer_name']?.toString() ?? 'Customer';
-    final buyerEmail = sale['customer_email']?.toString() ?? '';
-    final pkgCount = (sale['package_count'] as num?)?.toInt() ??
-        (sale['package_names'] as List?)?.length ?? 1;
-    final total = parseAmt(sale['total']);
-    final sellerAmt = parseAmt(sale['seller_amount'] ?? sale['total']);
-    final currency = sale['currency']?.toString() ?? 'SGD';
-    final pkgNames = (sale['package_names'] as List?)
-        ?.map((p) => p.toString()).toList() ?? [];
-    final payColor = statusColor(payStatus);
-    final ordColor = statusColor(ordStatus);
-    final holdStatus = sale['hold_status']?.toString() ?? '';
-    final redeemedAt = fmt(sale['redeemed_at']?.toString());
-    final cancellationReason = sale['cancellation_reason']?.toString() ?? '';
-
-    return Container(
-      padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
-      decoration: const BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
-      ),
-      child: SingleChildScrollView(
-        padding: const EdgeInsets.fromLTRB(24, 16, 24, 32),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          // Handle
-          Center(child: Container(width: 40, height: 4,
-              decoration: BoxDecoration(color: Colors.black12,
-                  borderRadius: BorderRadius.circular(2)))),
-          const SizedBox(height: 16),
-
-          // Title row
-          Row(children: [
-            Expanded(child: Text('Order #$orderNum',
-                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold,
-                    color: AppColors.primary, fontFamily: 'Recoleta Alt'))),
-            IconButton(icon: const Icon(Icons.close_rounded, color: AppColors.primary, size: 20),
-                onPressed: () => Navigator.of(context).pop()),
-          ]),
-          if (dateTime.isNotEmpty)
-            Padding(padding: const EdgeInsets.only(top: 3),
-              child: Row(children: [
-                Icon(Icons.calendar_today_outlined, size: 11,
-                    color: AppColors.primary.withValues(alpha: 0.4)),
-                const SizedBox(width: 4),
-                Expanded(child: Text(dateTime, style: TextStyle(fontSize: 11,
-                    color: AppColors.primary.withValues(alpha: 0.5)),
-                    overflow: TextOverflow.ellipsis)),
-              ])),
-
-          // Badges
-          const SizedBox(height: 10),
-          Wrap(spacing: 6, runSpacing: 4, children: [
-            _badge(payStatus, payColor),
-            if (ordStatus != payStatus) _badge(ordStatus, ordColor),
-          ]),
-
-          const SizedBox(height: 16),
-
-          // Buyer + count + amount
-          Row(children: [
-            Icon(Icons.person_outline_rounded, size: 14,
-                color: AppColors.primary.withValues(alpha: 0.5)),
-            const SizedBox(width: 5),
-            Expanded(child: Text('Buyer: $buyer',
-                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600,
-                    color: AppColors.primary.withValues(alpha: 0.7)))),
-            Icon(Icons.inventory_2_outlined, size: 13,
-                color: AppColors.primary.withValues(alpha: 0.4)),
-            const SizedBox(width: 3),
-            Text('$pkgCount Package${pkgCount != 1 ? 's' : ''}',
-                style: TextStyle(fontSize: 11,
-                    color: AppColors.primary.withValues(alpha: 0.5))),
-          ]),
-          const SizedBox(height: 6),
-          Align(alignment: Alignment.centerRight,
-              child: Text('\$ ${total.toStringAsFixed(2)}',
-                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w900,
-                      color: Color(0xFF273DB7)))),
-
-          const Divider(height: 24, color: Colors.black12),
-
-          // Two-column details
-          Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            // Order Details
-            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              _sectionTitle('Order Details'),
-              const SizedBox(height: 10),
-              _lbl('ORDER NUMBER'), _val(orderNum),
-              const SizedBox(height: 8),
-              _lbl('BUYER'), _val(buyer),
-              if (buyerEmail.isNotEmpty) ...[
-                const SizedBox(height: 8),
-                _lbl('EMAIL'), _val(buyerEmail),
-              ],
-              const SizedBox(height: 8),
-              _lbl('PURCHASE DATE'), _val(dateTime.isNotEmpty ? dateTime : '—'),
-              if (redeemedAt.isNotEmpty) ...[
-                const SizedBox(height: 8),
-                _lbl('REDEEMED AT'), _val(redeemedAt),
-              ],
-              if (holdStatus.isNotEmpty) ...[
-                const SizedBox(height: 8),
-                _lbl('HOLD STATUS'), _val(_cap(holdStatus)),
-              ],
-              if (cancellationReason.isNotEmpty) ...[
-                const SizedBox(height: 8),
-                _lbl('CANCELLATION REASON'),
-                _val(_cap(cancellationReason.replaceAll('_', ' '))),
-              ],
-            ])),
-            const SizedBox(width: 16),
-            // Payment Details
-            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              _sectionTitle('Payment Details'),
-              const SizedBox(height: 10),
-              _lbl('TOTAL AMOUNT'),
-              Text('\$${total.toStringAsFixed(2)}',
-                  style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w900,
-                      color: AppColors.primary)),
-              if (!isMerchant && sellerAmt != total) ...[
-                const SizedBox(height: 8),
-                _lbl('YOUR EARNINGS'),
-                Text('$currency ${sellerAmt.toStringAsFixed(2)}',
-                    style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold,
-                        color: Color(0xFF16A34A))),
-              ],
-              const SizedBox(height: 10),
-              _lbl('PAYMENT STATUS'),
-              const SizedBox(height: 4),
-              _badge(payStatus, payColor),
-              const SizedBox(height: 8),
-              _lbl('ORDER STATUS'),
-              const SizedBox(height: 4),
-              _badge(ordStatus, ordColor),
-            ])),
-          ]),
-
-          // Package list
-          if (pkgNames.isNotEmpty) ...[
-            const Divider(height: 24, color: Colors.black12),
-            _lbl('PACKAGES'),
-            const SizedBox(height: 6),
-            ...pkgNames.map((n) => Padding(padding: const EdgeInsets.only(bottom: 3),
-              child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                const Icon(Icons.circle, size: 5, color: AppColors.primary),
-                const SizedBox(width: 6),
-                Expanded(child: Text(n, style: const TextStyle(fontSize: 11,
-                    color: AppColors.primary, fontWeight: FontWeight.w500))),
-              ]))),
-          ],
-        ]),
-      ),
-    );
-  }
-
-  Widget _badge(String label, Color color) => Container(
-    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-    decoration: BoxDecoration(color: color.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: color.withValues(alpha: 0.3))),
-    child: Row(mainAxisSize: MainAxisSize.min, children: [
-      Icon(Icons.circle, size: 6, color: color),
-      const SizedBox(width: 4),
-      Text(label, style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: color)),
-    ]),
-  );
-
-  Widget _sectionTitle(String t) => Text(t, style: const TextStyle(
-      fontSize: 13, fontWeight: FontWeight.bold, color: AppColors.primary));
-
-  Widget _lbl(String t) => Text(t, style: TextStyle(fontSize: 9, fontWeight: FontWeight.w700,
-      letterSpacing: 0.5, color: AppColors.primary.withValues(alpha: 0.45)));
-
-  Widget _val(String t) => Padding(padding: const EdgeInsets.only(top: 2),
-      child: Text(t, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600,
-          color: AppColors.primary)));
-
-  String _cap(String s) =>
-      s.isEmpty ? s : '${s[0].toUpperCase()}${s.substring(1)}';
-}

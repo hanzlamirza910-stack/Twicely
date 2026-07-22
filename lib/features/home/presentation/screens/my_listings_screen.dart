@@ -51,13 +51,22 @@ class _MyListingsScreenState extends State<MyListingsScreen> {
             .map((e) => Map<String, dynamic>.from(e as Map))
             .toList();
 
-        // Enrich packages with full details from /packages/:id if necessary
+        // Show packages immediately with whatever data we have
+        if (mounted) {
+          setState(() {
+            _packages = rawList;
+            _isLoading = false;
+          });
+        }
+
+        // Silently enrich packages with full details in background
         final enriched = await Future.wait(rawList.map((p) async {
           final int? id = int.tryParse(p['id']?.toString() ?? '');
           if (id != null) {
             final detailRes = await ApiService.getPackageById(id);
             if (detailRes['success'] == true && detailRes['data'] is Map) {
-              final Map<String, dynamic> detail = Map<String, dynamic>.from(detailRes['data'] as Map);
+              final Map<String, dynamic> detail =
+                  Map<String, dynamic>.from(detailRes['data'] as Map);
               return {...p, ...detail};
             }
           }
@@ -67,7 +76,6 @@ class _MyListingsScreenState extends State<MyListingsScreen> {
         if (mounted) {
           setState(() {
             _packages = enriched;
-            _isLoading = false;
           });
         }
       } else {
@@ -592,14 +600,16 @@ class _MyListingsScreenState extends State<MyListingsScreen> {
   }
 
   Widget _buildPackageCard(Map<String, dynamic> pkg) {
-    final title = pkg['title']?.toString() ?? 'Untitled Package';
+    final title = ApiService.unescapeHtml(pkg['title']?.toString() ?? 'Untitled Package');
     final status = _statusLabel(pkg);
     final statusCol = _statusColor(status);
     final price = _parseAmt(pkg['price']);
     final origPrice = _parseAmt(pkg['original_purchase_price'] ?? pkg['original_price']);
-    final vendorName = pkg['manual_vendor_name']?.toString() ??
-        pkg['presented_by']?['name']?.toString() ??
-        '';
+    final vendorName = ApiService.unescapeHtml(
+      pkg['manual_vendor_name']?.toString() ??
+          pkg['presented_by']?['name']?.toString() ??
+          '',
+    );
     final dateStr = _fmtDate(pkg['created_at']?.toString());
 
     String imageUrl = 'assets/images/package_spa.jpg';
@@ -796,31 +806,53 @@ class _MyListingsScreenState extends State<MyListingsScreen> {
 
                 Row(
                   children: [
-                    InkWell(
-                      onTap: () => _openEditPackage(pkg),
-                      borderRadius: BorderRadius.circular(10),
-                      child: Container(
-                        padding: const EdgeInsets.all(8),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFEFF4FF),
-                          borderRadius: BorderRadius.circular(10),
+                    if (pkg['is_owner'] != false) ...[
+                      InkWell(
+                        onTap: () => _openEditPackage(pkg),
+                        borderRadius: BorderRadius.circular(10),
+                        child: Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFEFF4FF),
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: const Icon(Icons.edit_outlined, size: 18, color: Color(0xFF273DB7)),
                         ),
-                        child: const Icon(Icons.edit_outlined, size: 18, color: Color(0xFF273DB7)),
                       ),
-                    ),
-                    const SizedBox(width: 8),
-                    InkWell(
-                      onTap: () => _deletePackage(pkg),
-                      borderRadius: BorderRadius.circular(10),
-                      child: Container(
-                        padding: const EdgeInsets.all(8),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFFEE2E2),
-                          borderRadius: BorderRadius.circular(10),
+                      const SizedBox(width: 8),
+                      InkWell(
+                        onTap: () => _deletePackage(pkg),
+                        borderRadius: BorderRadius.circular(10),
+                        child: Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFFEE2E2),
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: const Icon(Icons.delete_outline_rounded, size: 18, color: Color(0xFFDC2626)),
                         ),
-                        child: const Icon(Icons.delete_outline_rounded, size: 18, color: Color(0xFFDC2626)),
                       ),
-                    ),
+                    ] else ...[
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: Colors.grey.shade100,
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: Colors.grey.shade300),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.visibility_outlined, size: 14, color: Colors.grey.shade500),
+                            const SizedBox(width: 4),
+                            Text(
+                              'View Only',
+                              style: TextStyle(fontSize: 11, color: Colors.grey.shade500, fontWeight: FontWeight.w600),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
                   ],
                 ),
               ],

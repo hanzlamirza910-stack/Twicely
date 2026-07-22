@@ -211,7 +211,7 @@ class _SellerProfileScreenState extends State<SellerProfileScreen> {
 
     return {
       'id': p['id'],
-      'title': p['title'] ?? 'Package',
+      'title': ApiService.unescapeHtml(p['title']?.toString() ?? 'Package'),
       'imageUrl': imageUrl.isNotEmpty ? imageUrl : 'assets/images/package_spa.jpg',
       'allImages': allImages,
       'originalPrice': 'S\$${originalPrice.toStringAsFixed(2)}',
@@ -219,8 +219,8 @@ class _SellerProfileScreenState extends State<SellerProfileScreen> {
       'originalPriceVal': originalPrice,
       'resalePriceVal': resalePrice,
       'discountBadge': discountBadge,
-      'tag': tag,
-      'merchant': pkgMerchantName,
+      'tag': ApiService.unescapeHtml(tag),
+      'merchant': ApiService.unescapeHtml(pkgMerchantName),
       'merchantLogo': pkgMerchantLogo,
       'merchant_id': ownerInfo['merchant_id'] ?? widget.merchantId,
       'owner_id': ownerInfo['owner_id'] ?? widget.ownerId,

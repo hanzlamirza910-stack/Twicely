@@ -17,7 +17,7 @@ class SplashScreen extends StatefulWidget {
 class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderStateMixin {
   late AnimationController _controller;
   late Animation<double> _animation;
-  String _appVersion = '1.0.1+2';
+  String _appVersion = '1.0.2+4';
 
   Future<void> _loadVersion() async {
     try {

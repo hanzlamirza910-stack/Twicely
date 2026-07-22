@@ -1,4 +1,3 @@
-import 'dart:io';
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import '../../../../core/constants/app_colors.dart';
@@ -15,14 +14,13 @@ import 'payout_screen.dart';
 import 'my_listings_screen.dart';
 import 'add_package_screen.dart';
 import 'package_detail_screen.dart';
+import 'edit_profile_screen.dart';
 import 'notifications_screen.dart';
 import 'packages_list_screen.dart';
 import '../../../../core/services/api_service.dart';
 import 'merchant_dashboard.dart';
-import '../../../../core/widgets/custom_snackbar.dart';
 import '../../../../core/widgets/package_image_carousel.dart';
 import '../../../../core/widgets/shimmer_effect.dart';
-import 'package:image_picker/image_picker.dart';
 
 
 class HomeScreen extends StatefulWidget {
@@ -52,9 +50,8 @@ class _HomeScreenState extends State<HomeScreen> {
   int _salesCount = 0;
   int _ordersCount = 0;
   int _packagesCount = 0;
-  final ImagePicker _picker = ImagePicker();
-  bool _isUploadingAvatar = false;
-  int _avatarCacheBuster = 0;
+  final bool _isUploadingAvatar = false;
+  final int _avatarCacheBuster = 0;
 
   String _getAvatarUrl(Map<String, dynamic> data) {
     String rawUrl = '';
@@ -474,27 +471,33 @@ class _HomeScreenState extends State<HomeScreen> {
       likesCount = 1;
     }
 
+    final String cleanTitle = ApiService.unescapeHtml(apiPkg['title']?.toString() ?? 'Package Listing');
+    final String cleanDescription = ApiService.unescapeHtml(apiPkg['description']?.toString() ?? '');
+    final String cleanMerchantName = ApiService.unescapeHtml(merchantName);
+    final String cleanCategory = ApiService.unescapeHtml(category);
+    final String cleanTag = ApiService.unescapeHtml(tag);
+
     return {
       'id': apiPkg['id'],
       'imageUrl': imageUrl,
       'allImages': allImages,
-      'tag': tag,
-      'title': apiPkg['title'] ?? 'Package Listing',
+      'tag': cleanTag,
+      'title': cleanTitle,
       'originalPrice': 'S\$${originalPrice.toStringAsFixed(2)}',
       'resalePrice': 'S\$${resalePrice.toStringAsFixed(2)}',
       'originalPriceVal': originalPrice,
       'resalePriceVal': resalePrice,
       'hasHeart': apiPkg['liked'] == true || apiPkg['hasHeart'] == true,
       'discountBadge': discountBadge,
-      'category': category,
-      'description': apiPkg['description'] ?? '',
+      'category': cleanCategory,
+      'description': cleanDescription,
       'validity': apiPkg['validity_date'] ?? apiPkg['valid_until'] ?? '',
       'merchant': {
-        'name': merchantName,
+        'name': cleanMerchantName,
         'logo': merchantLogo,
         'logo_url': merchantLogo,
       },
-      'merchantName': merchantName,
+      'merchantName': cleanMerchantName,
       'merchantLogo': merchantLogo,
       'merchant_id': activeMerchantId,
       'owner_id': activeOwnerId,
@@ -2271,7 +2274,16 @@ class _HomeScreenState extends State<HomeScreen> {
                   Positioned(
                     bottom: 0, right: 4,
                     child: GestureDetector(
-                      onTap: () => _showEditProfileSheet(name, phone),
+                      onTap: () async {
+                        final updated = await Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => EditProfileScreen(profileData: _profileData),
+                          ),
+                        );
+                        if (updated == true) {
+                          _loadProfile();
+                        }
+                      },
                       child: Container(
                         padding: const EdgeInsets.all(6),
                         decoration: const BoxDecoration(color: Color(0xFFF27B6E), shape: BoxShape.circle),
@@ -2454,383 +2466,9 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  void _showEditProfileSheet(String currentName, String currentPhone) {
-    final nameCtrl = TextEditingController(text: currentName);
-    final phoneCtrl = TextEditingController(text: currentPhone);
-    final email = _profileData['email']?.toString() ?? SessionManager.userEmail ?? '';
-    final initials = currentName.split(' ').where((w) => w.isNotEmpty).take(2).map((w) => w[0].toUpperCase()).join();
-    final avatarUrl = _getAvatarUrl(_profileData);
-    bool isSaving = false;
-    String? localImagePath;
 
-    debugPrint('[ProfileEdit] Opening Edit Profile bottom sheet.');
 
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) => StatefulBuilder(
-        builder: (ctx, setModalState) {
-          final isUploading = _isUploadingAvatar;
-          return Container(
-            padding: EdgeInsets.only(
-              left: 24, right: 24, top: 24,
-              bottom: MediaQuery.of(ctx).viewInsets.bottom + 24,
-            ),
-            decoration: const BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
-            ),
-            child: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const Text('Edit Profile',
-                          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppColors.primary, fontFamily: 'Recoleta Alt')),
-                      IconButton(
-                        icon: const Icon(Icons.close),
-                        onPressed: () {
-                          debugPrint('[ProfileEdit] Closing edit sheet via close button.');
-                          Navigator.of(ctx).pop();
-                        },
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-                  
-                  // Avatar pick option inside sheet
-                  Center(
-                    child: Stack(
-                      children: [
-                        Container(
-                          width: 88,
-                          height: 88,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            border: Border.all(color: AppColors.borderLight, width: 1.5),
-                          ),
-                          child: ClipRRect(
-                            borderRadius: BorderRadius.circular(44),
-                            child: isUploading
-                                ? const Center(
-                                    child: SizedBox(
-                                      width: 24,
-                                      height: 24,
-                                      child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.primary),
-                                    ),
-                                  )
-                                : localImagePath != null
-                                    ? Image.file(
-                                        File(localImagePath!),
-                                        fit: BoxFit.cover,
-                                      )
-                                    : avatarUrl.isNotEmpty
-                                        ? Image.network(
-                                            avatarUrl,
-                                            fit: BoxFit.cover,
-                                            errorBuilder: (_, __, ___) => _buildDefaultAvatarCircle(initials),
-                                          )
-                                        : _buildDefaultAvatarCircle(initials),
-                          ),
-                        ),
-                        Positioned(
-                          bottom: 0,
-                          right: 0,
-                          child: GestureDetector(
-                            onTap: () {
-                              _showImageSourceActionSheet(
-                                context,
-                                false,
-                                onImagePicked: (path) {
-                                  setModalState(() {
-                                    localImagePath = path;
-                                  });
-                                  debugPrint('[ProfileEdit] Local image selected: $path');
-                                },
-                              );
-                            },
-                            child: Container(
-                              padding: const EdgeInsets.all(6),
-                              decoration: const BoxDecoration(
-                                color: AppColors.primary,
-                                shape: BoxShape.circle,
-                              ),
-                              child: const Icon(Icons.camera_alt_rounded, color: Colors.white, size: 12),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  Center(
-                    child: TextButton(
-                      onPressed: () {
-                        _showImageSourceActionSheet(
-                          context,
-                          false,
-                          onImagePicked: (path) {
-                            setModalState(() {
-                              localImagePath = path;
-                            });
-                            debugPrint('[ProfileEdit] Local image selected: $path');
-                          },
-                        );
-                      },
-                      child: const Text('Change Profile Picture', style: TextStyle(color: AppColors.primary, fontWeight: FontWeight.bold, fontSize: 13)),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  
-                  // Text Fields
-                  TextField(
-                    controller: nameCtrl,
-                    style: const TextStyle(fontSize: 14, color: AppColors.primary),
-                    decoration: InputDecoration(
-                      labelText: 'Full Name *',
-                      labelStyle: TextStyle(color: AppColors.primary.withValues(alpha: 0.6)),
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
-                      focusedBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(14),
-                        borderSide: const BorderSide(color: AppColors.primary, width: 1.5),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: TextEditingController(text: email),
-                    readOnly: true,
-                    style: TextStyle(fontSize: 14, color: AppColors.primary.withValues(alpha: 0.5)),
-                    decoration: InputDecoration(
-                      labelText: 'Email Address',
-                      labelStyle: TextStyle(color: AppColors.primary.withValues(alpha: 0.6)),
-                      filled: true,
-                      fillColor: const Color(0xFFF8FAFC),
-                      helperText: 'Email address cannot be changed.',
-                      helperStyle: const TextStyle(color: Colors.black38, fontSize: 10),
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
-                      focusedBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(14),
-                        borderSide: BorderSide(color: AppColors.primary.withValues(alpha: 0.2)),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: phoneCtrl,
-                    keyboardType: TextInputType.phone,
-                    style: const TextStyle(fontSize: 14, color: AppColors.primary),
-                    decoration: InputDecoration(
-                      labelText: 'Phone Number',
-                      labelStyle: TextStyle(color: AppColors.primary.withValues(alpha: 0.6)),
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
-                      focusedBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(14),
-                        borderSide: const BorderSide(color: AppColors.primary, width: 1.5),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 20),
-                  ElevatedButton(
-                    onPressed: isSaving
-                        ? null
-                        : () async {
-                            if (nameCtrl.text.trim().isEmpty) {
-                              CustomSnackBar.show(
-                                context,
-                                message: 'Full Name is required.',
-                                type: SnackBarType.error,
-                              );
-                              return;
-                            }
-                            setModalState(() => isSaving = true);
-                            debugPrint('[ProfileEdit] Save transaction started.');
 
-                            bool success = true;
-                            if (localImagePath != null) {
-                              debugPrint('[ProfileEdit] Uploading local image file to server: $localImagePath');
-                              final uploadRes = await ApiService.uploadUserAvatar(localImagePath!);
-                              if (uploadRes['success'] != true) {
-                                success = false;
-                                debugPrint('[ProfileEdit] Image upload failed: ${uploadRes['message']}');
-                                if (ctx.mounted) {
-                                  CustomSnackBar.show(
-                                    context,
-                                    message: uploadRes['message'] ?? 'Image upload failed',
-                                    type: SnackBarType.error,
-                                  );
-                                }
-                              } else {
-                                debugPrint('[ProfileEdit] Image uploaded successfully.');
-                              }
-                            }
-
-                            if (success) {
-                              debugPrint('[ProfileEdit] Updating profile details: name="${nameCtrl.text.trim()}", phone="${phoneCtrl.text.trim()}"');
-                              final res = await ApiService.updateUserMe({
-                                'name': nameCtrl.text.trim(),
-                                'phone': phoneCtrl.text.trim(),
-                              });
-                              if (!ctx.mounted) return;
-                              final isSuccess = res['success'] == true || res.containsKey('id') || res.containsKey('email');
-                              if (isSuccess) {
-                                debugPrint('[ProfileEdit] Profile details updated successfully.');
-                                setState(() {
-                                  _avatarCacheBuster = DateTime.now().millisecondsSinceEpoch;
-                                });
-                                _loadProfile();
-                                CustomSnackBar.show(
-                                  context,
-                                  message: 'Profile updated!',
-                                  type: SnackBarType.success,
-                                );
-                                debugPrint('[ProfileEdit] Closing edit sheet (successful save).');
-                                Navigator.of(ctx).pop();
-                              } else {
-                                debugPrint('[ProfileEdit] Profile details update failed: ${res['message']}');
-                                CustomSnackBar.show(
-                                  context,
-                                  message: res['message'] ?? 'Update failed',
-                                  type: SnackBarType.error,
-                                );
-                              }
-                            }
-                            setModalState(() => isSaving = false);
-                          },
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFFFBBD03),
-                      foregroundColor: Colors.black,
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                      elevation: 0,
-                    ),
-                    child: isSaving
-                        ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.black))
-                        : const Text('Save Changes', style: TextStyle(fontWeight: FontWeight.bold)),
-                  ),
-                ],
-              ),
-            ),
-          );
-        },
-      ),
-    ).then((_) {
-      debugPrint('[ProfileEdit] Edit Profile bottom sheet dismissed/closed.');
-    });
-  }
-
-  void _showImageSourceActionSheet(BuildContext context, bool isMerchant, {void Function(String)? onImagePicked}) {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.transparent,
-      builder: (BuildContext ctx) {
-        return Container(
-          decoration: const BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-          ),
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              const Text(
-                'Select Image Source',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppColors.primary, fontFamily: 'Recoleta Alt'),
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 20),
-              ListTile(
-                leading: const Icon(Icons.camera_alt_outlined, color: AppColors.primary),
-                title: const Text('Camera', style: TextStyle(color: AppColors.primary, fontWeight: FontWeight.w600)),
-                onTap: () async {
-                  Navigator.of(ctx).pop();
-                  if (onImagePicked != null) {
-                    final XFile? picked = await _picker.pickImage(source: ImageSource.camera);
-                    if (picked != null) {
-                      onImagePicked(picked.path);
-                    }
-                  } else {
-                    _pickAndUploadImage(ImageSource.camera, isMerchant);
-                  }
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.photo_library_outlined, color: AppColors.primary),
-                title: const Text('Gallery', style: TextStyle(color: AppColors.primary, fontWeight: FontWeight.w600)),
-                onTap: () async {
-                  Navigator.of(ctx).pop();
-                  if (onImagePicked != null) {
-                    final XFile? picked = await _picker.pickImage(source: ImageSource.gallery);
-                    if (picked != null) {
-                      onImagePicked(picked.path);
-                    }
-                  } else {
-                    _pickAndUploadImage(ImageSource.gallery, isMerchant);
-                  }
-                },
-              ),
-              const SizedBox(height: 10),
-            ],
-          ),
-        );
-      },
-    );
-  }
-
-  Future<void> _pickAndUploadImage(ImageSource source, bool isMerchant) async {
-    try {
-      final XFile? picked = await _picker.pickImage(source: source);
-      if (picked == null) return;
-
-      setState(() {
-        _isUploadingAvatar = true;
-      });
-
-      final res = isMerchant 
-          ? await ApiService.uploadMerchantLogo(picked.path)
-          : await ApiService.uploadUserAvatar(picked.path);
-
-      setState(() {
-        _isUploadingAvatar = false;
-      });
-
-      if (!mounted) return;
-
-      if (res['success'] == true) {
-        setState(() {
-          _avatarCacheBuster = DateTime.now().millisecondsSinceEpoch;
-        });
-        _loadProfile();
-        CustomSnackBar.show(
-          context,
-          message: 'Profile picture updated successfully!',
-          type: SnackBarType.success,
-        );
-      } else {
-        CustomSnackBar.show(
-          context,
-          message: res['message'] ?? 'Upload failed',
-          type: SnackBarType.error,
-        );
-      }
-    } catch (e) {
-      setState(() {
-        _isUploadingAvatar = false;
-      });
-      if (mounted) {
-        CustomSnackBar.show(
-          context,
-          message: 'Failed to upload: $e',
-          type: SnackBarType.error,
-        );
-      }
-    }
-  }
 
   Widget _buildProfileOption({
     required String title,

@@ -36,7 +36,8 @@ class TwicelyApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       theme: AppTheme.lightTheme,
       darkTheme: AppTheme.darkTheme,
-      themeMode: ThemeMode.light, // Locked to Light Mode to ensure the cream #fff8ea background is shown
+      themeMode: ThemeMode
+          .light, // Locked to Light Mode to ensure the cream #fff8ea background is shown
       home: const SplashScreen(),
     );
   }
