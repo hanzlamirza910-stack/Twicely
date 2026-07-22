@@ -32,7 +32,11 @@ class _PackageDetailScreenState extends State<PackageDetailScreen> {
   @override
   void initState() {
     super.initState();
-    _isFavorited = widget.package['hasHeart'] == true;
+    final rawId = widget.package['id'];
+    final intId = rawId is int ? rawId : int.tryParse(rawId?.toString() ?? '');
+    _isFavorited = widget.package['hasHeart'] == true ||
+        widget.package['liked'] == true ||
+        (intId != null && ApiService.wishlistIdsCache.contains(intId));
     _fetchDetails();
     _fetchOwnerDetails(widget.package);
     _fetchSimilar(pkg: widget.package);
@@ -43,6 +47,12 @@ class _PackageDetailScreenState extends State<PackageDetailScreen> {
     if (rawId == null) return;
     final intId = rawId is int ? rawId : int.tryParse(rawId.toString());
     if (intId == null) return;
+
+    final bool initialFav = _isFavorited ||
+        widget.package['hasHeart'] == true ||
+        widget.package['liked'] == true ||
+        ApiService.wishlistIdsCache.contains(intId);
+
     if (mounted) setState(() => _isLoading = true);
     final res = await ApiService.getPackageById(intId);
     if (res['success'] == true && res['data'] != null) {
@@ -50,7 +60,7 @@ class _PackageDetailScreenState extends State<PackageDetailScreen> {
         final pkgData = res['data'] as Map<String, dynamic>;
         setState(() {
           _detailedPackage = pkgData;
-          _isFavorited = _detailedPackage?['liked'] == true || _detailedPackage?['hasHeart'] == true;
+          _isFavorited = initialFav || _detailedPackage?['liked'] == true || _detailedPackage?['hasHeart'] == true;
           _isLoading = false;
         });
         _fetchSimilar(pkg: _detailedPackage!);
@@ -753,7 +763,7 @@ class _PackageDetailScreenState extends State<PackageDetailScreen> {
                       ),
                       child: Icon(
                         _isFavorited ? Icons.favorite_rounded : Icons.favorite_outline_rounded,
-                        color: Colors.red,
+                        color: _isFavorited ? const Color(0xFFFF014E) : Colors.black45,
                         size: 20,
                       ),
                     ),

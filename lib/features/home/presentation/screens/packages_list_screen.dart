@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/services/api_service.dart';
+import '../../../../core/utils/session_manager.dart';
 import '../../../../core/widgets/package_image_carousel.dart';
 import '../../../../core/widgets/marketplace_package_card.dart';
 import '../../../../core/widgets/shimmer_effect.dart';
@@ -129,6 +130,9 @@ class _PackagesListScreenState extends State<PackagesListScreen> {
     }
 
     final categorySlug = _filterSlugMap[_selectedFilter];
+    if (SessionManager.isLoggedIn) {
+      await ApiService.getUserWishlist();
+    }
     final res = await ApiService.getPackages(
       page: _page,
       perPage: 50,
@@ -395,7 +399,8 @@ class _PackagesListScreenState extends State<PackagesListScreen> {
       'currency': p['currency'] ?? 'SGD',
       'description': cleanDescription,
       'validity': p['validity_date'] ?? p['valid_until'] ?? '',
-      'hasHeart': p['liked'] == true,
+      'hasHeart': p['liked'] == true || p['hasHeart'] == true || (p['id'] != null && ApiService.wishlistIdsCache.contains(int.tryParse(p['id'].toString()))),
+      'liked': p['liked'] == true || p['hasHeart'] == true || (p['id'] != null && ApiService.wishlistIdsCache.contains(int.tryParse(p['id'].toString()))),
       'likesCount': likesCount,
       'merchant_id': ownerInfo['merchant_id'],
       'owner_id': p['owner_id'],

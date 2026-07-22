@@ -42,6 +42,7 @@ class ApiService {
 
   // Package Categories Cache (maps packageId -> list of parent categories it belongs to)
   static Map<int, List<String>> packageCategoriesCache = {};
+  static Set<int> wishlistIdsCache = {};
 
   static Future<void> initPackageCategoriesCache() async {
     try {
@@ -1195,6 +1196,7 @@ class ApiService {
 
   // 10. Like Package (Add to wishlist)
   static Future<Map<String, dynamic>> likePackage(int id) async {
+    wishlistIdsCache.add(id);
     try {
       final response = await post(
         '/packages/$id/like',
@@ -1209,6 +1211,7 @@ class ApiService {
 
   // 11. Unlike Package (Remove from wishlist)
   static Future<Map<String, dynamic>> unlikePackage(int id) async {
+    wishlistIdsCache.remove(id);
     try {
       final response = await delete('/packages/$id/like', authenticated: true);
       return _safeDecode(response, 'Failed to remove from wishlist.');
@@ -1388,7 +1391,14 @@ class ApiService {
     try {
       final path = '/users/me/wishlist?page=$page&per_page=$perPage';
       final response = await get(path, authenticated: true);
-      return _safeDecode(response, 'Failed to fetch wishlist.');
+      final res = _safeDecode(response, 'Failed to fetch wishlist.');
+      if (res['success'] == true && res['data'] is List) {
+        for (var item in res['data'] as List) {
+          final id = int.tryParse(item['id']?.toString() ?? '');
+          if (id != null) wishlistIdsCache.add(id);
+        }
+      }
+      return res;
     } catch (e) {
       return {'success': false, 'message': 'Failed to fetch wishlist: $e'};
     }

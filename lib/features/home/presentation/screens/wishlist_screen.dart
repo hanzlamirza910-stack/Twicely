@@ -199,6 +199,7 @@ class _WishlistScreenState extends State<WishlistScreen> {
       'resalePriceVal': resale,
       'discountBadge': discountBadge,
       'hasHeart': true,
+      'liked': true,
       'merchant_id': activeMerchantId,
       'owner_id': activeOwnerId,
       'isMerchantOwner': isMerchantOwner,

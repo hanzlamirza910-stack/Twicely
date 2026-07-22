@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../services/api_service.dart';
+import '../utils/session_manager.dart';
 import 'package_image_carousel.dart';
 
 class MarketplacePackageCard extends StatelessWidget {
@@ -107,8 +108,7 @@ class MarketplacePackageCard extends StatelessWidget {
     );
     final merchantLogo = package['merchantLogo']?.toString() ?? presented['logo']?.toString() ?? presented['avatar']?.toString();
 
-    // Likes count
-    final likesCount = int.tryParse(package['likesCount']?.toString() ?? package['likes_count']?.toString() ?? '0') ?? 0;
+
 
     // Images
     List<String> images = [];
@@ -275,21 +275,77 @@ class MarketplacePackageCard extends StatelessWidget {
                           ),
                         ),
                         const SizedBox(width: 3),
-                        GestureDetector(
-                          onTap: onFavoriteTap,
-                          child: Icon(
-                            isFavorite ? Icons.favorite_rounded : Icons.favorite_outline_rounded,
-                            size: 12,
-                            color: isFavorite ? const Color(0xFFFBBD03) : Colors.black38,
-                          ),
-                        ),
-                        const SizedBox(width: 2),
-                        Text(
-                          '$likesCount',
-                          style: TextStyle(
-                            fontSize: 9,
-                            color: Colors.black.withValues(alpha: 0.6),
-                          ),
+                        StatefulBuilder(
+                          builder: (context, setCardState) {
+                            final pkgId = int.tryParse(package['id']?.toString() ?? '');
+                            final bool isFav = isFavorite ||
+                                package['hasHeart'] == true ||
+                                package['liked'] == true ||
+                                (pkgId != null && ApiService.wishlistIdsCache.contains(pkgId));
+
+                            int currentLikes = int.tryParse(
+                                  package['likesCount']?.toString() ??
+                                  package['likes_count']?.toString() ??
+                                  package['likes']?.toString() ?? '0',
+                                ) ?? 0;
+                            if (isFav && currentLikes == 0) {
+                              currentLikes = 1;
+                            }
+
+                            return Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                GestureDetector(
+                                  onTap: () async {
+                                    if (onFavoriteTap != null) {
+                                      onFavoriteTap!();
+                                      setCardState(() {});
+                                      return;
+                                    }
+                                    if (pkgId == null) return;
+                                    if (!SessionManager.isLoggedIn) {
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        const SnackBar(content: Text('Please login to manage your wishlist.')),
+                                      );
+                                      return;
+                                    }
+
+                                    if (isFav) {
+                                      ApiService.wishlistIdsCache.remove(pkgId);
+                                      package['hasHeart'] = false;
+                                      package['liked'] = false;
+                                      if (currentLikes > 0) currentLikes--;
+                                      package['likesCount'] = currentLikes;
+                                      setCardState(() {});
+                                      await ApiService.unlikePackage(pkgId);
+                                    } else {
+                                      ApiService.wishlistIdsCache.add(pkgId);
+                                      package['hasHeart'] = true;
+                                      package['liked'] = true;
+                                      currentLikes++;
+                                      package['likesCount'] = currentLikes;
+                                      setCardState(() {});
+                                      await ApiService.likePackage(pkgId);
+                                    }
+                                  },
+                                  child: Icon(
+                                    isFav ? Icons.favorite_rounded : Icons.favorite_outline_rounded,
+                                    size: 13,
+                                    color: isFav ? const Color(0xFFFF014E) : Colors.black38,
+                                  ),
+                                ),
+                                const SizedBox(width: 3),
+                                Text(
+                                  '$currentLikes',
+                                  style: TextStyle(
+                                    fontSize: 9,
+                                    color: Colors.black.withValues(alpha: 0.6),
+                                    fontWeight: isFav ? FontWeight.bold : FontWeight.normal,
+                                  ),
+                                ),
+                              ],
+                            );
+                          },
                         ),
                       ],
                     ),
