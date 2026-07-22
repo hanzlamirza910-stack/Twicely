@@ -1070,7 +1070,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 const SizedBox(width: 14),
                 _buildCategoryItem('Spa &\nMassage', Icons.opacity_rounded, const Color(0xFFE8EFFF), const Color(0xFF005FAF), 'Spa & Massage'),
                 const SizedBox(width: 14),
-                _buildCategoryItem('Hair &\nNails', Icons.content_cut_rounded, const Color(0xFFFFF8D4), const Color(0xFF8B6B00), 'Beauty & Nails'),
+                _buildCategoryItem('Beauty &\nNails', Icons.content_cut_rounded, const Color(0xFFFFF8D4), const Color(0xFF8B6B00), 'Beauty & Nails'),
                 const SizedBox(width: 14),
                 _buildCategoryItem('Gym &\nFitness', Icons.fitness_center_rounded, const Color(0xFFE8F8E9), const Color(0xFF1B6A26), 'Gym & Fitness'),
                 const SizedBox(width: 14),

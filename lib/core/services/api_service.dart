@@ -1416,6 +1416,52 @@ class ApiService {
     }
   }
 
+  // Start Redemption (Send OTP)
+  static Future<Map<String, dynamic>> startRedemption(int orderId) async {
+    try {
+      final response = await post(
+        '/orders/$orderId/redemption/start',
+        {},
+        authenticated: true,
+      );
+      final decoded = _safeDecode(response, 'Failed to send OTP code.');
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        decoded['success'] = true;
+      } else {
+        decoded['success'] = false;
+        if (decoded['message'] == null || decoded['message'].toString().isEmpty) {
+          decoded['message'] = 'Failed to send OTP code (${response.statusCode}).';
+        }
+      }
+      return decoded;
+    } catch (e) {
+      return {'success': false, 'message': 'Failed to send OTP code: $e'};
+    }
+  }
+
+  // Verify Redemption (Submit OTP)
+  static Future<Map<String, dynamic>> verifyRedemption(int orderId, String code) async {
+    try {
+      final response = await post(
+        '/orders/$orderId/redemption/verify',
+        {'code': code},
+        authenticated: true,
+      );
+      final decoded = _safeDecode(response, 'Failed to verify OTP code.');
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        decoded['success'] = true;
+      } else {
+        decoded['success'] = false;
+        if (decoded['message'] == null || decoded['message'].toString().isEmpty) {
+          decoded['message'] = 'Failed to verify OTP code (${response.statusCode}).';
+        }
+      }
+      return decoded;
+    } catch (e) {
+      return {'success': false, 'message': 'Failed to verify OTP code: $e'};
+    }
+  }
+
   // Get My Orders
   static Future<Map<String, dynamic>> getMyOrders({
     int page = 1,
