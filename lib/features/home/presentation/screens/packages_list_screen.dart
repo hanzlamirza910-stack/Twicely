@@ -658,7 +658,7 @@ class _PackagesListScreenState extends State<PackagesListScreen> {
               sliver: SliverGrid(
                 gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
                   crossAxisCount: 2,
-                  childAspectRatio: 0.70,
+                  childAspectRatio: 0.67,
                   crossAxisSpacing: 12,
                   mainAxisSpacing: 12,
                 ),
@@ -702,7 +702,7 @@ class _PackagesListScreenState extends State<PackagesListScreen> {
                   crossAxisCount: 2,
                   crossAxisSpacing: 12,
                   mainAxisSpacing: 14,
-                  childAspectRatio: 0.70,
+                  childAspectRatio: 0.67,
                 ),
               ),
             ),
@@ -808,6 +808,7 @@ class _PackagesListScreenState extends State<PackagesListScreen> {
     return GestureDetector(
       onTap: () => _openPackage(pkg),
       child: Container(
+        clipBehavior: Clip.antiAlias,
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(16),
@@ -819,7 +820,7 @@ class _PackagesListScreenState extends State<PackagesListScreen> {
           children: [
             // IMAGE
             Expanded(
-              flex: 46,
+              flex: 44,
               child: ClipRRect(
                 borderRadius: const BorderRadius.vertical(top: Radius.circular(14.5)),
                 child: Stack(
@@ -858,46 +859,43 @@ class _PackagesListScreenState extends State<PackagesListScreen> {
 
             // CONTENT
             Expanded(
-              flex: 54,
+              flex: 56,
               child: Padding(
-                padding: const EdgeInsets.fromLTRB(10, 6, 10, 8),
+                padding: const EdgeInsets.fromLTRB(10, 6, 10, 6),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     _buildCategoryRichText(tagString),
-                    const SizedBox(height: 3),
-                    SizedBox(
-                      height: 32,
+                    const SizedBox(height: 2),
+                    Expanded(
                       child: Text(
-                        pkg['title'],
+                        pkg['title'] ?? '',
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF1A1A2E), height: 1.3),
+                        style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold, color: Color(0xFF1A1A2E), height: 1.25),
                       ),
+                    ),
+                    if (originalPrice > resalePrice) ...[
+                      const SizedBox(height: 2),
+                      Text(
+                        'S\$${originalPrice.toStringAsFixed(2)}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontSize: 9, color: Color(0xFF9E9E9E), decoration: TextDecoration.lineThrough, decorationColor: Color(0xFF9E9E9E)),
+                      ),
+                    ],
+                    const SizedBox(height: 2),
+                    Text(
+                      'S\$${resalePrice.toStringAsFixed(2)}',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w800, color: Color(0xFF273DB7), letterSpacing: -0.2),
                     ),
                     const SizedBox(height: 4),
-                    SizedBox(
-                      height: 12,
-                      child: (originalPrice > resalePrice)
-                          ? Text(
-                              'S\$${originalPrice.toStringAsFixed(2)}',
-                              style: const TextStyle(fontSize: 9, color: Color(0xFF9E9E9E), decoration: TextDecoration.lineThrough, decorationColor: Color(0xFF9E9E9E)),
-                            )
-                          : const SizedBox.shrink(),
-                    ),
-                    const SizedBox(height: 2),
-                    SizedBox(
-                      height: 18,
-                      child: Text(
-                        'S\$${resalePrice.toStringAsFixed(2)}',
-                        style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: Color(0xFF273DB7), letterSpacing: -0.2),
-                      ),
-                    ),
-                    const Spacer(),
                     Row(
                       children: [
                         _buildMerchantAvatar(pkg['merchant']?.toString(), pkg['merchantLogo']?.toString(), radius: 7),
-                        const SizedBox(width: 5),
+                        const SizedBox(width: 4),
                         Expanded(
                           child: Text(
                             (pkg['merchant'] != null && pkg['merchant'].toString().trim().isNotEmpty)
@@ -912,7 +910,7 @@ class _PackagesListScreenState extends State<PackagesListScreen> {
                             ),
                           ),
                         ),
-                        const SizedBox(width: 4),
+                        const SizedBox(width: 3),
                         Icon(
                           pkg['hasHeart'] == true ? Icons.favorite_rounded : Icons.favorite_outline_rounded,
                           size: 11,

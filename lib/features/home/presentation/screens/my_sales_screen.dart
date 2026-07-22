@@ -4,6 +4,8 @@ import '../../../../core/services/api_service.dart';
 import '../../../../core/utils/session_manager.dart';
 import 'sale_detail_screen.dart';
 
+import '../../../../core/widgets/app_search_bar.dart';
+
 class MySalesScreen extends StatefulWidget {
   final bool? isMerchant;
   const MySalesScreen({super.key, this.isMerchant});
@@ -36,9 +38,6 @@ class _MySalesScreenState extends State<MySalesScreen> {
   Future<void> _fetchSales() async {
     if (!mounted) return;
     setState(() => _isLoading = true);
-    // /users/me/sales → richer C2C data (package_names, seller_amount)
-    // /merchants/me/orders → merchant data
-    // Amounts from both endpoints already in DOLLARS (no /100)
     final res = _isMerchantMode
         ? await ApiService.getMerchantOrders(perPage: 50)
         : await ApiService.getMySales(perPage: 50);
@@ -152,17 +151,40 @@ class _MySalesScreenState extends State<MySalesScreen> {
         onRefresh: _fetchSales,
         color: AppColors.primary,
         child: Column(children: [
-          // Stats banner
-          if (!_isLoading) _buildStatsBanner(),
+          // Unified Top Panel for Search, Stats, and Filter Pills
+          Container(
+            decoration: BoxDecoration(
+              color: Colors.white,
+              border: Border(bottom: BorderSide(color: Colors.black.withValues(alpha: 0.08), width: 1.0)),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.04),
+                  blurRadius: 10,
+                  offset: const Offset(0, 4),
+                ),
+              ],
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                // Stats Banner
+                if (!_isLoading) _buildStatsBanner(),
 
-          // Search
-          Padding(
-            padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
-            child: _buildSearch(),
+                // Search Bar
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
+                  child: AppSearchBar(
+                    controller: _searchController,
+                    hintText: 'Search by order, buyer, package...',
+                    onChanged: (v) => setState(() => _searchQuery = v),
+                  ),
+                ),
+
+                // Filter Pills
+                _buildFilterPills(),
+              ],
+            ),
           ),
-
-          // Filter pills
-          _buildFilterPills(),
 
           Expanded(
             child: _isLoading
@@ -171,7 +193,7 @@ class _MySalesScreenState extends State<MySalesScreen> {
                 : filtered.isEmpty
                     ? _buildEmpty()
                     : ListView.builder(
-                        padding: const EdgeInsets.fromLTRB(20, 8, 20, 40),
+                        padding: const EdgeInsets.fromLTRB(16, 16, 16, 40),
                         itemCount: filtered.length,
                         itemBuilder: (_, i) => _buildSaleCard(filtered[i])),
           ),
@@ -192,12 +214,12 @@ class _MySalesScreenState extends State<MySalesScreen> {
 
     return Container(
       color: Colors.white,
-      padding: const EdgeInsets.fromLTRB(20, 12, 20, 14),
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
       child: Row(children: [
         _stat('Total', '$total', Icons.receipt_long_rounded),
-        const SizedBox(width: 10),
+        const SizedBox(width: 8),
         _stat('Completed', '$completed', Icons.check_circle_rounded),
-        const SizedBox(width: 10),
+        const SizedBox(width: 8),
         _stat('Earnings', 'S\$${earnings.toStringAsFixed(0)}',
             Icons.account_balance_wallet_rounded),
       ]),
@@ -217,40 +239,17 @@ class _MySalesScreenState extends State<MySalesScreen> {
             fontWeight: FontWeight.bold, fontSize: 13)),
         const SizedBox(height: 2),
         Text(label, style: TextStyle(color: AppColors.primary.withValues(alpha: 0.5),
-            fontSize: 8), textAlign: TextAlign.center),
+            fontSize: 9), textAlign: TextAlign.center),
       ]),
-    ),
-  );
-
-  Widget _buildSearch() => TextField(
-    controller: _searchController,
-    style: const TextStyle(fontSize: 13, color: AppColors.primary),
-    onChanged: (v) => setState(() => _searchQuery = v),
-    decoration: InputDecoration(
-      filled: true, fillColor: Colors.white,
-      hintText: 'Search by order, buyer, package...',
-      hintStyle: TextStyle(color: AppColors.primary.withValues(alpha: 0.35), fontSize: 13),
-      prefixIcon: const Icon(Icons.search_rounded, color: AppColors.primary, size: 19),
-      suffixIcon: _searchQuery.isNotEmpty
-          ? IconButton(icon: const Icon(Icons.close_rounded, size: 17, color: AppColors.primary),
-              onPressed: () { _searchController.clear(); setState(() => _searchQuery = ''); })
-          : null,
-      contentPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
-      border: OutlineInputBorder(borderRadius: BorderRadius.circular(30),
-          borderSide: const BorderSide(color: Color(0xFFE5E7EB))),
-      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(30),
-          borderSide: const BorderSide(color: Color(0xFFE5E7EB))),
-      focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(30),
-          borderSide: const BorderSide(color: AppColors.primary, width: 1.5)),
     ),
   );
 
   Widget _buildFilterPills() {
     const pills = ['All','Paid','Completed','Refunded','Cancelled'];
-    return Container(
-      color: Colors.white,
-      padding: const EdgeInsets.fromLTRB(20, 8, 20, 12),
-      child: SingleChildScrollView(scrollDirection: Axis.horizontal,
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 2, 16, 12),
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
         child: Row(children: pills.map((p) {
           final sel = _selectedPill == p;
           return GestureDetector(
@@ -258,14 +257,14 @@ class _MySalesScreenState extends State<MySalesScreen> {
             child: AnimatedContainer(
               duration: const Duration(milliseconds: 180),
               margin: const EdgeInsets.only(right: 8),
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
               decoration: BoxDecoration(
-                color: sel ? AppColors.primary : AppColors.bgLight,
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: sel ? AppColors.primary : Colors.black12),
+                color: sel ? AppColors.primary : const Color(0xFFF4F5F7),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: sel ? AppColors.primary : Colors.black.withValues(alpha: 0.06)),
               ),
               child: Text(p, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700,
-                  color: sel ? Colors.white : AppColors.primary)),
+                  color: sel ? Colors.white : AppColors.primary.withValues(alpha: 0.7))),
             ),
           );
         }).toList()),

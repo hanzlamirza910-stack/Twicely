@@ -7,11 +7,17 @@ import 'package_detail_screen.dart';
 class CategoryDetailScreen extends StatefulWidget {
   final String categoryName;
   final String categoryIcon;
+  final IconData? categoryIconData;
+  final Color? categoryBgColor;
+  final Color? categoryIconColor;
 
   const CategoryDetailScreen({
     super.key,
     required this.categoryName,
-    required this.categoryIcon,
+    this.categoryIcon = '',
+    this.categoryIconData,
+    this.categoryBgColor,
+    this.categoryIconColor,
   });
 
   @override
@@ -261,6 +267,7 @@ class _CategoryDetailScreenState extends State<CategoryDetailScreen> {
       'merchantName': cleanMerchantName,
       'merchantLogo': merchantLogo,
       'merchant_id': ownerInfo['merchant_id'],
+      'likesCount': apiPkg['likes_count'] ?? apiPkg['likesCount'] ?? (apiPkg['liked'] == true ? 1 : 0),
     };
   }
 
@@ -309,13 +316,32 @@ class _CategoryDetailScreenState extends State<CategoryDetailScreen> {
                 padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
                 child: Row(
                   children: [
-                    CircleAvatar(
-                      radius: 30,
-                      backgroundColor: Colors.white,
-                      child: Padding(
-                        padding: const EdgeInsets.all(4.0),
-                        child: Image.asset(widget.categoryIcon, fit: BoxFit.contain),
+                    Container(
+                      width: 58,
+                      height: 58,
+                      decoration: BoxDecoration(
+                        color: widget.categoryBgColor ?? Colors.white,
+                        shape: BoxShape.circle,
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.04),
+                            blurRadius: 6,
+                            offset: const Offset(0, 2),
+                          ),
+                        ],
                       ),
+                      alignment: Alignment.center,
+                      child: widget.categoryIconData != null
+                          ? Icon(
+                              widget.categoryIconData,
+                              color: widget.categoryIconColor ?? AppColors.primary,
+                              size: 26,
+                            )
+                          : (widget.categoryIcon.isNotEmpty
+                              ? ClipOval(
+                                  child: Image.asset(widget.categoryIcon, fit: BoxFit.contain),
+                                )
+                              : const Icon(Icons.category_rounded, color: AppColors.primary, size: 26)),
                     ),
                     const SizedBox(width: 16),
                     Expanded(
@@ -518,7 +544,47 @@ class _CategoryDetailScreenState extends State<CategoryDetailScreen> {
                                                     ),
                                                   ),
                                                 ],
-                                              )
+                                              ),
+                                              const SizedBox(height: 6),
+                                              Row(
+                                                children: [
+                                                  _buildMerchantAvatar(
+                                                    pkg['merchantName'] as String?,
+                                                    pkg['merchantLogo'] as String?,
+                                                    radius: 7,
+                                                  ),
+                                                  const SizedBox(width: 4),
+                                                  Expanded(
+                                                    child: Text(
+                                                      (pkg['merchantName'] != null && (pkg['merchantName'] as String).trim().isNotEmpty)
+                                                          ? (pkg['merchantName'] as String).trim()
+                                                          : 'Twicely',
+                                                      maxLines: 1,
+                                                      overflow: TextOverflow.ellipsis,
+                                                      style: TextStyle(
+                                                        fontSize: 9,
+                                                        color: Colors.black.withValues(alpha: 0.6),
+                                                        fontWeight: FontWeight.w400,
+                                                      ),
+                                                    ),
+                                                  ),
+                                                  const SizedBox(width: 4),
+                                                  Icon(
+                                                    pkg['hasHeart'] == true ? Icons.favorite_rounded : Icons.favorite_outline_rounded,
+                                                    size: 11,
+                                                    color: pkg['hasHeart'] == true ? const Color(0xFFFBBD03) : Colors.black38,
+                                                  ),
+                                                  const SizedBox(width: 2),
+                                                  Text(
+                                                    '${pkg['likesCount'] ?? 0}',
+                                                    style: TextStyle(
+                                                      fontSize: 9,
+                                                      color: Colors.black.withValues(alpha: 0.6),
+                                                      fontWeight: FontWeight.w500,
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
                                             ],
                                           ),
                                         )
@@ -564,6 +630,66 @@ class _CategoryDetailScreenState extends State<CategoryDetailScreen> {
       ),
       maxLines: 1,
       overflow: TextOverflow.ellipsis,
+    );
+  }
+
+  Widget _buildMerchantAvatar(String? name, String? logoUrl, {double radius = 12}) {
+    final displayName = (name != null && name.trim().isNotEmpty) ? name.trim() : 'Twicely';
+    final hasLogo = logoUrl != null && logoUrl.isNotEmpty;
+    final initial = displayName[0].toUpperCase();
+    const colors = [
+      Color(0xFF4A6FA5),
+      Color(0xFF3D8B5E),
+      Color(0xFF7B5EA7),
+      Color(0xFF5B8DB8),
+      Color(0xFF8B6E3C),
+      Color(0xFF4A7C59),
+    ];
+    final Color avatarColor = displayName.toLowerCase() == 'twicely'
+        ? const Color(0xFF273DB7)
+        : colors[displayName.hashCode.abs() % colors.length];
+
+    if (hasLogo) {
+      return ClipOval(
+        child: SizedBox(
+          width: radius * 2,
+          height: radius * 2,
+          child: Image.network(
+            logoUrl,
+            fit: BoxFit.cover,
+            errorBuilder: (context, error, stackTrace) => Container(
+              color: avatarColor,
+              alignment: Alignment.center,
+              child: Text(
+                initial,
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: radius * 0.85,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
+    return Container(
+      width: radius * 2,
+      height: radius * 2,
+      decoration: BoxDecoration(
+        color: avatarColor,
+        shape: BoxShape.circle,
+      ),
+      alignment: Alignment.center,
+      child: Text(
+        initial,
+        style: TextStyle(
+          color: Colors.white,
+          fontSize: radius * 0.85,
+          fontWeight: FontWeight.bold,
+        ),
+      ),
     );
   }
 }

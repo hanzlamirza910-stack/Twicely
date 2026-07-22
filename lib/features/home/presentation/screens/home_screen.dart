@@ -279,8 +279,9 @@ class _HomeScreenState extends State<HomeScreen> {
         ? await ApiService.getMerchantPackages(perPage: 50)
         : await ApiService.getUserPackages(perPage: 50);
     if (!mounted) return;
-    if (pkgsRes['success'] == true) {
-      _packagesCount = (pkgsRes['meta']?['total'] ?? (pkgsRes['data'] as List?)?.length ?? 0) as int;
+    if (pkgsRes['success'] == true && pkgsRes['data'] is List) {
+      final ownList = (pkgsRes['data'] as List).where((p) => p is Map && p['is_owner'] != false).toList();
+      _packagesCount = ownList.length;
     }
 
     if (mounted) setState(() => _isLoadingProfile = false);
@@ -1311,7 +1312,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
           // Horizontal Packages Scroller
           SizedBox(
-            height: 220,
+            height: 240,
             child: _isLoadingPackages
                 ? ListView.builder(
                     scrollDirection: Axis.horizontal,
@@ -1369,17 +1370,13 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget _buildCategoryItem(String title, IconData icon, Color bgColor, Color iconColor, String originalName) {
     return GestureDetector(
       onTap: () {
-        String imagePath = 'assets/images/cat_yoga.png';
-        if (originalName == 'Spa & Massage') imagePath = 'assets/images/cat_spa.png';
-        if (originalName == 'Beauty & Nails' || originalName == 'Hair & Nails') imagePath = 'assets/images/cat_nails.png';
-        if (originalName == 'Gym & Fitness') imagePath = 'assets/images/cat_gym.png';
-        if (originalName == 'Lifestyle Classes') imagePath = 'assets/images/cat_lifestyle.png';
-
         Navigator.of(context).push(
           MaterialPageRoute(
             builder: (context) => CategoryDetailScreen(
               categoryName: originalName,
-              categoryIcon: imagePath,
+              categoryIconData: icon,
+              categoryBgColor: bgColor,
+              categoryIconColor: iconColor,
             ),
           ),
         );
@@ -1510,6 +1507,7 @@ class _HomeScreenState extends State<HomeScreen> {
       },
       child: Container(
         width: 175,
+        clipBehavior: Clip.antiAlias,
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(16),
@@ -1527,7 +1525,7 @@ class _HomeScreenState extends State<HomeScreen> {
           children: [
             // Image top header
             Expanded(
-              flex: 46,
+              flex: 44,
               child: ClipRRect(
                 borderRadius: const BorderRadius.vertical(top: Radius.circular(14.5)),
                 child: Stack(
@@ -1599,61 +1597,62 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
             // Content metadata
             Expanded(
-              flex: 54,
+              flex: 56,
               child: Padding(
-                padding: const EdgeInsets.fromLTRB(10, 6, 10, 8),
+                padding: const EdgeInsets.fromLTRB(10, 6, 10, 6),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    _buildCategoryRichText(tag),
-                    const SizedBox(height: 3),
-                    SizedBox(
-                      height: 32,
-                      child: Text(
-                        title,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.bold,
-                          color: Color(0xFF1A1A2E),
-                          height: 1.3,
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        _buildCategoryRichText(tag),
+                        const SizedBox(height: 2),
+                        Text(
+                          title,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontSize: 11.5,
+                            fontWeight: FontWeight.bold,
+                            color: Color(0xFF1A1A2E),
+                            height: 1.25,
+                          ),
                         ),
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    SizedBox(
-                      height: 12,
-                      child: isDiscounted
-                          ? Text(
-                              originalPrice,
-                              style: const TextStyle(
-                                fontSize: 9,
-                                decoration: TextDecoration.lineThrough,
-                                decorationColor: Color(0xFF9E9E9E),
-                                color: Color(0xFF9E9E9E),
-                              ),
-                            )
-                          : const SizedBox.shrink(),
-                    ),
-                    const SizedBox(height: 2),
-                    SizedBox(
-                      height: 18,
-                      child: Text(
-                        resalePrice,
-                        style: const TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w800,
-                          color: Color(0xFF273DB7),
-                          letterSpacing: -0.2,
+                        if (isDiscounted) ...[
+                          const SizedBox(height: 2),
+                          Text(
+                            originalPrice,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontSize: 9,
+                              decoration: TextDecoration.lineThrough,
+                              decorationColor: Color(0xFF9E9E9E),
+                              color: Color(0xFF9E9E9E),
+                            ),
+                          ),
+                        ],
+                        const SizedBox(height: 2),
+                        Text(
+                          resalePrice,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontSize: 12.5,
+                            fontWeight: FontWeight.w800,
+                            color: Color(0xFF273DB7),
+                            letterSpacing: -0.2,
+                          ),
                         ),
-                      ),
+                      ],
                     ),
-                    const Spacer(),
                     Row(
                       children: [
                         _buildMerchantAvatar(merchantName, merchantLogo, radius: 7),
-                        const SizedBox(width: 5),
+                        const SizedBox(width: 4),
                         Expanded(
                           child: Text(
                             (merchantName != null && merchantName.trim().isNotEmpty) ? merchantName.trim() : 'Twicely',
@@ -1666,7 +1665,7 @@ class _HomeScreenState extends State<HomeScreen> {
                             ),
                           ),
                         ),
-                        const SizedBox(width: 4),
+                        const SizedBox(width: 3),
                         Icon(
                           hasHeart ? Icons.favorite_rounded : Icons.favorite_outline_rounded,
                           size: 11,
@@ -2060,7 +2059,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                 crossAxisCount: 2,
                                 crossAxisSpacing: 14,
                                 mainAxisSpacing: 14,
-                                childAspectRatio: 0.84,
+                                childAspectRatio: 0.67,
                               ),
                               itemCount: filtered.length,
                               itemBuilder: (context, index) {
@@ -2110,7 +2109,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       final items = _displayRecentlyViewed;
                       if (items.isEmpty) return const SizedBox.shrink();
                       return SizedBox(
-                        height: 220,
+                        height: 240,
                         child: Row(
                           crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: List.generate(items.length.clamp(0, 2), (index) {
@@ -2373,8 +2372,9 @@ class _HomeScreenState extends State<HomeScreen> {
                 _loadProfile();
               },
             ),
+            const SizedBox(height: 12),
             _buildProfileOption(
-              title: 'My Listings',
+              title: 'My Packages',
               subtitle: _isLoadingProfile ? 'Loading...' : '$_packagesCount listed package${_packagesCount != 1 ? 's' : ''}',
               icon: Icons.inventory_2_outlined,
               onTap: () async {

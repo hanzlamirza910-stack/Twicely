@@ -306,7 +306,7 @@ class _WishlistScreenState extends State<WishlistScreen> {
                     crossAxisCount: 2,
                     crossAxisSpacing: 14,
                     mainAxisSpacing: 16,
-                    childAspectRatio: 0.76,
+                    childAspectRatio: 0.67,
                   ),
                   itemCount: _wishlistItems.length,
                   itemBuilder: (context, index) {
@@ -366,6 +366,7 @@ class _WishlistScreenState extends State<WishlistScreen> {
         );
       },
       child: Container(
+        clipBehavior: Clip.antiAlias,
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(20),

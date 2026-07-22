@@ -62,21 +62,32 @@ class _SellerProfileScreenState extends State<SellerProfileScreen> {
         if (p is! Map<String, dynamic>) return false;
         final ownerInfo = ApiService.resolveOwnerInfo(p);
 
+        int? presMerchantId;
+        String presName = '';
+        if (p['presented_by'] is Map) {
+          presMerchantId = int.tryParse(p['presented_by']['merchant_id']?.toString() ?? '');
+          presName = p['presented_by']['name']?.toString().toLowerCase().trim() ?? '';
+        }
+
         if (widget.merchantId != null && widget.merchantId! > 0) {
           final pMerchantId = int.tryParse(ownerInfo['merchant_id']?.toString() ?? '') ??
                               int.tryParse(p['merchant_id']?.toString() ?? '');
-          return pMerchantId == widget.merchantId;
+          if (pMerchantId == widget.merchantId || presMerchantId == widget.merchantId) return true;
         }
 
         if (widget.ownerId != null && widget.ownerId! > 0) {
           final pOwnerId = int.tryParse(ownerInfo['owner_id']?.toString() ?? '') ??
                            int.tryParse(p['owner_id']?.toString() ?? '');
-          return pOwnerId == widget.ownerId;
+          if (pOwnerId == widget.ownerId) return true;
         }
 
         final resName = ownerInfo['name']?.toString().toLowerCase().trim() ?? '';
         final targetName = widget.merchantName.toLowerCase().trim();
-        return resName.isNotEmpty && targetName.isNotEmpty && resName == targetName;
+        if (targetName.isNotEmpty) {
+          if (resName == targetName || presName == targetName) return true;
+        }
+
+        return false;
       }).toList();
 
       setState(() {
@@ -301,7 +312,7 @@ class _SellerProfileScreenState extends State<SellerProfileScreen> {
                       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
                       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
                         crossAxisCount: 2,
-                        childAspectRatio: 0.70,
+                        childAspectRatio: 0.67,
                         crossAxisSpacing: 12,
                         mainAxisSpacing: 12,
                       ),
@@ -317,7 +328,7 @@ class _SellerProfileScreenState extends State<SellerProfileScreen> {
                           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
                           gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
                             crossAxisCount: 2,
-                            childAspectRatio: 0.70,
+                            childAspectRatio: 0.67,
                             crossAxisSpacing: 14,
                             mainAxisSpacing: 14,
                           ),
@@ -397,34 +408,42 @@ class _SellerProfileScreenState extends State<SellerProfileScreen> {
                 ),
                 const SizedBox(height: 6),
                 // Badge verified
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFE8F5E9),
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: const Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.star_rounded, size: 12, color: Color(0xFF2E7D32)),
-                      SizedBox(width: 4),
-                      Text(
-                        'Verified Seller',
-                        style: TextStyle(
-                          fontSize: 10,
-                          color: Color(0xFF2E7D32),
-                          fontWeight: FontWeight.bold,
+                (() {
+                  final bool isMerchantSeller = (widget.merchantId != null && widget.merchantId! > 0) ||
+                      (_packages.isNotEmpty && (_packages.first['is_merchant'] == true || _packages.first['owner_type'] == 'merchant'));
+                  return Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: isMerchantSeller ? const Color(0xFFE8EFFF) : const Color(0xFFE8F5E9),
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          isMerchantSeller ? Icons.verified_rounded : Icons.star_rounded,
+                          size: 12,
+                          color: isMerchantSeller ? const Color(0xFF273DB7) : const Color(0xFF2E7D32),
                         ),
-                      ),
-                    ],
-                  ),
-                ),
+                        const SizedBox(width: 4),
+                        Text(
+                          isMerchantSeller ? 'Verified Merchant' : 'Verified Seller',
+                          style: TextStyle(
+                            fontSize: 10,
+                            color: isMerchantSeller ? const Color(0xFF273DB7) : const Color(0xFF2E7D32),
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                })(),
                 const SizedBox(height: 6),
                 Text(
-                  'Member since April 2026',
+                  'Published Packages: ${_packages.length}   •   No reviews yet',
                   style: TextStyle(
                     fontSize: 11,
-                    color: Colors.black.withValues(alpha: 0.4),
+                    color: Colors.black.withValues(alpha: 0.5),
                     fontWeight: FontWeight.w400,
                   ),
                 ),
@@ -494,6 +513,7 @@ class _SellerProfileScreenState extends State<SellerProfileScreen> {
         );
       },
       child: Container(
+        clipBehavior: Clip.antiAlias,
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(20),

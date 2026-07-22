@@ -1346,8 +1346,10 @@ class ApiService {
                       presentedById == actualMerchantId ||
                       ownerIdField == actualMerchantId ||
                       ownerIdField == wpUserId;
-                  mapped['is_owner'] = isOwnPackage;
-                  combinedList.add(mapped);
+                  if (isOwnPackage) {
+                    mapped['is_owner'] = true;
+                    combinedList.add(mapped);
+                  }
                 }
               }
             }

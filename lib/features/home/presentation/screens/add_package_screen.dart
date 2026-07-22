@@ -57,6 +57,7 @@ class _AddPackageScreenState extends State<AddPackageScreen> {
 
   final TextEditingController _validityDaysController = TextEditingController(text: '365');
   final TextEditingController _remainingDaysController = TextEditingController(text: '180');
+  String _selectedCurrency = 'SGD';
   DateTime _expiryDate = DateTime.now().add(const Duration(days: 365));
 
   // Dynamic Data Loading State
@@ -150,7 +151,13 @@ class _AddPackageScreenState extends State<AddPackageScreen> {
     final expStr = pkg['availability_end']?.toString() ?? pkg['expiry_date']?.toString();
     if (expStr != null && expStr.isNotEmpty) {
       try {
-        _expiryDate = DateTime.tryParse(expStr) ?? _expiryDate;
+        final parsed = DateTime.tryParse(expStr);
+        if (parsed != null) {
+          final now = DateTime.now();
+          final today = DateTime(now.year, now.month, now.day);
+          final parsedOnly = DateTime(parsed.year, parsed.month, parsed.day);
+          _expiryDate = parsedOnly.isBefore(today) ? today : parsedOnly;
+        }
       } catch (_) {}
     }
 
@@ -541,8 +548,12 @@ class _AddPackageScreenState extends State<AddPackageScreen> {
         _showToast('Package title is required', type: SnackBarType.warning);
         return;
       }
+      if (_descriptionController.text.trim().isEmpty) {
+        _showToast('Package description is required', type: SnackBarType.warning);
+        return;
+      }
       if (_primaryCategory.isEmpty) {
-        _showToast('Please select a primary category', type: SnackBarType.warning);
+        _showToast('Please select a category', type: SnackBarType.warning);
         return;
       }
       setState(() => _currentStep = 2);
@@ -1213,25 +1224,27 @@ class _AddPackageScreenState extends State<AddPackageScreen> {
         _buildSectionHeader('Package Title *'),
         _buildInputField(
           controller: _titleController,
-          hintText: 'e.g., Luxury Wellness Weekend Retreat',
+          hintText: 'Enter a descriptive title',
           maxLines: 1,
         ),
         const SizedBox(height: 20),
 
-        // Short Description Input
-        _buildSectionHeader('Short Description'),
-        _buildInputField(
-          controller: _shortDescriptionController,
-          hintText: 'Brief summary (shown in listing cards)...',
-          maxLines: 2,
-        ),
-        const SizedBox(height: 20),
+        if (SessionManager.isMerchant) ...[
+          // Short Description Input for Merchants
+          _buildSectionHeader('Short Description'),
+          _buildInputField(
+            controller: _shortDescriptionController,
+            hintText: 'Brief summary (shown in listing cards)...',
+            maxLines: 2,
+          ),
+          const SizedBox(height: 20),
+        ],
 
-        // Package Description Input
-        _buildSectionHeader('Package Description'),
+        // Package Description Input (Required *)
+        _buildSectionHeader('Package Description *'),
         _buildInputField(
           controller: _descriptionController,
-          hintText: 'Describe the experience, value proposition, and unique features...',
+          hintText: 'Describe your package, inclusions, highlights, etc.',
           maxLines: 5,
         ),
         const SizedBox(height: 24),
@@ -1597,7 +1610,16 @@ class _AddPackageScreenState extends State<AddPackageScreen> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         // Pricing Card
-        _buildSectionHeader('Pricing Card'),
+        _buildSectionHeader('Pricing'),
+        Text(
+          "Set your price and let buyers know what they're getting.",
+          style: TextStyle(
+            fontSize: 11,
+            color: Colors.black.withValues(alpha: 0.45),
+            fontWeight: FontWeight.w400,
+          ),
+        ),
+        const SizedBox(height: 12),
         Container(
           padding: const EdgeInsets.all(18),
           decoration: BoxDecoration(
@@ -1608,136 +1630,244 @@ class _AddPackageScreenState extends State<AddPackageScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _buildLabel('Original Purchase Price'),
-              _buildPriceInputField(controller: _originalPriceController),
+              _buildLabel('Original Purchase Price *'),
+              _buildPriceInputField(
+                controller: _originalPriceController,
+                onChanged: (val) => setState(() {}),
+              ),
               const SizedBox(height: 16),
               _buildLabel('Selling Price Per Session *'),
               _buildPriceInputField(
                 controller: _sellingPriceController,
                 onChanged: (val) => setState(() {}),
               ),
-              const SizedBox(height: 16),
-              Row(
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        _buildLabel('Sessions To Sell'),
-                        _buildPriceInputField(
-                          controller: _sessionsToSellController,
-                          isCurrency: false,
-                          hint: 'Optional',
-                          onChanged: (val) => setState(() {}),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(width: 14),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        _buildLabel('Total Sessions'),
-                        _buildPriceInputField(
-                          controller: _totalSessionsController,
-                          isCurrency: false,
-                          hint: 'Optional',
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 24),
+              const SizedBox(height: 20),
 
-        // Summary Card (Dark Grey)
-        Container(
-          padding: const EdgeInsets.all(20),
-          decoration: BoxDecoration(
-            color: const Color(0xFF1E293B), // Dark slate/grey card
-            borderRadius: BorderRadius.circular(20),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(
-                    'SUMMARY SECTION',
-                    style: TextStyle(
-                      fontSize: 10,
-                      fontWeight: FontWeight.bold,
-                      letterSpacing: 0.5,
-                      color: Colors.white.withValues(alpha: 0.6),
+              // Sessions & Validity Sub-Card (Optional)
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: AppColors.bgLight.withValues(alpha: 0.5),
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: AppColors.primary.withValues(alpha: 0.06)),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text(
+                          'SESSIONS & VALIDITY',
+                          style: TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.bold,
+                            letterSpacing: 0.5,
+                            color: AppColors.primary,
+                          ),
+                        ),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                          decoration: BoxDecoration(
+                            color: AppColors.primary.withValues(alpha: 0.08),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: const Text(
+                            'OPTIONAL',
+                            style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: AppColors.primary),
+                          ),
+                        ),
+                      ],
                     ),
-                  ),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    decoration: BoxDecoration(color: Colors.white12, borderRadius: BorderRadius.circular(4)),
-                    child: const Text('SGD', style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold)),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 4),
-              Text(
-                'Auto-calculated value',
-                style: TextStyle(fontSize: 10, color: Colors.white.withValues(alpha: 0.4)),
+                    const SizedBox(height: 14),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              _buildLabel('Sessions To Sell'),
+                              _buildPriceInputField(
+                                controller: _sessionsToSellController,
+                                isCurrency: false,
+                                hint: '0',
+                                onChanged: (val) => setState(() {}),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              _buildLabel('Total Sessions'),
+                              _buildPriceInputField(
+                                controller: _totalSessionsController,
+                                isCurrency: false,
+                                hint: '0',
+                                onChanged: (val) => setState(() {}),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 14),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              _buildLabel('Total Validity Days'),
+                              _buildPriceInputField(
+                                controller: _validityDaysController,
+                                isCurrency: false,
+                                hint: 'e.g. 365',
+                                onChanged: (val) => setState(() {}),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              _buildLabel('Remaining Validity Days'),
+                              _buildPriceInputField(
+                                controller: _remainingDaysController,
+                                isCurrency: false,
+                                hint: 'e.g. 120',
+                                onChanged: (val) {
+                                  final days = int.tryParse(val) ?? 0;
+                                  final now = DateTime.now();
+                                  final today = DateTime(now.year, now.month, now.day);
+                                  setState(() {
+                                    _expiryDate = today.add(Duration(days: days));
+                                  });
+                                },
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
               ),
               const SizedBox(height: 20),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  const Text(
-                    'Total Selling Price (Auto Calculated)',
-                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.white),
-                  ),
-                  Text(
-                    '\$ ${_calculatedTotalSellingPrice.toStringAsFixed(2)} SGD',
-                    style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w900, color: Color(0xFFFBBD03)),
-                  ),
-                ],
+
+              // Total Selling Price Banner
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFFF0F5), // Light pinkish background matching web
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: const Color(0xFFFDE8E8)),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'TOTAL SELLING PRICE',
+                            style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.bold,
+                              letterSpacing: 0.5,
+                              color: Color(0xFFE11D48),
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            'Sessions to Sell × Selling Price Per Session',
+                            style: TextStyle(
+                              fontSize: 10,
+                              color: Colors.black.withValues(alpha: 0.5),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      '${_calculatedTotalSellingPrice.toStringAsFixed(2)} $_selectedCurrency',
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w900,
+                        color: Color(0xFF1E293B),
+                      ),
+                    ),
+                  ],
+                ),
               ),
-              const SizedBox(height: 6),
-              Text(
-                'Calculated from ${_sessionsToSellController.text.isNotEmpty && _totalSessionsController.text.isNotEmpty ? "Sessions To Sell x Selling Price Per Session" : "Selling Price Per Session"}.',
-                style: TextStyle(fontSize: 10, color: Colors.white.withValues(alpha: 0.5)),
+
+              // Max Resale Price Limit Notice (Website Parity)
+              if (_maxAllowedResalePrice != null || (double.tryParse(_originalPriceController.text) ?? 0) > 0) ...[
+                const SizedBox(height: 12),
+                (() {
+                  final capVal = _maxAllowedResalePrice ?? (double.tryParse(_originalPriceController.text) ?? 0.0);
+                  final isExceeded = capVal > 0 && _calculatedTotalSellingPrice > capVal;
+                  return Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: isExceeded ? Colors.red.shade50 : const Color(0xFFEFF6FF),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: isExceeded ? Colors.red.shade200 : const Color(0xFFBFDBFE),
+                      ),
+                    ),
+                    child: Text(
+                      'Your maximum resale price is ${capVal.toInt()} $_selectedCurrency.',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        color: isExceeded ? Colors.red.shade700 : const Color(0xFF1E40AF),
+                      ),
+                    ),
+                  );
+                })(),
+              ],
+
+              const SizedBox(height: 16),
+              _buildLabel('Currency'),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                decoration: BoxDecoration(
+                  color: AppColors.bgLight,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: AppColors.primary.withValues(alpha: 0.1)),
+                ),
+                child: DropdownButtonHideUnderline(
+                  child: DropdownButton<String>(
+                    isExpanded: true,
+                    value: _selectedCurrency,
+                    style: const TextStyle(fontSize: 13, color: AppColors.primary, fontWeight: FontWeight.bold),
+                    items: const [
+                      DropdownMenuItem(value: 'SGD', child: Text('SGD')),
+                      DropdownMenuItem(value: 'USD', child: Text('USD')),
+                      DropdownMenuItem(value: 'EUR', child: Text('EUR')),
+                      DropdownMenuItem(value: 'GBP', child: Text('GBP')),
+                    ],
+                    onChanged: (val) {
+                      if (val != null) {
+                        setState(() {
+                          _selectedCurrency = val;
+                        });
+                      }
+                    },
+                  ),
+                ),
               ),
             ],
           ),
         ),
-        if (_maxAllowedResalePrice != null) ...[
-          const SizedBox(height: 12),
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-            decoration: BoxDecoration(
-              color: _calculatedTotalSellingPrice > _maxAllowedResalePrice!
-                  ? Colors.red.shade50
-                  : const Color(0xFFEFF6FF),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(
-                color: _calculatedTotalSellingPrice > _maxAllowedResalePrice!
-                    ? Colors.red.shade200
-                    : const Color(0xFFBFDBFE),
-              ),
-            ),
-            child: Text(
-              'Your maximum resale price is ${_maxAllowedResalePrice!.toInt()} SGD (rounded down to nearest dollar).',
-              style: TextStyle(
-                fontSize: 11,
-                fontWeight: FontWeight.w600,
-                color: _calculatedTotalSellingPrice > _maxAllowedResalePrice!
-                    ? Colors.red.shade700
-                    : const Color(0xFF1E40AF),
-              ),
-            ),
-          ),
-        ],
         const SizedBox(height: 24),
 
         // Validity Card
@@ -1752,41 +1882,6 @@ class _AddPackageScreenState extends State<AddPackageScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        _buildLabel('Total Validity Days'),
-                        _buildPriceInputField(controller: _validityDaysController, isCurrency: false),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(width: 14),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        _buildLabel('Remaining Days'),
-                        _buildPriceInputField(
-                          controller: _remainingDaysController,
-                          isCurrency: false,
-                          onChanged: (val) {
-                            final days = int.tryParse(val) ?? 0;
-                            final now = DateTime.now();
-                            final today = DateTime(now.year, now.month, now.day);
-                            setState(() {
-                              _expiryDate = today.add(Duration(days: days));
-                            });
-                          },
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 16),
               _buildLabel('Expiry Date'),
               GestureDetector(
                 onTap: _showDatePicker,
@@ -1809,34 +1904,43 @@ class _AddPackageScreenState extends State<AddPackageScreen> {
                   ),
                 ),
               ),
+              const SizedBox(height: 6),
+              Text(
+                'Optional — leave blank if there is no fixed expiry.',
+                style: TextStyle(
+                  fontSize: 11,
+                  color: Colors.black.withValues(alpha: 0.45),
+                ),
+              ),
             ],
           ),
         ),
-        const SizedBox(height: 24),
-
-        // Status Dropdown
-        _buildSectionHeader('Status'),
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: AppColors.primary.withValues(alpha: 0.1)),
-          ),
-          child: DropdownButtonHideUnderline(
-            child: DropdownButton<String>(
-              isExpanded: true,
-              value: _packageStatus,
-              style: const TextStyle(fontSize: 13, color: AppColors.primary, fontWeight: FontWeight.w500),
-              items: const [
-                DropdownMenuItem(value: 'draft', child: Text('Draft')),
-                DropdownMenuItem(value: 'pending', child: Text('Pending Review')),
-                DropdownMenuItem(value: 'published', child: Text('Published')),
-              ],
-              onChanged: (val) => setState(() => _packageStatus = val ?? 'draft'),
+        if (SessionManager.isMerchant) ...[
+          const SizedBox(height: 24),
+          // Status Dropdown for Merchants only
+          _buildSectionHeader('Status'),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: AppColors.primary.withValues(alpha: 0.1)),
+            ),
+            child: DropdownButtonHideUnderline(
+              child: DropdownButton<String>(
+                isExpanded: true,
+                value: _packageStatus,
+                style: const TextStyle(fontSize: 13, color: AppColors.primary, fontWeight: FontWeight.w500),
+                items: const [
+                  DropdownMenuItem(value: 'draft', child: Text('Draft')),
+                  DropdownMenuItem(value: 'pending', child: Text('Pending Review')),
+                  DropdownMenuItem(value: 'published', child: Text('Published')),
+                ],
+                onChanged: (val) => setState(() => _packageStatus = val ?? 'draft'),
+              ),
             ),
           ),
-        ),
+        ],
       ],
     );
   }
@@ -1985,6 +2089,10 @@ class _AddPackageScreenState extends State<AddPackageScreen> {
       initialDate: initialDate,
       firstDate: today,
       lastDate: today.add(const Duration(days: 3650)),
+      selectableDayPredicate: (DateTime day) {
+        final d = DateTime(day.year, day.month, day.day);
+        return !d.isBefore(today);
+      },
       builder: (context, child) {
         return Theme(
           data: Theme.of(context).copyWith(
@@ -2079,16 +2187,17 @@ class _AddPackageScreenState extends State<AddPackageScreen> {
         style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: AppColors.primary),
         onChanged: onChanged,
         decoration: InputDecoration(
+          prefixIconConstraints: const BoxConstraints(minWidth: 0, minHeight: 0),
           prefixIcon: isCurrency
               ? const Padding(
-                  padding: EdgeInsets.only(left: 12.0, right: 6.0, top: 12.0),
-                  child: Text('\$', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                  padding: EdgeInsets.only(left: 14.0, right: 8.0),
+                  child: Text('\$', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: AppColors.primary)),
                 )
               : null,
           hintText: hint,
           hintStyle: TextStyle(color: AppColors.primary.withValues(alpha: 0.35), fontSize: 13),
           border: InputBorder.none,
-          contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
         ),
       ),
     );

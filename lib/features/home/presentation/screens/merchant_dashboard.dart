@@ -47,6 +47,9 @@ class _MerchantDashboardState extends State<MerchantDashboard> {
   List<Map<String, dynamic>> _merchantPackages = [];
   bool _isLoadingPackages = false;
 
+  List<Map<String, dynamic>> _marketplaceSearchPackages = [];
+  bool _isLoadingMarketplaceSearch = false;
+
   // Dynamic Merchant statistics, wallet balance, and wishlist count
   double _walletBalance = 0.0;
   int _wishlistCount = 0;
@@ -59,6 +62,34 @@ class _MerchantDashboardState extends State<MerchantDashboard> {
     _loadMerchantData();
     _fetchMerchantPackages();
     _fetchDynamicData();
+    _fetchMarketplaceSearchPackages();
+  }
+
+  Future<void> _fetchMarketplaceSearchPackages() async {
+    if (!mounted) return;
+    setState(() => _isLoadingMarketplaceSearch = true);
+
+    try {
+      final res = await ApiService.getPackages(
+        perPage: 100,
+        search: _searchQuery.isNotEmpty ? _searchQuery : null,
+      );
+
+      if (!mounted) return;
+      if (res['success'] == true && res['data'] is List) {
+        final List<dynamic> raw = res['data'];
+        setState(() {
+          _marketplaceSearchPackages = raw
+              .map((p) => _mapApiPackage(p as Map<String, dynamic>))
+              .toList();
+          _isLoadingMarketplaceSearch = false;
+        });
+      } else {
+        setState(() => _isLoadingMarketplaceSearch = false);
+      }
+    } catch (e) {
+      if (mounted) setState(() => _isLoadingMarketplaceSearch = false);
+    }
   }
 
   @override
@@ -1378,6 +1409,7 @@ class _MerchantDashboardState extends State<MerchantDashboard> {
               setState(() {
                 _searchQuery = val;
               });
+              _fetchMarketplaceSearchPackages();
             },
             style: const TextStyle(fontSize: 14, color: AppColors.primary),
             decoration: InputDecoration(
@@ -1393,6 +1425,7 @@ class _MerchantDashboardState extends State<MerchantDashboard> {
                           _searchController.clear();
                           _searchQuery = '';
                         });
+                        _fetchMarketplaceSearchPackages();
                       },
                       child: const Icon(Icons.cancel_rounded, color: AppColors.primary, size: 20),
                     )

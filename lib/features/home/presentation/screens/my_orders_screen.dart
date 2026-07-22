@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/services/api_service.dart';
 import '../../../../core/utils/session_manager.dart';
+import '../../../../core/widgets/app_search_bar.dart';
 
 class MyOrdersScreen extends StatefulWidget {
   const MyOrdersScreen({super.key});
@@ -178,8 +179,12 @@ class _MyOrdersScreenState extends State<MyOrdersScreen> {
                             color: AppColors.primary.withValues(alpha: 0.45))),
                     const SizedBox(height: 16),
 
-                    // Search
-                    _buildSearch(),
+                    // Reusable AppSearchBar
+                    AppSearchBar(
+                      controller: _searchController,
+                      hintText: 'Search by order, seller, package...',
+                      onChanged: (v) => setState(() => _searchQuery = v),
+                    ),
                     const SizedBox(height: 12),
 
                     // Filter pills
@@ -197,29 +202,6 @@ class _MyOrdersScreenState extends State<MyOrdersScreen> {
             ),
     );
   }
-
-  Widget _buildSearch() => TextField(
-    controller: _searchController,
-    style: const TextStyle(fontSize: 13, color: AppColors.primary),
-    onChanged: (v) => setState(() => _searchQuery = v),
-    decoration: InputDecoration(
-      filled: true, fillColor: Colors.white,
-      hintText: 'Search by order, seller, package...',
-      hintStyle: TextStyle(color: AppColors.primary.withValues(alpha: 0.35), fontSize: 13),
-      prefixIcon: const Icon(Icons.search_rounded, color: AppColors.primary, size: 19),
-      suffixIcon: _searchQuery.isNotEmpty
-          ? IconButton(icon: const Icon(Icons.close_rounded, size: 17, color: AppColors.primary),
-              onPressed: () { _searchController.clear(); setState(() => _searchQuery = ''); })
-          : null,
-      contentPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
-      border: OutlineInputBorder(borderRadius: BorderRadius.circular(30),
-          borderSide: const BorderSide(color: Color(0xFFE5E7EB))),
-      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(30),
-          borderSide: const BorderSide(color: Color(0xFFE5E7EB))),
-      focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(30),
-          borderSide: const BorderSide(color: AppColors.primary, width: 1.5)),
-    ),
-  );
 
   Widget _buildPills(List<String> pills) => SingleChildScrollView(
     scrollDirection: Axis.horizontal,

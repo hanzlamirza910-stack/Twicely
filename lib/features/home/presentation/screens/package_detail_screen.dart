@@ -836,11 +836,22 @@ class _PackageDetailScreenState extends State<PackageDetailScreen> {
                 ],
                 const Spacer(),
                 (() {
+                  final ownerInfo = ApiService.resolveOwnerInfo(pkg);
+                  final String ownerName = (_fetchedOwner?['name'] ?? ownerInfo['name'] ?? pkg['merchantName'] ?? '').toString().trim();
+
+                  final bool isMerchantOwner = (_fetchedOwner?['is_merchant'] == true) ||
+                      (ownerInfo['is_merchant'] == true) ||
+                      (pkg['owner_type'] == 'merchant') ||
+                      (pkg['merchant_id'] != null && int.tryParse(pkg['merchant_id'].toString()) != null && int.parse(pkg['merchant_id'].toString()) > 0) ||
+                      (pkg['merchantName'] != null && pkg['merchantName'].toString().trim().isNotEmpty) ||
+                      (pkg['merchant'] != null);
+
+                  // If owner is a merchant, hide Presented By section completely
+                  if (isMerchantOwner) return const SizedBox.shrink();
+
                   Map<String, dynamic>? presentedByMap;
                   if (pkg['presented_by'] is Map) {
                     presentedByMap = Map<String, dynamic>.from(pkg['presented_by'] as Map);
-                  } else if (pkg['merchant'] is Map) {
-                    presentedByMap = Map<String, dynamic>.from(pkg['merchant'] as Map);
                   }
                   String presentedName = presentedByMap?['name']?.toString() ??
                       presentedByMap?['business_name']?.toString() ??
@@ -849,57 +860,70 @@ class _PackageDetailScreenState extends State<PackageDetailScreen> {
                   String presentedLogo = presentedByMap?['logo']?.toString() ??
                       presentedByMap?['logo_url']?.toString() ??
                       presentedByMap?['avatar']?.toString() ?? '';
+                  int? presentedMerchantId = int.tryParse(presentedByMap?['merchant_id']?.toString() ?? '');
 
-                  if (presentedName.isEmpty) {
-                    final ownerInfo = ApiService.resolveOwnerInfo(pkg);
-                    presentedName = ownerInfo['name']?.toString() ?? 'Twicely';
-                    presentedLogo = ownerInfo['avatar']?.toString() ?? '';
-                  }
                   if (presentedName.isEmpty) return const SizedBox.shrink();
-                  return Column(
-                    crossAxisAlignment: CrossAxisAlignment.end,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        'Presented By',
-                        style: TextStyle(
-                          fontSize: 9,
-                          color: Colors.black.withValues(alpha: 0.4),
-                          fontWeight: FontWeight.w500,
+                  if (ownerName.isNotEmpty && presentedName.trim().toLowerCase() == ownerName.toLowerCase()) {
+                    return const SizedBox.shrink();
+                  }
+
+                  return GestureDetector(
+                    onTap: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (context) => SellerProfileScreen(
+                            merchantId: presentedMerchantId,
+                            merchantName: presentedName,
+                            merchantLogo: presentedLogo,
+                          ),
                         ),
-                      ),
-                      const SizedBox(height: 2),
-                      Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          if (presentedLogo.isNotEmpty)
-                            CircleAvatar(
-                              radius: 8,
-                              backgroundImage: NetworkImage(presentedLogo),
-                            )
-                          else
-                            CircleAvatar(
-                              radius: 8,
-                              backgroundColor: const Color(0xFF273DB7),
-                              child: Text(
-                                presentedName[0].toUpperCase(),
-                                style: const TextStyle(fontSize: 7, color: Colors.white, fontWeight: FontWeight.bold),
+                      );
+                    },
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          'Presented By',
+                          style: TextStyle(
+                            fontSize: 9,
+                            color: Colors.black.withValues(alpha: 0.4),
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            if (presentedLogo.isNotEmpty)
+                              CircleAvatar(
+                                radius: 8,
+                                backgroundImage: NetworkImage(presentedLogo),
+                              )
+                            else
+                              CircleAvatar(
+                                radius: 8,
+                                backgroundColor: const Color(0xFF273DB7),
+                                child: Text(
+                                  presentedName.isNotEmpty ? presentedName[0].toUpperCase() : 'M',
+                                  style: const TextStyle(fontSize: 7, color: Colors.white, fontWeight: FontWeight.bold),
+                                ),
+                              ),
+                            const SizedBox(width: 4),
+                            Text(
+                              presentedName,
+                              style: const TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.bold,
+                                color: AppColors.primary,
                               ),
                             ),
-                          const SizedBox(width: 4),
-                          Text(
-                            presentedName,
-                            style: const TextStyle(
-                              fontSize: 11,
-                              fontWeight: FontWeight.bold,
-                              color: AppColors.primary,
-                            ),
-                          ),
-                          const SizedBox(width: 2),
-                          const Icon(Icons.north_east_rounded, size: 10, color: AppColors.primary),
-                        ],
-                      ),
-                    ],
+                            const SizedBox(width: 2),
+                            const Icon(Icons.north_east_rounded, size: 10, color: AppColors.primary),
+                          ],
+                        ),
+                      ],
+                    ),
                   );
                 })(),
               ],
@@ -1146,7 +1170,7 @@ class _PackageDetailScreenState extends State<PackageDetailScreen> {
                 ),
                 const SizedBox(width: 4),
                 Text(
-                  isRealMerchant ? 'Verified Partner' : 'Verified Seller',
+                  isRealMerchant ? 'Verified Merchant' : 'Verified Seller',
                   style: TextStyle(
                     fontSize: 10,
                     color: isRealMerchant ? const Color(0xFF273DB7) : const Color(0xFF2E7D32),
