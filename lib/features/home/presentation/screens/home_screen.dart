@@ -1,6 +1,7 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import '../../../../core/constants/app_colors.dart';
+import '../../../../core/widgets/marketplace_package_card.dart';
 import '../../../../core/utils/session_manager.dart';
 import '../../../auth/presentation/screens/login_screen.dart';
 import 'category_detail_screen.dart';
@@ -1342,20 +1343,20 @@ class _HomeScreenState extends State<HomeScreen> {
                             padding: const EdgeInsets.only(right: 14.0),
                             child: _buildPackageCard(
                               id: pkg['id'],
-                              imageUrl: pkg['imageUrl'] as String,
-                              tag: pkg['tag'] as String,
-                              title: pkg['title'] as String,
-                              originalPrice: pkg['originalPrice'] as String,
-                              resalePrice: pkg['resalePrice'] as String,
-                              hasHeart: pkg['hasHeart'] as bool,
-                              discountBadge: pkg['discountBadge'] as String?,
-                              originalPriceVal: pkg['originalPriceVal'] as double?,
-                              resalePriceVal: pkg['resalePriceVal'] as double?,
-                              merchantName: pkg['merchantName'] as String?,
-                              merchantLogo: pkg['merchantLogo'] as String?,
-                              likesCount: pkg['likesCount'] as int?,
+                              imageUrl: pkg['imageUrl']?.toString(),
+                              tag: pkg['tag']?.toString(),
+                              title: pkg['title']?.toString(),
+                              originalPrice: pkg['originalPrice']?.toString(),
+                              resalePrice: pkg['resalePrice']?.toString(),
+                              hasHeart: pkg['hasHeart'] == true,
+                              discountBadge: pkg['discountBadge']?.toString(),
+                              originalPriceVal: (pkg['originalPriceVal'] is num) ? (pkg['originalPriceVal'] as num).toDouble() : null,
+                              resalePriceVal: (pkg['resalePriceVal'] is num) ? (pkg['resalePriceVal'] as num).toDouble() : null,
+                              merchantName: pkg['merchantName']?.toString() ?? pkg['merchant']?.toString(),
+                              merchantLogo: pkg['merchantLogo']?.toString(),
+                              likesCount: (pkg['likesCount'] is num) ? (pkg['likesCount'] as num).toInt() : null,
                               merchantId: pkg['merchant_id'],
-                              allImages: pkg['allImages'] != null ? List<String>.from(pkg['allImages'] as Iterable) : null,
+                              allImages: (pkg['allImages'] is List) ? (pkg['allImages'] as List).map((e) => e.toString()).toList() : null,
                             ),
                           );
                         },
@@ -1469,11 +1470,11 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildPackageCard({
-    required String imageUrl,
-    required String tag,
-    required String title,
-    required String originalPrice,
-    required String resalePrice,
+    String? imageUrl,
+    String? tag,
+    String? title,
+    String? originalPrice,
+    String? resalePrice,
     bool hasHeart = false,
     String? discountBadge,
     dynamic id,
@@ -1485,210 +1486,35 @@ class _HomeScreenState extends State<HomeScreen> {
     dynamic merchantId,
     List<String>? allImages,
   }) {
-    final bool isDiscounted = originalPriceVal != null && resalePriceVal != null && originalPriceVal > resalePriceVal;
-    return GestureDetector(
+    final String img = imageUrl ?? 'assets/images/package_spa.jpg';
+    final Map<String, dynamic> pkgMap = {
+      'id': id,
+      'imageUrl': img,
+      'allImages': allImages ?? [img],
+      'primary_category': tag ?? 'General',
+      'title': title ?? 'Package',
+      'originalPrice': originalPrice ?? '',
+      'resalePrice': resalePrice ?? '',
+      'originalPriceVal': originalPriceVal,
+      'resalePriceVal': resalePriceVal,
+      'discountBadge': discountBadge,
+      'merchantName': merchantName,
+      'merchant': merchantName,
+      'merchantLogo': merchantLogo,
+      'merchant_id': merchantId,
+      'likesCount': likesCount ?? 0,
+    };
+
+    return MarketplacePackageCard(
+      package: pkgMap,
+      width: 175,
+      isFavorite: hasHeart,
       onTap: () {
         _showPackageDetails({
-          'id': id,
-          'imageUrl': imageUrl,
-          'allImages': allImages ?? [imageUrl],
-          'tag': tag,
-          'title': title,
-          'originalPrice': originalPrice,
-          'resalePrice': resalePrice,
+          ...pkgMap,
           'hasHeart': hasHeart,
-          'discountBadge': isDiscounted ? discountBadge : null,
-          'originalPriceVal': originalPriceVal,
-          'resalePriceVal': resalePriceVal,
-          'merchantName': merchantName,
-          'merchantLogo': merchantLogo,
-          'merchant_id': merchantId,
         });
       },
-      child: Container(
-        width: 175,
-        clipBehavior: Clip.antiAlias,
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: Colors.black.withValues(alpha: 0.08), width: 1.0),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.03),
-              blurRadius: 8,
-              offset: const Offset(0, 4),
-            ),
-          ],
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            // Image top header
-            Expanded(
-              flex: 44,
-              child: ClipRRect(
-                borderRadius: const BorderRadius.vertical(top: Radius.circular(14.5)),
-                child: Stack(
-                  fit: StackFit.expand,
-                  children: [
-                    PackageImageCarousel(
-                      images: allImages ?? [imageUrl],
-                      fallbackImage: 'assets/images/package_spa.jpg',
-                      borderRadius: const BorderRadius.vertical(top: Radius.circular(14.5)),
-                      onTap: () {
-                        _showPackageDetails({
-                          'id': id,
-                          'imageUrl': imageUrl,
-                          'allImages': allImages ?? [imageUrl],
-                          'tag': tag,
-                          'title': title,
-                          'originalPrice': originalPrice,
-                          'resalePrice': resalePrice,
-                          'hasHeart': hasHeart,
-                          'discountBadge': isDiscounted ? discountBadge : null,
-                          'originalPriceVal': originalPriceVal,
-                          'resalePriceVal': resalePriceVal,
-                          'merchantName': merchantName,
-                          'merchantLogo': merchantLogo,
-                          'merchant_id': merchantId,
-                        });
-                      },
-                    ),
-                    // Heart top right button
-                    if (hasHeart)
-                      Positioned(
-                        top: 8,
-                        right: 8,
-                        child: Container(
-                          width: 28,
-                          height: 28,
-                          decoration: const BoxDecoration(
-                            color: Colors.white,
-                            shape: BoxShape.circle,
-                          ),
-                          alignment: Alignment.center,
-                          child: const Icon(Icons.favorite_rounded, color: Color(0xFFFBBD03), size: 16),
-                        ),
-                      ),
-                    // Discount badge
-                    if (isDiscounted && discountBadge != null)
-                      Positioned(
-                        top: 8,
-                        right: 8,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFF27B6E),
-                            borderRadius: BorderRadius.circular(20),
-                          ),
-                          child: Text(
-                            discountBadge,
-                            style: const TextStyle(
-                              fontSize: 9,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.white,
-                            ),
-                          ),
-                        ),
-                      ),
-                  ],
-                ),
-              ),
-            ),
-            // Content metadata
-            Expanded(
-              flex: 56,
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(10, 6, 10, 6),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        _buildCategoryRichText(tag),
-                        const SizedBox(height: 2),
-                        Text(
-                          title,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            fontSize: 11.5,
-                            fontWeight: FontWeight.bold,
-                            color: Color(0xFF1A1A2E),
-                            height: 1.25,
-                          ),
-                        ),
-                        if (isDiscounted) ...[
-                          const SizedBox(height: 2),
-                          Text(
-                            originalPrice,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              fontSize: 9,
-                              decoration: TextDecoration.lineThrough,
-                              decorationColor: Color(0xFF9E9E9E),
-                              color: Color(0xFF9E9E9E),
-                            ),
-                          ),
-                        ],
-                        const SizedBox(height: 2),
-                        Text(
-                          resalePrice,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            fontSize: 12.5,
-                            fontWeight: FontWeight.w800,
-                            color: Color(0xFF273DB7),
-                            letterSpacing: -0.2,
-                          ),
-                        ),
-                      ],
-                    ),
-                    Row(
-                      children: [
-                        _buildMerchantAvatar(merchantName, merchantLogo, radius: 7),
-                        const SizedBox(width: 4),
-                        Expanded(
-                          child: Text(
-                            (merchantName != null && merchantName.trim().isNotEmpty) ? merchantName.trim() : 'Twicely',
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              fontSize: 9,
-                              color: Colors.black.withValues(alpha: 0.6),
-                              fontWeight: FontWeight.w400,
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 3),
-                        Icon(
-                          hasHeart ? Icons.favorite_rounded : Icons.favorite_outline_rounded,
-                          size: 11,
-                          color: hasHeart ? const Color(0xFFFBBD03) : Colors.black38,
-                        ),
-                        const SizedBox(width: 2),
-                        Text(
-                          '${likesCount ?? 0}',
-                          style: TextStyle(
-                            fontSize: 9,
-                            color: Colors.black.withValues(alpha: 0.6),
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
     );
   }
 
@@ -2059,27 +1885,27 @@ class _HomeScreenState extends State<HomeScreen> {
                                 crossAxisCount: 2,
                                 crossAxisSpacing: 14,
                                 mainAxisSpacing: 14,
-                                childAspectRatio: 0.67,
+                                childAspectRatio: 0.78,
                               ),
                               itemCount: filtered.length,
                               itemBuilder: (context, index) {
                                 final pkg = filtered[index];
                                 return _buildPackageCard(
                                   id: pkg['id'],
-                                  imageUrl: pkg['imageUrl'] as String,
-                                  tag: pkg['tag'] as String,
-                                  title: pkg['title'] as String,
-                                  originalPrice: pkg['originalPrice'] as String,
-                                  resalePrice: pkg['resalePrice'] as String,
-                                  hasHeart: pkg['hasHeart'] as bool,
-                                  discountBadge: pkg['discountBadge'] as String?,
-                                  originalPriceVal: pkg['originalPriceVal'] as double?,
-                                  resalePriceVal: pkg['resalePriceVal'] as double?,
-                                  merchantName: pkg['merchantName'] as String?,
-                                  merchantLogo: pkg['merchantLogo'] as String?,
-                                  likesCount: pkg['likesCount'] as int?,
+                                  imageUrl: pkg['imageUrl']?.toString(),
+                                  tag: pkg['tag']?.toString(),
+                                  title: pkg['title']?.toString(),
+                                  originalPrice: pkg['originalPrice']?.toString(),
+                                  resalePrice: pkg['resalePrice']?.toString(),
+                                  hasHeart: pkg['hasHeart'] == true,
+                                  discountBadge: pkg['discountBadge']?.toString(),
+                                  originalPriceVal: (pkg['originalPriceVal'] is num) ? (pkg['originalPriceVal'] as num).toDouble() : null,
+                                  resalePriceVal: (pkg['resalePriceVal'] is num) ? (pkg['resalePriceVal'] as num).toDouble() : null,
+                                  merchantName: pkg['merchantName']?.toString() ?? pkg['merchant']?.toString(),
+                                  merchantLogo: pkg['merchantLogo']?.toString(),
+                                  likesCount: (pkg['likesCount'] is num) ? (pkg['likesCount'] as num).toInt() : null,
                                   merchantId: pkg['merchant_id'],
-                                  allImages: pkg['allImages'] != null ? List<String>.from(pkg['allImages'] as Iterable) : null,
+                                  allImages: (pkg['allImages'] is List) ? (pkg['allImages'] as List).map((e) => e.toString()).toList() : null,
                                 );
                               },
                             ),
@@ -2121,20 +1947,20 @@ class _HomeScreenState extends State<HomeScreen> {
                                 ),
                                 child: _buildPackageCard(
                                   id: pkg['id'],
-                                  imageUrl: pkg['imageUrl'] as String,
-                                  tag: pkg['tag'] as String,
-                                  title: pkg['title'] as String,
-                                  originalPrice: pkg['originalPrice'] as String,
-                                  resalePrice: pkg['resalePrice'] as String,
-                                  hasHeart: pkg['hasHeart'] as bool? ?? false,
-                                  discountBadge: pkg['discountBadge'] as String?,
-                                  originalPriceVal: pkg['originalPriceVal'] as double?,
-                                  resalePriceVal: pkg['resalePriceVal'] as double?,
-                                  merchantName: pkg['merchantName'] as String?,
-                                  merchantLogo: pkg['merchantLogo'] as String?,
-                                  likesCount: pkg['likesCount'] as int?,
+                                  imageUrl: pkg['imageUrl']?.toString(),
+                                  tag: pkg['tag']?.toString(),
+                                  title: pkg['title']?.toString(),
+                                  originalPrice: pkg['originalPrice']?.toString(),
+                                  resalePrice: pkg['resalePrice']?.toString(),
+                                  hasHeart: pkg['hasHeart'] == true,
+                                  discountBadge: pkg['discountBadge']?.toString(),
+                                  originalPriceVal: (pkg['originalPriceVal'] is num) ? (pkg['originalPriceVal'] as num).toDouble() : null,
+                                  resalePriceVal: (pkg['resalePriceVal'] is num) ? (pkg['resalePriceVal'] as num).toDouble() : null,
+                                  merchantName: pkg['merchantName']?.toString() ?? pkg['merchant']?.toString(),
+                                  merchantLogo: pkg['merchantLogo']?.toString(),
+                                  likesCount: (pkg['likesCount'] is num) ? (pkg['likesCount'] as num).toInt() : null,
                                   merchantId: pkg['merchant_id'],
-                                  allImages: pkg['allImages'] != null ? List<String>.from(pkg['allImages'] as Iterable) : null,
+                                  allImages: (pkg['allImages'] is List) ? (pkg['allImages'] as List).map((e) => e.toString()).toList() : null,
                                 ),
                               ),
                             );

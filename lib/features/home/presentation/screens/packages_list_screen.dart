@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/services/api_service.dart';
 import '../../../../core/widgets/package_image_carousel.dart';
+import '../../../../core/widgets/marketplace_package_card.dart';
 import '../../../../core/widgets/shimmer_effect.dart';
 import 'package_detail_screen.dart';
 
@@ -658,7 +659,7 @@ class _PackagesListScreenState extends State<PackagesListScreen> {
               sliver: SliverGrid(
                 gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
                   crossAxisCount: 2,
-                  childAspectRatio: 0.67,
+                  childAspectRatio: 0.78,
                   crossAxisSpacing: 12,
                   mainAxisSpacing: 12,
                 ),
@@ -702,7 +703,7 @@ class _PackagesListScreenState extends State<PackagesListScreen> {
                   crossAxisCount: 2,
                   crossAxisSpacing: 12,
                   mainAxisSpacing: 14,
-                  childAspectRatio: 0.67,
+                  childAspectRatio: 0.78,
                 ),
               ),
             ),
@@ -796,144 +797,10 @@ class _PackagesListScreenState extends State<PackagesListScreen> {
   }
 
   Widget _buildPkgCard(Map<String, dynamic> pkg) {
-    final originalPrice = pkg['originalPrice'] as double;
-    final resalePrice = pkg['resalePrice'] as double;
-    final discount = pkg['discountBadge'] as String?;
-    final imageUrl = pkg['imageUrl'] as String;
-    final subcatLabel = pkg['subcategoryLabel'] as String;
-
-    final String mainCategory = _selectedFilter == 'All' ? (pkg['category'] ?? 'General') : _selectedFilter;
-    final String tagString = pkg['tag'] ?? (subcatLabel.isNotEmpty ? '$mainCategory > $subcatLabel' : mainCategory);
-
-    return GestureDetector(
+    return MarketplacePackageCard(
+      package: pkg,
+      isFavorite: pkg['hasHeart'] == true,
       onTap: () => _openPackage(pkg),
-      child: Container(
-        clipBehavior: Clip.antiAlias,
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: Colors.black.withValues(alpha: 0.08), width: 1.0),
-          boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.02), blurRadius: 12, offset: const Offset(0, 4))],
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            // IMAGE
-            Expanded(
-              flex: 44,
-              child: ClipRRect(
-                borderRadius: const BorderRadius.vertical(top: Radius.circular(14.5)),
-                child: Stack(
-                  fit: StackFit.expand,
-                  children: [
-                    PackageImageCarousel(
-                      images: pkg['allImages'] != null ? List<String>.from(pkg['allImages'] as Iterable) : [imageUrl],
-                      fallbackImage: 'assets/images/package_spa.jpg',
-                      borderRadius: const BorderRadius.vertical(top: Radius.circular(14.5)),
-                      onTap: () => _openPackage(pkg),
-                    ),
-                    if (discount != null)
-                      Positioned(
-                        top: 10,
-                        left: 10,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFF27B6E),
-                            borderRadius: BorderRadius.circular(20),
-                          ),
-                          child: Text(
-                            discount,
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 9,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ),
-                      ),
-                  ],
-                ),
-              ),
-            ),
-
-            // CONTENT
-            Expanded(
-              flex: 56,
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(10, 6, 10, 6),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _buildCategoryRichText(tagString),
-                    const SizedBox(height: 2),
-                    Expanded(
-                      child: Text(
-                        pkg['title'] ?? '',
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold, color: Color(0xFF1A1A2E), height: 1.25),
-                      ),
-                    ),
-                    if (originalPrice > resalePrice) ...[
-                      const SizedBox(height: 2),
-                      Text(
-                        'S\$${originalPrice.toStringAsFixed(2)}',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(fontSize: 9, color: Color(0xFF9E9E9E), decoration: TextDecoration.lineThrough, decorationColor: Color(0xFF9E9E9E)),
-                      ),
-                    ],
-                    const SizedBox(height: 2),
-                    Text(
-                      'S\$${resalePrice.toStringAsFixed(2)}',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w800, color: Color(0xFF273DB7), letterSpacing: -0.2),
-                    ),
-                    const SizedBox(height: 4),
-                    Row(
-                      children: [
-                        _buildMerchantAvatar(pkg['merchant']?.toString(), pkg['merchantLogo']?.toString(), radius: 7),
-                        const SizedBox(width: 4),
-                        Expanded(
-                          child: Text(
-                            (pkg['merchant'] != null && pkg['merchant'].toString().trim().isNotEmpty)
-                                ? pkg['merchant'].toString().trim()
-                                : 'Twicely',
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              fontSize: 9,
-                              color: Colors.black.withValues(alpha: 0.6),
-                              fontWeight: FontWeight.w400,
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 3),
-                        Icon(
-                          pkg['hasHeart'] == true ? Icons.favorite_rounded : Icons.favorite_outline_rounded,
-                          size: 11,
-                          color: pkg['hasHeart'] == true ? const Color(0xFFFBBD03) : Colors.black38,
-                        ),
-                        const SizedBox(width: 2),
-                        Text(
-                          '${pkg['likesCount'] ?? 0}',
-                          style: TextStyle(
-                            fontSize: 9,
-                            color: Colors.black.withValues(alpha: 0.6),
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
     );
   }
 

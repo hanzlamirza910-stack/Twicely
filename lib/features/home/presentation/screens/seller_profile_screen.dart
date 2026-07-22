@@ -3,6 +3,7 @@ import '../../../../core/constants/app_colors.dart';
 import '../../../../core/services/api_service.dart';
 import '../../../../core/widgets/custom_snackbar.dart';
 import '../../../../core/widgets/shimmer_effect.dart';
+import '../../../../core/widgets/marketplace_package_card.dart';
 import 'package_detail_screen.dart';
 
 class SellerProfileScreen extends StatefulWidget {
@@ -312,7 +313,7 @@ class _SellerProfileScreenState extends State<SellerProfileScreen> {
                       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
                       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
                         crossAxisCount: 2,
-                        childAspectRatio: 0.67,
+                        childAspectRatio: 0.78,
                         crossAxisSpacing: 12,
                         mainAxisSpacing: 12,
                       ),
@@ -328,7 +329,7 @@ class _SellerProfileScreenState extends State<SellerProfileScreen> {
                           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
                           gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
                             crossAxisCount: 2,
-                            childAspectRatio: 0.67,
+                            childAspectRatio: 0.78,
                             crossAxisSpacing: 14,
                             mainAxisSpacing: 14,
                           ),
@@ -499,12 +500,9 @@ class _SellerProfileScreenState extends State<SellerProfileScreen> {
   }
 
   Widget _buildPackageItemCard(Map<String, dynamic> item) {
-    final double originalPrice = item['originalPriceVal'] ?? 0.0;
-    final double resalePrice = item['resalePriceVal'] ?? 0.0;
-    final String? discountBadge = item['discountBadge'];
-    final bool isDiscounted = originalPrice > resalePrice && resalePrice > 0;
-
-    return GestureDetector(
+    return MarketplacePackageCard(
+      package: item,
+      isFavorite: item['hasHeart'] == true,
       onTap: () {
         Navigator.of(context).push(
           MaterialPageRoute(
@@ -512,146 +510,6 @@ class _SellerProfileScreenState extends State<SellerProfileScreen> {
           ),
         );
       },
-      child: Container(
-        clipBehavior: Clip.antiAlias,
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: Colors.black.withValues(alpha: 0.04)),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.02),
-              blurRadius: 8,
-              offset: const Offset(0, 3),
-            ),
-          ],
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            // Image Stack
-            Expanded(
-              flex: 46,
-              child: Stack(
-                fit: StackFit.expand,
-                children: [
-                  ClipRRect(
-                    borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-                    child: item['imageUrl'].toString().startsWith('assets/')
-                        ? Image.asset(item['imageUrl'], fit: BoxFit.cover)
-                        : Image.network(
-                            item['imageUrl'],
-                            fit: BoxFit.cover,
-                            errorBuilder: (context, error, stackTrace) => Container(
-                              color: AppColors.primary.withValues(alpha: 0.05),
-                              child: const Icon(Icons.image_outlined, color: AppColors.primary, size: 36),
-                            ),
-                          ),
-                  ),
-                  if (discountBadge != null)
-                    Positioned(
-                      top: 10,
-                      left: 10,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFF27B6E),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Text(
-                          discountBadge,
-                          style: const TextStyle(
-                            fontSize: 9,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.white,
-                          ),
-                        ),
-                      ),
-                    ),
-                ],
-              ),
-            ),
-            // Details
-            Expanded(
-              flex: 54,
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(10, 6, 10, 8),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _buildCategoryRichText(item['tag']?.toString() ?? ''),
-                    const SizedBox(height: 3),
-                    SizedBox(
-                      height: 32,
-                      child: Text(
-                        item['title'] ?? 'Package',
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.bold,
-                          color: AppColors.primary,
-                          height: 1.2,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    SizedBox(
-                      height: 12,
-                      child: isDiscounted
-                          ? Text(
-                              item['originalPrice'] ?? '',
-                              style: TextStyle(
-                                fontSize: 9,
-                                decoration: TextDecoration.lineThrough,
-                                color: Colors.black.withValues(alpha: 0.4),
-                              ),
-                            )
-                          : const SizedBox.shrink(),
-                    ),
-                    const SizedBox(height: 2),
-                    SizedBox(
-                      height: 18,
-                      child: Text(
-                        item['resalePrice'] ?? '',
-                        style: const TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w800,
-                          color: Color(0xFF273DB7),
-                        ),
-                      ),
-                    ),
-                    const Spacer(),
-                    Row(
-                      children: [
-                        _buildMerchantAvatar(
-                          item['merchant']?.toString(),
-                          item['merchantLogo']?.toString(),
-                          radius: 7,
-                        ),
-                        const SizedBox(width: 5),
-                        Expanded(
-                          child: Text(
-                            (item['merchant'] != null && item['merchant'].toString().trim().isNotEmpty)
-                                ? item['merchant'].toString().trim()
-                                : 'Twicely',
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              fontSize: 9,
-                              color: Colors.black.withValues(alpha: 0.6),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
     );
   }
 

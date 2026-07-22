@@ -9,6 +9,7 @@ import 'seller_profile_screen.dart';
 import '../../../../core/services/api_service.dart';
 import '../../../../core/widgets/custom_snackbar.dart';
 import '../../../../core/widgets/package_image_carousel.dart';
+import '../../../../core/widgets/marketplace_package_card.dart';
 import '../../../../core/widgets/shimmer_effect.dart';
 
 class PackageDetailScreen extends StatefulWidget {
@@ -172,13 +173,19 @@ class _PackageDetailScreenState extends State<PackageDetailScreen> {
     );
     if (!mounted) return;
     if (res['success'] == true && res['data'] != null) {
-      final raw = (res['data'] as List<dynamic>)
+      final rawList = (res['data'] as List<dynamic>)
           .where((p) => p['id']?.toString() != currentId)
           .take(6)
-          .map((p) => _mapSimilarPkg(p as Map<String, dynamic>))
+          .map((p) => Map<String, dynamic>.from(p as Map))
           .toList();
+
+      // Prefetch merchant/user profile details for authentic owner information
+      await ApiService.prefetchOwners(rawList);
+      if (!mounted) return;
+
+      final mapped = rawList.map((p) => _mapSimilarPkg(p)).toList();
       setState(() {
-        _similarPackages = raw;
+        _similarPackages = mapped;
         _loadingSimilar = false;
       });
     } else {
@@ -390,7 +397,8 @@ class _PackageDetailScreenState extends State<PackageDetailScreen> {
     final double original = double.tryParse(p['original_purchase_price']?.toString() ?? '') ??
                             double.tryParse(p['original_price']?.toString() ?? '') ??
                             double.tryParse(p['price']?.toString() ?? '') ?? 0.0;
-    final double resale = double.tryParse(p['resale_price']?.toString() ?? '') ??
+    final double resale = double.tryParse(p['selling_price_per_session']?.toString() ?? '') ??
+                          double.tryParse(p['resale_price']?.toString() ?? '') ??
                           double.tryParse(p['discounted_price']?.toString() ?? '') ??
                           double.tryParse(p['price']?.toString() ?? '') ?? 0.0;
     String? badge;
@@ -405,7 +413,8 @@ class _PackageDetailScreenState extends State<PackageDetailScreen> {
     final int? activeMerchantId = ownerInfo['merchant_id'] as int?;
     final int? activeOwnerId = ownerInfo['owner_id'] as int?;
 
-    return {
+    final result = Map<String, dynamic>.from(p);
+    result.addAll({
       'id': p['id'],
       'title': ApiService.unescapeHtml(p['title']?.toString() ?? 'Package'),
       'imageUrl': imageUrl.isNotEmpty ? imageUrl : 'assets/images/package_spa.jpg',
@@ -417,13 +426,13 @@ class _PackageDetailScreenState extends State<PackageDetailScreen> {
       'discountBadge': badge,
       'hasHeart': p['liked'] == true,
       'tag': ApiService.unescapeHtml(_buildDynamicTag(p)),
+      'merchantName': ApiService.unescapeHtml(merchantName),
       'merchant': ApiService.unescapeHtml(merchantName),
       'merchantLogo': merchantLogo,
       'merchant_id': activeMerchantId,
       'owner_id': activeOwnerId,
-      'category': p['secondary_category'] ?? '',
-      'secondary_category': p['secondary_category'] ?? '',
-    };
+    });
+    return result;
   }
 
   void _toggleWishlist() async {
@@ -1247,191 +1256,16 @@ class _PackageDetailScreenState extends State<PackageDetailScreen> {
               itemCount: _similarPackages.length,
               itemBuilder: (context, index) {
                 final item = _similarPackages[index];
-                final imgUrl = item['imageUrl'] as String;
-                final tag = item['tag'] as String? ?? 'General';
-                final title = item['title'] as String;
-                final originalPrice = item['originalPrice'] as String;
-                final resalePrice = item['resalePrice'] as String;
-                final originalPriceVal = item['originalPriceVal'] as double?;
-                final resalePriceVal = item['resalePriceVal'] as double?;
-                final discount = item['discountBadge'] as String?;
-                final merchantName = item['merchant'] as String?;
-                final merchantLogo = item['merchantLogo'] as String?;
                 final hasHeart = item['hasHeart'] as bool? ?? false;
-                final likesCount = item['likesCount'] as int? ?? (item['id'] != null ? (item['id'].hashCode % 5) : 0);
 
-                final bool isDiscounted = originalPriceVal != null && resalePriceVal != null && originalPriceVal > resalePriceVal;
-
-                return GestureDetector(
-                  onTap: () => Navigator.of(context).push(
-                    MaterialPageRoute(builder: (_) => PackageDetailScreen(package: item)),
-                  ),
-                  child: Container(
+                return Container(
+                  margin: const EdgeInsets.only(right: 14),
+                  child: MarketplacePackageCard(
+                    package: item,
                     width: 175,
-                    margin: const EdgeInsets.only(right: 14),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(color: Colors.black.withValues(alpha: 0.08), width: 1.0),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.03),
-                          blurRadius: 8,
-                          offset: const Offset(0, 4),
-                        ),
-                      ],
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        // Image Top Header
-                        Expanded(
-                          flex: 46,
-                          child: ClipRRect(
-                            borderRadius: const BorderRadius.vertical(top: Radius.circular(14.5)),
-                            child: Stack(
-                              fit: StackFit.expand,
-                              children: [
-                                PackageImageCarousel(
-                                  images: item['allImages'] != null ? List<String>.from(item['allImages'] as Iterable) : [imgUrl],
-                                  fallbackImage: 'assets/images/package_spa.jpg',
-                                  borderRadius: const BorderRadius.vertical(top: Radius.circular(14.5)),
-                                  onTap: () => Navigator.of(context).push(
-                                    MaterialPageRoute(builder: (_) => PackageDetailScreen(package: item)),
-                                  ),
-                                ),
-                                // Heart top right button
-                                if (hasHeart)
-                                  Positioned(
-                                    top: 8,
-                                    right: 8,
-                                    child: Container(
-                                      width: 28,
-                                      height: 28,
-                                      decoration: const BoxDecoration(
-                                        color: Colors.white,
-                                        shape: BoxShape.circle,
-                                      ),
-                                      alignment: Alignment.center,
-                                      child: const Icon(Icons.favorite_rounded, color: Color(0xFFFBBD03), size: 16),
-                                    ),
-                                  ),
-                                // Discount badge
-                                if (isDiscounted && discount != null)
-                                  Positioned(
-                                    top: 8,
-                                    right: 8,
-                                    child: Container(
-                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                      decoration: BoxDecoration(
-                                        color: const Color(0xFFF27B6E),
-                                        borderRadius: BorderRadius.circular(20),
-                                      ),
-                                      child: Text(
-                                        discount,
-                                        style: const TextStyle(
-                                          fontSize: 9,
-                                          fontWeight: FontWeight.bold,
-                                          color: Colors.white,
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                              ],
-                            ),
-                          ),
-                        ),
-                        // Content metadata
-                        Expanded(
-                          flex: 54,
-                          child: Padding(
-                            padding: const EdgeInsets.fromLTRB(10, 6, 10, 8),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                _buildCategoryRichText(tag),
-                                const SizedBox(height: 3),
-                                SizedBox(
-                                  height: 32,
-                                  child: Text(
-                                    title,
-                                    maxLines: 2,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: const TextStyle(
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.bold,
-                                      color: Color(0xFF1A1A2E),
-                                      height: 1.3,
-                                    ),
-                                  ),
-                                ),
-                                const SizedBox(height: 4),
-                                SizedBox(
-                                  height: 12,
-                                  child: isDiscounted
-                                      ? Text(
-                                          originalPrice,
-                                          style: const TextStyle(
-                                            fontSize: 9,
-                                            decoration: TextDecoration.lineThrough,
-                                            decorationColor: Color(0xFF9E9E9E),
-                                            color: Color(0xFF9E9E9E),
-                                          ),
-                                        )
-                                      : const SizedBox.shrink(),
-                                ),
-                                const SizedBox(height: 2),
-                                SizedBox(
-                                  height: 18,
-                                  child: Text(
-                                    resalePrice,
-                                    style: const TextStyle(
-                                      fontSize: 13,
-                                      fontWeight: FontWeight.w800,
-                                      color: Color(0xFF273DB7),
-                                      letterSpacing: -0.2,
-                                    ),
-                                  ),
-                                ),
-                                const SizedBox(height: 6),
-                                Row(
-                                  children: [
-                                    _buildMerchantAvatar(merchantName, merchantLogo, radius: 7),
-                                    const SizedBox(width: 5),
-                                    Expanded(
-                                      child: Text(
-                                        merchantName ?? 'Twicely',
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: TextStyle(
-                                          fontSize: 9,
-                                          color: Colors.black.withValues(alpha: 0.6),
-                                          fontWeight: FontWeight.w400,
-                                        ),
-                                      ),
-                                    ),
-                                    const SizedBox(width: 4),
-                                    Icon(
-                                      hasHeart ? Icons.favorite_rounded : Icons.favorite_outline_rounded,
-                                      size: 11,
-                                      color: hasHeart ? const Color(0xFFFBBD03) : Colors.black38,
-                                    ),
-                                    const SizedBox(width: 2),
-                                    Text(
-                                      '$likesCount',
-                                      style: TextStyle(
-                                        fontSize: 9,
-                                        color: Colors.black.withValues(alpha: 0.6),
-                                        fontWeight: FontWeight.w500,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ],
+                    isFavorite: hasHeart,
+                    onTap: () => Navigator.of(context).push(
+                      MaterialPageRoute(builder: (_) => PackageDetailScreen(package: item)),
                     ),
                   ),
                 );

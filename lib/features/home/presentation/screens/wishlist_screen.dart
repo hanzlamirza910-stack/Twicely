@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/services/api_service.dart';
+import '../../../../core/utils/session_manager.dart';
 import '../../../../core/utils/cart_manager.dart';
 import '../../../../core/widgets/package_image_carousel.dart';
+import '../../../../core/widgets/marketplace_package_card.dart';
 import '../../../../core/widgets/shimmer_effect.dart';
 import 'shopping_cart_screen.dart';
 import 'package_detail_screen.dart';
@@ -36,9 +38,30 @@ class _WishlistScreenState extends State<WishlistScreen> {
       if (!mounted) return;
       if (res['success'] == true && res['data'] != null) {
         final List<dynamic> rawItems = res['data'];
-        await ApiService.prefetchOwners(rawItems);
+        
+        // Fetch full package details for each wishlist item in parallel
+        final List<Map<String, dynamic>> enrichedItems = await Future.wait(
+          rawItems.map((raw) async {
+            final Map<String, dynamic> itemMap = Map<String, dynamic>.from(raw as Map);
+            final pkgId = int.tryParse(itemMap['package_id']?.toString() ?? itemMap['id']?.toString() ?? '');
+            if (pkgId != null) {
+              final detailRes = await ApiService.getPackageById(pkgId);
+              if (detailRes['success'] == true && detailRes['data'] is Map) {
+                final Map<String, dynamic> detail = Map<String, dynamic>.from(detailRes['data'] as Map);
+                // Keep liked_at if available
+                if (itemMap['liked_at'] != null) {
+                  detail['liked_at'] = itemMap['liked_at'];
+                }
+                return detail;
+              }
+            }
+            return itemMap;
+          }),
+        );
+
+        await ApiService.prefetchOwners(enrichedItems);
         if (!mounted) return;
-        final mapped = rawItems.map((p) => _mapApiPackage(p as Map<String, dynamic>)).toList();
+        final mapped = enrichedItems.map((p) => _mapApiPackage(p)).toList();
         setState(() {
           _wishlistItems = mapped;
           _isLoading = false;
@@ -113,14 +136,20 @@ class _WishlistScreenState extends State<WishlistScreen> {
 
     final double priceVal = (apiPkg['price'] is num)
         ? (apiPkg['price'] as num).toDouble()
-        : double.tryParse(apiPkg['price']?.toString() ?? '') ?? 0.0;
+        : (double.tryParse(apiPkg['price']?.toString() ?? '') ??
+           double.tryParse(apiPkg['selling_price_per_session']?.toString() ?? '') ??
+           double.tryParse(apiPkg['resale_price']?.toString() ?? '') ?? 0.0);
 
-    final double original = double.tryParse(apiPkg['original_purchase_price']?.toString() ?? '') ??
-                            double.tryParse(apiPkg['original_price']?.toString() ?? '') ??
-                            priceVal;
-    final double resale = double.tryParse(apiPkg['resale_price']?.toString() ?? '') ??
-                          double.tryParse(apiPkg['discounted_price']?.toString() ?? '') ??
-                          priceVal;
+    final double discountVal = double.tryParse(apiPkg['discounted_price']?.toString() ?? '') ?? 0.0;
+    
+    final double originalVal = double.tryParse(apiPkg['original_purchase_price']?.toString() ?? '') ??
+                               double.tryParse(apiPkg['original_price']?.toString() ?? '') ?? 0.0;
+
+    final double resale = (discountVal > 0 && discountVal < priceVal)
+        ? discountVal
+        : (priceVal > 0 ? priceVal : (originalVal > 0 ? originalVal : 0.0));
+
+    final double original = (originalVal > resale) ? originalVal : resale;
 
     String? discountBadge;
     if (original > 0 && resale < original) {
@@ -268,14 +297,15 @@ class _WishlistScreenState extends State<WishlistScreen> {
     );
   }
 
+
+
   Widget _buildBody() {
     return SingleChildScrollView(
       physics: const AlwaysScrollableScrollPhysics(),
-      padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 12.0),
+      padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 16.0),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Screen Header Title & Subtitle
           const Text(
             'My Wishlist',
             style: TextStyle(
@@ -294,7 +324,7 @@ class _WishlistScreenState extends State<WishlistScreen> {
               fontWeight: FontWeight.w500,
             ),
           ),
-          const SizedBox(height: 24),
+          const SizedBox(height: 18),
 
           // Grid of Wishlist Items
           _wishlistItems.isEmpty
@@ -304,9 +334,9 @@ class _WishlistScreenState extends State<WishlistScreen> {
                   physics: const NeverScrollableScrollPhysics(),
                   gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
                     crossAxisCount: 2,
-                    crossAxisSpacing: 14,
-                    mainAxisSpacing: 16,
-                    childAspectRatio: 0.67,
+                    crossAxisSpacing: 12,
+                    mainAxisSpacing: 14,
+                    childAspectRatio: 0.70,
                   ),
                   itemCount: _wishlistItems.length,
                   itemBuilder: (context, index) {
@@ -356,7 +386,23 @@ class _WishlistScreenState extends State<WishlistScreen> {
     );
   }
 
+  double _parsePrice(dynamic val) {
+    if (val == null) return 0.0;
+    if (val is num) return val.toDouble();
+    return double.tryParse(val.toString().replaceAll(RegExp(r'[^0-9.]'), '')) ?? 0.0;
+  }
+
   Widget _buildWishlistItemCard(Map<String, dynamic> item) {
+    final title = ApiService.unescapeHtml(item['title']?.toString() ?? 'Package Listing');
+    
+    // Robust Price Parsing from all possible API response keys
+    final double rawVal = _parsePrice(item['resalePriceVal'] ?? item['price'] ?? item['selling_price_per_session'] ?? item['resale_price'] ?? item['price_per_session']);
+    final String currency = item['currency']?.toString() ?? 'SGD';
+    final String currencySymbol = (currency.toUpperCase() == 'USD') ? '\$' : 'S\$';
+    final String resalePriceStr = rawVal > 0 ? '$currencySymbol${rawVal.toStringAsFixed(2)}' : (item['resalePrice']?.toString() ?? '$currencySymbol${rawVal.toStringAsFixed(2)}');
+    final imageUrl = item['imageUrl']?.toString() ?? 'assets/images/package_spa.jpg';
+    final List<String> allImages = item['allImages'] is List ? List<String>.from(item['allImages'] as Iterable) : [imageUrl];
+
     return GestureDetector(
       onTap: () {
         Navigator.of(context).push(
@@ -369,11 +415,11 @@ class _WishlistScreenState extends State<WishlistScreen> {
         clipBehavior: Clip.antiAlias,
         decoration: BoxDecoration(
           color: Colors.white,
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: AppColors.primary.withValues(alpha: 0.05)),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: Colors.black.withValues(alpha: 0.08), width: 1.0),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withValues(alpha: 0.015),
+              color: Colors.black.withValues(alpha: 0.03),
               blurRadius: 8,
               offset: const Offset(0, 4),
             ),
@@ -382,218 +428,122 @@ class _WishlistScreenState extends State<WishlistScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // Image Section with Floating Heart and Category Pill
+            // Image Section matching Website
             Expanded(
-              flex: 46,
-              child: Stack(
-                children: [
-                  PackageImageCarousel(
-                    images: item['allImages'] != null ? List<String>.from(item['allImages'] as Iterable) : [item['imageUrl'] as String],
-                    fallbackImage: 'assets/images/package_spa.jpg',
-                    borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-                    onTap: () {
-                      Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (context) => PackageDetailScreen(package: item),
-                        ),
-                      );
-                    },
-                  ),
-                  // Floating Heart Icon Button (Active Wishlist)
-                  Positioned(
-                    right: 8,
-                    top: 8,
-                    child: GestureDetector(
-                      onTap: () => _toggleWishlist(item),
-                      child: Container(
-                        padding: const EdgeInsets.all(6),
-                        decoration: const BoxDecoration(
-                          color: Colors.white,
-                          shape: BoxShape.circle,
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black12,
-                              blurRadius: 4,
-                              offset: Offset(0, 2),
-                            ),
-                          ],
-                        ),
-                        child: const Icon(
-                          Icons.favorite_rounded,
-                          color: Colors.red,
-                          size: 16,
-                        ),
+              flex: 52,
+              child: ClipRRect(
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(14.5)),
+                child: PackageImageCarousel(
+                  images: allImages,
+                  fallbackImage: 'assets/images/package_spa.jpg',
+                  borderRadius: const BorderRadius.vertical(top: Radius.circular(14.5)),
+                  onTap: () {
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (context) => PackageDetailScreen(package: item),
                       ),
-                    ),
-                  ),
-                ],
+                    );
+                  },
+                ),
               ),
             ),
 
-            // Details Section
+            // Content section with Title, Price, Divider, View Button & Trash Icon
             Expanded(
-              flex: 54,
+              flex: 48,
               child: Padding(
-                padding: const EdgeInsets.fromLTRB(10, 6, 10, 8),
+                padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    _buildCategoryRichText(item['tag'] as String? ?? item['category'] as String? ?? 'General'),
-                    const SizedBox(height: 3),
-                    Text(
-                      item['title'] as String,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.bold,
-                        color: Color(0xFF1A1A2E),
-                        height: 1.3,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    SizedBox(
-                      height: 12,
-                      child: (item['originalPriceVal'] != null &&
-                              item['resalePriceVal'] != null &&
-                              (item['originalPriceVal'] as double) > (item['resalePriceVal'] as double))
-                          ? Text(
-                              item['originalPrice'] as String,
-                              style: const TextStyle(
-                                fontSize: 9,
-                                decoration: TextDecoration.lineThrough,
-                                decorationColor: Color(0xFF9E9E9E),
-                                color: Color(0xFF9E9E9E),
-                              ),
-                            )
-                          : const SizedBox.shrink(),
-                    ),
-                    const SizedBox(height: 2),
-                    SizedBox(
-                      height: 18,
-                      child: Text(
-                        item['resalePrice'] as String,
-                        style: const TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w800,
-                          color: Color(0xFF273DB7),
-                          letterSpacing: -0.2,
-                        ),
-                      ),
-                    ),
-                    const Spacer(),
-                    Row(
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
                       children: [
-                        Expanded(
-                          child: GestureDetector(
-                            onTap: () {
-                              final merchantId = item['merchant_id'] as int?;
-                              final ownerId = item['owner_id'] as int?;
-                              final mName = item['merchantName'] as String? ?? 'Twicely';
-                              final mLogo = item['merchantLogo'] as String? ?? '';
-                              if (merchantId != null || ownerId != null) {
-                                Navigator.of(context).push(
-                                  MaterialPageRoute(
-                                    builder: (context) => SellerProfileScreen(
-                                      merchantId: merchantId,
-                                      ownerId: ownerId,
-                                      merchantName: mName,
-                                      merchantLogo: mLogo,
-                                    ),
-                                  ),
-                                );
-                              }
-                            },
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                _buildMerchantAvatar(
-                                  item['merchantName'] as String?,
-                                  item['merchantLogo'] as String?,
-                                  radius: 7,
-                                ),
-                                const SizedBox(width: 5),
-                                Expanded(
-                                  child: Text(
-                                    item['merchantName'] as String? ?? 'Twicely',
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: TextStyle(
-                                      fontSize: 9,
-                                      color: Colors.black.withValues(alpha: 0.6),
-                                      fontWeight: FontWeight.w400,
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
+                        Text(
+                          title,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
+                            color: Color(0xFF1A1A2E),
+                            height: 1.25,
                           ),
                         ),
-                        const SizedBox(width: 4),
-                        GestureDetector(
-                          onTap: () async {
-                            final int? pkgId = int.tryParse(item['id'].toString());
-                            if (pkgId == null) return;
-                            
-                            showDialog(
-                              context: context,
-                              barrierDismissible: false,
-                              builder: (context) => const Center(
-                                child: CircularProgressIndicator(valueColor: AlwaysStoppedAnimation<Color>(AppColors.primary)),
-                              ),
-                            );
-
-                            try {
-                              final res = await ApiService.addToCart(pkgId);
-                              if (!mounted) return;
-                              Navigator.of(context).pop(); // dismiss loading
-                              if (res['success'] == true) {
-                                await CartManager().syncWithBackend();
-                                if (!mounted) return;
-                                CustomSnackBar.show(
-                                  context,
-                                  message: 'Added "${item['title']}" to cart!',
-                                  type: SnackBarType.success,
-                                  action: SnackBarAction(
-                                    label: 'VIEW CART',
-                                    onPressed: () {
-                                      Navigator.of(context).push(
-                                        MaterialPageRoute(
-                                          builder: (context) => const ShoppingCartScreen(),
-                                        ),
-                                      );
-                                    },
-                                  ),
-                                );
-                              } else {
-                                CustomSnackBar.show(
-                                  context,
-                                  message: res['message'] ?? 'Failed to add item to cart.',
-                                  type: SnackBarType.error,
-                                );
-                              }
-                            } catch (e) {
-                              if (!mounted) return;
-                              Navigator.of(context).pop();
-                              CustomSnackBar.show(
-                                context,
-                                message: 'Error: $e',
-                                type: SnackBarType.error,
-                              );
-                            }
-                          },
-                          child: Container(
-                            padding: const EdgeInsets.all(4),
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              border: Border.all(color: AppColors.primary.withValues(alpha: 0.12)),
-                            ),
-                            child: const Icon(
-                              Icons.shopping_bag_outlined,
-                              color: AppColors.primary,
-                              size: 14,
-                            ),
+                        const SizedBox(height: 4),
+                        Text(
+                          resalePriceStr,
+                          style: const TextStyle(
+                            fontSize: 13.5,
+                            fontWeight: FontWeight.w800,
+                            color: Color(0xFF273DB7),
+                            letterSpacing: -0.2,
                           ),
+                        ),
+                      ],
+                    ),
+
+                    Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Divider(height: 1, color: Colors.black.withValues(alpha: 0.08)),
+                        const SizedBox(height: 6),
+                        Row(
+                          children: [
+                            // Website Yellow View Button
+                            Expanded(
+                              child: SizedBox(
+                                height: 30,
+                                child: ElevatedButton(
+                                  onPressed: () {
+                                    Navigator.of(context).push(
+                                      MaterialPageRoute(
+                                        builder: (context) => PackageDetailScreen(package: item),
+                                      ),
+                                    );
+                                  },
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: const Color(0xFFFBBD03),
+                                    foregroundColor: AppColors.primary,
+                                    elevation: 0,
+                                    padding: EdgeInsets.zero,
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(16),
+                                    ),
+                                  ),
+                                  child: const Text(
+                                    'View',
+                                    style: TextStyle(
+                                      fontSize: 11.5,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 6),
+                            // Website Red Trash Icon Button
+                            InkWell(
+                              onTap: () => _toggleWishlist(item),
+                              borderRadius: BorderRadius.circular(8),
+                              child: Container(
+                                width: 30,
+                                height: 30,
+                                decoration: BoxDecoration(
+                                  color: Colors.transparent,
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                alignment: Alignment.center,
+                                child: const Icon(
+                                  Icons.delete_outline_rounded,
+                                  color: Color(0xFFDC2626),
+                                  size: 18,
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
                       ],
                     ),
