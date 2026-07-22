@@ -81,15 +81,9 @@ class _WalletScreenState extends State<WalletScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // API always returns balance as integer CENTS for all user types
-    // e.g. balance: 525 = SGD 5.25, so always divide by 100
-    final balanceRaw = double.tryParse(_wallet['balance']?.toString() ?? '0') ?? 0.0;
-    final availableRaw = double.tryParse(_wallet['available_balance']?.toString() ?? '0') ?? 0.0;
-    final clearingRaw = double.tryParse(_wallet['clearing_balance']?.toString() ?? '0') ?? 0.0;
-
-    final balance = balanceRaw;
-    final available = availableRaw;
-    final clearing = clearingRaw;
+    final balance = double.tryParse(_wallet['balance']?.toString() ?? '0') ?? 0.0;
+    final available = double.tryParse(_wallet['available_balance']?.toString() ?? '0') ?? 0.0;
+    final clearing = double.tryParse(_wallet['clearing_balance']?.toString() ?? '0') ?? 0.0;
 
     final currency = _wallet['currency']?.toString() ?? 'SGD';
     final payoutEnabled = _wallet['payout_enabled'] == true;

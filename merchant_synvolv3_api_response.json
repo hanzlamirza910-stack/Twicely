@@ -1,0 +1,304 @@
+{
+  "merchant_email": "synvolv3@gmail.com",
+  "timestamp_utc": "2026-07-22T15:22:00Z",
+  "responses": {
+    "merchant_profile": {
+      "success": true,
+      "data": {
+        "id": 12,
+        "email": "synvolv3@gmail.com",
+        "first_name": "",
+        "last_name": "",
+        "display_name": "Rolys",
+        "phone_number": "03030844726",
+        "business_name": "Rolys",
+        "business_registration": "2324",
+        "business_type": "company",
+        "business_address": "07 lahore",
+        "website_link": "",
+        "verification_status": "verified",
+        "merchant_account_status": "verified",
+        "merchant_tier": "biz_plus",
+        "account_category": "merchant_biz_plus",
+        "logo_url": ""
+      }
+    },
+    "user_profile": {
+      "success": true,
+      "data": {
+        "id": 12,
+        "email": "synvolv3@gmail.com",
+        "name": "Rolys",
+        "first_name": "",
+        "last_name": "",
+        "phone_number": "03030844726",
+        "verification_status": "verified",
+        "c2c_account_status": "none",
+        "is_merchant": true
+      }
+    },
+    "merchant_wallet": {
+      "success": true,
+      "data": {
+        "balance": 525,
+        "available_balance": 0,
+        "clearing_balance": 0,
+        "currency": "SGD",
+        "stripe_account_id": "acct_1TvhiWKqNVbTSprm",
+        "stripe_account_status": "pending",
+        "payout_enabled": false,
+        "payout_schedule": "weekly"
+      }
+    },
+    "payments_wallet": {
+      "success": true,
+      "data": {
+        "balance": 525,
+        "available_balance": 0,
+        "clearing_balance": 0,
+        "currency": "SGD",
+        "stripe_account_id": "acct_1TvhiWKqNVbTSprm",
+        "payout_enabled": false
+      }
+    },
+    "merchant_stats": {
+      "success": true,
+      "data": {
+        "monthly_revenue": [],
+        "packages": {
+          "total": 2,
+          "published": 2,
+          "pending": 0,
+          "draft": 0,
+          "disabled": 0
+        }
+      }
+    },
+    "merchant_orders": {
+      "success": true,
+      "data": [],
+      "meta": {
+        "total": 0,
+        "page": 1,
+        "per_page": 20,
+        "total_pages": 0
+      }
+    },
+    "merchant_packages": {
+      "success": true,
+      "data": [
+        {
+          "id": 1406,
+          "title": "Nail &amp; Beauty Combo",
+          "status": "published",
+          "price": 120,
+          "currency": "SGD",
+          "images": [
+            {
+              "id": 1407,
+              "url": "https://staging.twicely.sg/wp-content/uploads/2026/07/index-abphai-64537.png",
+              "is_cover": true,
+              "sort_order": 0
+            }
+          ]
+        },
+        {
+          "id": 1390,
+          "title": "Relax &amp; Renew Spa Package",
+          "status": "published",
+          "price": 120,
+          "currency": "SGD",
+          "images": [
+            {
+              "id": 1392,
+              "url": "https://staging.twicely.sg/wp-content/uploads/2026/07/2785.jpg",
+              "is_cover": true,
+              "sort_order": 0
+            },
+            {
+              "id": 1391,
+              "url": "https://staging.twicely.sg/wp-content/uploads/2026/07/202020surgery20trends.webp",
+              "is_cover": false,
+              "sort_order": 1
+            }
+          ]
+        }
+      ],
+      "meta": {
+        "total": 2,
+        "page": 1,
+        "per_page": 20,
+        "total_pages": 1
+      }
+    },
+    "all_packages_fresh": {
+      "success": true,
+      "data": [
+        {
+          "id": 1406,
+          "title": "Nail &amp; Beauty Combo",
+          "status": "published",
+          "price": 120,
+          "discounted_price": null,
+          "currency": "SGD",
+          "featured": false,
+          "location": "",
+          "images": [
+            {
+              "id": 1407,
+              "url": "https://staging.twicely.sg/wp-content/uploads/2026/07/index-abphai-64537.png",
+              "is_cover": true,
+              "sort_order": 0
+            }
+          ],
+          "permalink": "https://staging.twicely.sg/packages/nail-beauty-combo/",
+          "created_at": "2026-07-21 16:11:01",
+          "availability_status": "active",
+          "owner_id": 12,
+          "owner_type": "merchant",
+          "presented_by": null,
+          "secondary_category": "beauty-nails"
+        },
+        {
+          "id": 1402,
+          "title": "Zen Yoga &amp; Pilates Pack",
+          "status": "published",
+          "price": 300,
+          "discounted_price": null,
+          "currency": "SGD",
+          "featured": false,
+          "location": "",
+          "images": [
+            {
+              "id": 1409,
+              "url": "https://staging.twicely.sg/wp-content/uploads/2026/07/manflowyoga_yogaformen_beginners_warrior2.jpg",
+              "is_cover": true,
+              "sort_order": 0
+            },
+            {
+              "id": 1403,
+              "url": "https://staging.twicely.sg/wp-content/uploads/2026/07/images-4.jpeg",
+              "is_cover": false,
+              "sort_order": 1
+            },
+            {
+              "id": 1404,
+              "url": "https://staging.twicely.sg/wp-content/uploads/2026/07/1_hju_9-y0EoBD8HDj15dKRw.jpg",
+              "is_cover": false,
+              "sort_order": 2
+            }
+          ],
+          "permalink": "https://staging.twicely.sg/packages/zen-yoga-pilates-pack/",
+          "created_at": "2026-07-21 16:08:04",
+          "availability_status": "active",
+          "owner_id": 13,
+          "owner_type": "user",
+          "presented_by": {
+            "merchant_id": 14,
+            "name": "test test dfrnt"
+          },
+          "secondary_category": "yoga-pilates"
+        },
+        {
+          "id": 1396,
+          "title": "Glow Up Facial Bundle",
+          "status": "published",
+          "price": 80,
+          "discounted_price": null,
+          "currency": "SGD",
+          "featured": false,
+          "location": "",
+          "images": [
+            {
+              "id": 1397,
+              "url": "https://staging.twicely.sg/wp-content/uploads/2026/07/images-1.jpeg",
+              "is_cover": true,
+              "sort_order": 0
+            }
+          ],
+          "permalink": "https://staging.twicely.sg/packages/glow-up-facial-bundle/",
+          "created_at": "2026-07-21 15:59:06",
+          "availability_status": "on_redemption",
+          "owner_id": 8,
+          "owner_type": "user",
+          "presented_by": {
+            "merchant_id": 3,
+            "name": "Synvolv"
+          },
+          "secondary_category": "beauty-nails"
+        },
+        {
+          "id": 1393,
+          "title": "FitStart Gym Pass (10 Sessions)",
+          "status": "published",
+          "price": 260,
+          "discounted_price": null,
+          "currency": "SGD",
+          "featured": false,
+          "location": "",
+          "images": [
+            {
+              "id": 1408,
+              "url": "https://staging.twicely.sg/wp-content/uploads/2026/07/istock-478624695.avif",
+              "is_cover": true,
+              "sort_order": 0
+            },
+            {
+              "id": 1394,
+              "url": "https://staging.twicely.sg/wp-content/uploads/2026/07/iStock-187572427-scaled.jpg",
+              "is_cover": false,
+              "sort_order": 1
+            }
+          ],
+          "permalink": "https://staging.twicely.sg/packages/fitstart-gym-pass-10-sessions/",
+          "created_at": "2026-07-21 15:54:02",
+          "availability_status": "active",
+          "owner_id": 4,
+          "owner_type": "user",
+          "presented_by": {
+            "merchant_id": 13,
+            "name": "Tagpools"
+          },
+          "secondary_category": "gym-fitness"
+        },
+        {
+          "id": 1390,
+          "title": "Relax &amp; Renew Spa Package",
+          "status": "published",
+          "price": 120,
+          "discounted_price": 12,
+          "currency": "SGD",
+          "featured": false,
+          "location": "",
+          "images": [
+            {
+              "id": 1392,
+              "url": "https://staging.twicely.sg/wp-content/uploads/2026/07/2785.jpg",
+              "is_cover": true,
+              "sort_order": 0
+            },
+            {
+              "id": 1391,
+              "url": "https://staging.twicely.sg/wp-content/uploads/2026/07/202020surgery20trends.webp",
+              "is_cover": false,
+              "sort_order": 1
+            }
+          ],
+          "permalink": "https://staging.twicely.sg/packages/relax-renew-spa-package/",
+          "created_at": "2026-07-21 15:41:54",
+          "availability_status": "active",
+          "owner_id": 12,
+          "owner_type": "merchant",
+          "presented_by": null,
+          "secondary_category": "spa-massage"
+        }
+      ],
+      "meta": {
+        "total": 5,
+        "page": 1,
+        "per_page": 20,
+        "total_pages": 1
+      }
+    }
+  }
+}

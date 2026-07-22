@@ -54,8 +54,12 @@ class _HomeScreenState extends State<HomeScreen> {
   final int _avatarCacheBuster = 0;
 
   String _getAvatarUrl(Map<String, dynamic> data) {
-    String rawUrl = '';
-    if (data['avatar_url'] != null && data['avatar_url'].toString().isNotEmpty) {
+    final uId = int.tryParse(data['id']?.toString() ?? '') ?? SessionManager.userId;
+    final merchantLogo = ApiService.getMerchantLogo(uId, data['logo_url']?.toString() ?? data['logo']?.toString());
+    if (merchantLogo.isNotEmpty) return merchantLogo;
+
+    String rawUrl = (data['logo_url'] ?? data['logo'])?.toString() ?? '';
+    if (rawUrl.isEmpty && data['avatar_url'] != null && data['avatar_url'].toString().isNotEmpty) {
       rawUrl = data['avatar_url'].toString();
     } else if (data['avatar_urls'] != null) {
       final avatarUrls = data['avatar_urls'];

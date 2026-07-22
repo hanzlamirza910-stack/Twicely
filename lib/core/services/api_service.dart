@@ -13,13 +13,6 @@ class ApiService {
   static Map<int, Map<String, dynamic>> merchantsCache = {};
 
   static String getMerchantLogo(int? id, String? logoUrl) {
-    // Staging merchants with official brand logo overrides
-    if (id == 3)
-      return 'https://staging.twicely.sg/wp-content/uploads/2025/11/sysnvolv-1-150x150.png'; // Synvolv
-    if (id == 13)
-      return 'https://staging.twicely.sg/wp-content/uploads/2026/03/cropped-favicon-removebg-preview-150x150.webp'; // Tagpools
-    if (id == 14)
-      return 'https://staging.twicely.sg/wp-content/uploads/2026/03/images-150x150.jpeg'; // test test dfrnt
     if (logoUrl != null && logoUrl.isNotEmpty) return logoUrl;
     return '';
   }
@@ -2090,21 +2083,7 @@ class ApiService {
         return buildResult(name, avatar, isMerchant);
       }
 
-      // Fallback logo override check for known merchant IDs
-      final knownLogo = getMerchantLogo(targetMerchantId, null);
-      if (knownLogo.isNotEmpty) {
-        avatar = knownLogo;
-      }
-      // Known merchant fallback names
-      if (targetMerchantId == 3) {
-        name = 'Synvolv';
-      } else if (targetMerchantId == 12) {
-        name = 'Rolys';
-      } else if (targetMerchantId == 13) {
-        name = 'Tagpools';
-      } else if (targetMerchantId == 14) {
-        name = 'test test dfrnt';
-      } else {
+      if (name.isEmpty || name == 'Twicely User') {
         name = 'Twicely Merchant';
       }
 

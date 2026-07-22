@@ -66,11 +66,7 @@ class _AddPackageScreenState extends State<AddPackageScreen> {
   List<Map<String, dynamic>> _secondaryCategories = [];
   bool _isLoadingData = false;
 
-  static const Map<int, String> _merchantLogoOverrides = {
-    3: 'https://staging.twicely.sg/wp-content/uploads/2025/11/sysnvolv-1-150x150.png',
-    13: 'https://staging.twicely.sg/wp-content/uploads/2026/03/cropped-favicon-removebg-preview-150x150.webp',
-    14: 'https://staging.twicely.sg/wp-content/uploads/2026/03/images-150x150.jpeg',
-  };
+
 
   static const List<Map<String, String>> _primaryFallback = [
     {'name': 'For Her', 'slug': 'for-her'},
@@ -87,7 +83,7 @@ class _AddPackageScreenState extends State<AddPackageScreen> {
     {'name': 'Lifestyle Classes', 'slug': 'lifestyle-classes'},
   ];
 
-  final List<String> _fallbackMerchants = ['Synvolv', 'Tagpools', 'test test dfrnt'];
+
 
   @override
   void initState() {
@@ -292,6 +288,22 @@ class _AddPackageScreenState extends State<AddPackageScreen> {
       // Deduplicate loaded merchants by business name or name (case-insensitive trim)
       final Set<String> seenNames = {};
       final List<Map<String, dynamic>> uniqueMerchants = [];
+
+      // If logged in user is a merchant, include their dynamic profile at top of list
+      if (SessionManager.isMerchant) {
+        final myUser = SessionManager.userData;
+        final myName = (myUser?['business_name']?.toString() ?? myUser?['name']?.toString() ?? SessionManager.userName ?? '').trim();
+        if (myName.isNotEmpty) {
+          seenNames.add(myName.toLowerCase());
+          uniqueMerchants.add({
+            'id': SessionManager.userId,
+            'business_name': myName,
+            'name': myName,
+            'logo_url': myUser?['logo_url'] ?? myUser?['logo'],
+          });
+        }
+      }
+
       for (final merchant in loadedMerchants) {
         final name = (merchant['business_name']?.toString() ?? merchant['name']?.toString() ?? '').trim().toLowerCase();
         if (name.isNotEmpty && !seenNames.contains(name)) {
@@ -343,8 +355,7 @@ class _AddPackageScreenState extends State<AddPackageScreen> {
           final existsInApi = uniqueMerchants.any((m) =>
               (m['business_name']?.toString() == _selectedMerchant ||
                m['name']?.toString() == _selectedMerchant));
-          final existsInFallback = _fallbackMerchants.contains(_selectedMerchant);
-          if (!existsInApi && !existsInFallback) {
+          if (!existsInApi) {
             _isCustomMerchant = true;
             _customMerchantController.text = _selectedMerchant;
             debugPrint('[DEBUG] Detected custom merchant: $_selectedMerchant');
@@ -374,14 +385,7 @@ class _AddPackageScreenState extends State<AddPackageScreen> {
 
   Widget _buildMerchantDropdownItem(Map<String, dynamic> merchant) {
     final name = merchant['business_name']?.toString() ?? merchant['name']?.toString() ?? '';
-    final id = merchant['id'] as int?;
-    
-    String? logoUrl = merchant['logo_url']?.toString();
-    if (logoUrl == null || logoUrl.isEmpty) {
-      if (id != null && _merchantLogoOverrides.containsKey(id)) {
-        logoUrl = _merchantLogoOverrides[id];
-      }
-    }
+    final String? logoUrl = merchant['logo_url']?.toString() ?? merchant['logo']?.toString();
 
     final initials = name.isNotEmpty ? name.substring(0, 1).toUpperCase() : '?';
 
@@ -1164,7 +1168,7 @@ class _AddPackageScreenState extends State<AddPackageScreen> {
                   isExpanded: true,
                   key: ValueKey(_selectedMerchant),
                   // ignore: deprecated_member_use
-                  value: (_apiMerchants.any((m) => (m['business_name'] == _selectedMerchant || m['name'] == _selectedMerchant)) || _fallbackMerchants.contains(_selectedMerchant))
+                  value: _apiMerchants.any((m) => (m['business_name'] == _selectedMerchant || m['name'] == _selectedMerchant))
                       ? (_selectedMerchant.isEmpty ? null : _selectedMerchant)
                       : null,
                   hint: Text(
@@ -1179,57 +1183,11 @@ class _AddPackageScreenState extends State<AddPackageScreen> {
                     disabledBorder: InputBorder.none,
                     contentPadding: EdgeInsets.zero,
                   ),
-                  items: _apiMerchants.isNotEmpty
-                      ? _apiMerchants.map((merchant) {
+                  items: _apiMerchants.map((merchant) {
                           final name = merchant['business_name']?.toString() ?? merchant['name']?.toString() ?? '';
                           return DropdownMenuItem<String>(
                             value: name,
                             child: _buildMerchantDropdownItem(merchant),
-                          );
-                        }).toList()
-                      : _fallbackMerchants.map((name) {
-                          final initials = name.isNotEmpty ? name.substring(0, 1).toUpperCase() : '?';
-                          String? logoUrl;
-                          if (name.toLowerCase().contains('synvolv')) {
-                            logoUrl = _merchantLogoOverrides[3];
-                          } else if (name.toLowerCase().contains('tagpools')) {
-                            logoUrl = _merchantLogoOverrides[13];
-                          }
-
-                          return DropdownMenuItem<String>(
-                            value: name,
-                            child: Row(
-                              children: [
-                                ClipOval(
-                                  child: Container(
-                                    width: 32,
-                                    height: 32,
-                                    decoration: const BoxDecoration(
-                                      shape: BoxShape.circle,
-                                      color: Color(0xFF8B5CF6),
-                                    ),
-                                    child: logoUrl != null
-                                        ? Image.network(
-                                            logoUrl,
-                                            width: 32,
-                                            height: 32,
-                                            fit: BoxFit.cover,
-                                            errorBuilder: (_, __, ___) => Center(
-                                              child: Text(initials, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-                                            ),
-                                          )
-                                        : Center(
-                                            child: Text(
-                                              initials,
-                                              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-                                            ),
-                                          ),
-                                  ),
-                                ),
-                                const SizedBox(width: 12),
-                                Text(name, style: const TextStyle(fontSize: 14, color: AppColors.primary)),
-                              ],
-                            ),
                           );
                         }).toList(),
                   onChanged: (val) {

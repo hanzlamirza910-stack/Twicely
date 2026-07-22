@@ -32,13 +32,13 @@ class _MerchantDashboardState extends State<MerchantDashboard> {
   String _selectedDateFilter = 'All time';
   String _selectedSortOrder = 'Newest';
 
-  String _merchantBusinessName = "Rolys";
-  String _merchantBusinessType = "Company";
-  String _merchantRegNumber = "2324";
-  String _merchantAddress = "07 lahore";
-  String _merchantWebsite = "-";
-  String _merchantEmail = "synvolv3@gmail.com";
-  String _merchantPhone = "03030844726";
+  String _merchantBusinessName = "";
+  String _merchantBusinessType = "";
+  String _merchantRegNumber = "";
+  String _merchantAddress = "";
+  String _merchantWebsite = "";
+  String _merchantEmail = "";
+  String _merchantPhone = "";
   String _merchantLogoUrl = "";
 
   final bool _isUploadingLogo = false;
@@ -71,16 +71,18 @@ class _MerchantDashboardState extends State<MerchantDashboard> {
     if (SessionManager.isLoggedIn) {
       final user = SessionManager.userData;
       if (user != null) {
+        final uId = int.tryParse(user['id']?.toString() ?? '') ?? SessionManager.userId;
+        final logo = ApiService.getMerchantLogo(uId, user['logo_url']?.toString() ?? user['logo']?.toString());
         _merchantBusinessName = user['business_name'] as String? ?? 
             user['name'] as String? ?? 
             '${user['first_name'] ?? ''} ${user['last_name'] ?? ''}'.trim();
         _merchantEmail = user['email'] as String? ?? '';
-        _merchantPhone = user['phone'] as String? ?? user['phone_number'] as String? ?? '';
+        _merchantPhone = user['phone_number'] as String? ?? user['phone'] as String? ?? '';
         _merchantBusinessType = user['business_type'] as String? ?? '';
         _merchantRegNumber = user['business_registration'] as String? ?? '';
         _merchantAddress = user['business_address'] as String? ?? '';
         _merchantWebsite = user['website_link'] as String? ?? '';
-        _merchantLogoUrl = user['logo'] as String? ?? user['logo_url'] as String? ?? user['avatar_url'] as String? ?? '';
+        _merchantLogoUrl = logo.isNotEmpty ? logo : (user['logo'] as String? ?? user['logo_url'] as String? ?? user['avatar_url'] as String? ?? '');
       }
     }
   }
@@ -150,19 +152,25 @@ class _MerchantDashboardState extends State<MerchantDashboard> {
       final profileRes = await ApiService.getMerchantMe();
       if (profileRes['success'] == true && profileRes['data'] != null) {
         final mData = profileRes['data'] as Map<String, dynamic>;
+        final mId = int.tryParse(mData['id']?.toString() ?? '') ?? 0;
+        final logo = ApiService.getMerchantLogo(mId, mData['logo_url']?.toString() ?? mData['logo']?.toString());
         setState(() {
-          _merchantBusinessName = mData['business_name']?.toString() ?? _merchantBusinessName;
+          _merchantBusinessName = (mData['business_name']?.toString().isNotEmpty == true
+                  ? mData['business_name']
+                  : (mData['display_name']?.toString().isNotEmpty == true
+                      ? mData['display_name']
+                      : mData['name']))?.toString() ?? _merchantBusinessName;
           _merchantBusinessType = mData['business_type']?.toString() ?? _merchantBusinessType;
           _merchantRegNumber = mData['business_registration']?.toString() ?? _merchantRegNumber;
           _merchantAddress = mData['business_address']?.toString() ?? _merchantAddress;
           _merchantWebsite = mData['website_link']?.toString() ?? _merchantWebsite;
           _merchantEmail = mData['email']?.toString() ?? _merchantEmail;
-          _merchantPhone = mData['phone']?.toString() ?? _merchantPhone;
-          _merchantLogoUrl = mData['logo']?.toString() ?? mData['logo_url']?.toString() ?? mData['avatar_url']?.toString() ?? _merchantLogoUrl;
+          _merchantPhone = (mData['phone_number'] ?? mData['phone'])?.toString() ?? _merchantPhone;
+          _merchantLogoUrl = logo.isNotEmpty ? logo : ((mData['logo_url'] ?? mData['logo'] ?? mData['avatar_url'])?.toString() ?? _merchantLogoUrl);
         });
       }
 
-      // 2. Fetch wallet balance
+      // 2. Fetch wallet balance directly as dollars
       final walletRes = await ApiService.getMerchantWallet();
       if (walletRes['success'] == true && walletRes['data'] != null) {
         final wData = walletRes['data'] as Map;
