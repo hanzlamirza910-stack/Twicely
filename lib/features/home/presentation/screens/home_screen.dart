@@ -241,7 +241,7 @@ class _HomeScreenState extends State<HomeScreen> {
       _walletBalance = rawBalance;
     }
     // Load wishlist count
-    final wishRes = await ApiService.getUserWishlist(perPage: 1);
+    final wishRes = await ApiService.getUserWishlist(perPage: 50);
     if (!mounted) return;
     if (wishRes['success'] == true) {
       _wishlistCount = (wishRes['meta']?['total'] ?? (wishRes['data'] as List?)?.length ?? 0) as int;
@@ -261,14 +261,14 @@ class _HomeScreenState extends State<HomeScreen> {
     // Load sales count
     final isMerchant = SessionManager.isMerchant;
     final salesRes = isMerchant
-        ? await ApiService.getMerchantOrders(perPage: 1)
-        : await ApiService.getMySales(perPage: 1);
+        ? await ApiService.getMerchantOrders(perPage: 50)
+        : await ApiService.getMySales(perPage: 50);
     if (!mounted) return;
     if (salesRes['success'] == true) {
       _salesCount = (salesRes['meta']?['total'] ?? (salesRes['data'] as List?)?.length ?? 0) as int;
     }
     // Load orders count
-    final ordersRes = await ApiService.getMyOrders(perPage: 1);
+    final ordersRes = await ApiService.getMyOrders(perPage: 50);
     if (!mounted) return;
     if (ordersRes['success'] == true) {
       _ordersCount = (ordersRes['meta']?['total'] ?? (ordersRes['data'] as List?)?.length ?? 0) as int;
@@ -276,8 +276,8 @@ class _HomeScreenState extends State<HomeScreen> {
 
     // Load listed packages count
     final pkgsRes = isMerchant
-        ? await ApiService.getMerchantPackages(perPage: 1)
-        : await ApiService.getUserPackages(perPage: 1);
+        ? await ApiService.getMerchantPackages(perPage: 50)
+        : await ApiService.getUserPackages(perPage: 50);
     if (!mounted) return;
     if (pkgsRes['success'] == true) {
       _packagesCount = (pkgsRes['meta']?['total'] ?? (pkgsRes['data'] as List?)?.length ?? 0) as int;
