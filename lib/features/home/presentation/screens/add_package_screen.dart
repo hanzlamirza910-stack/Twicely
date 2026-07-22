@@ -371,6 +371,9 @@ class _AddPackageScreenState extends State<AddPackageScreen> {
         
         // Populate primary/secondary lists based on slugs (Biz+ is restricted to Merchants only)
         final isMerchantUser = SessionManager.isMerchant;
+        if (isMerchantUser && _primaryCategory.isEmpty) {
+          _primaryCategory = 'biz';
+        }
         _primaryCategories = _apiCategories.where((cat) {
           final slug = cat['slug']?.toString() ?? '';
           return slug == 'for-her' || slug == 'for-him' || slug == 'general' || (isMerchantUser && slug == 'biz');
@@ -647,11 +650,16 @@ class _AddPackageScreenState extends State<AddPackageScreen> {
       'package_price': totalSellingPrice,
       'price': totalSellingPrice,
       'discounted_price': discountedPrice,
-      'currency': 'SGD',
+      'currency': _selectedCurrency,
       'availability_end': '${_expiryDate.year}-${_expiryDate.month.toString().padLeft(2,'0')}-${_expiryDate.day.toString().padLeft(2,'0')}',
       'key_points': _keyPoints,
-      'status': _packageStatus,
+      'status': _packageStatus == 'published' ? 'publish' : _packageStatus,
     };
+
+    if (SessionManager.isMerchant) {
+      payload['categories'] = ['biz'];
+      payload['primary_category'] = 'biz';
+    }
 
     // Optional fields — only include when non-empty
     if (_descriptionController.text.trim().isNotEmpty) {
@@ -1425,7 +1433,6 @@ class _AddPackageScreenState extends State<AddPackageScreen> {
 
         // Categories
         _buildSectionHeader('Categories'),
-        // Primary
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 16),
           decoration: BoxDecoration(
@@ -1434,32 +1441,25 @@ class _AddPackageScreenState extends State<AddPackageScreen> {
             border: Border.all(color: AppColors.primary.withValues(alpha: 0.1)),
           ),
           child: DropdownButtonHideUnderline(
-            child: DropdownButtonFormField<String>(
+            child: DropdownButton<String>(
               key: ValueKey(_primaryCategory),
-              // ignore: deprecated_member_use
+              isExpanded: true,
               value: (_primaryCategories.any((c) => c['slug'] == _primaryCategory) || (SessionManager.isMerchant ? _primaryFallback : _primaryFallback.where((c) => c['slug'] != 'biz')).any((c) => c['slug'] == _primaryCategory))
                   ? (_primaryCategory.isEmpty ? null : _primaryCategory)
-                  : null,
+                  : (SessionManager.isMerchant ? 'biz' : null),
               hint: const Text('Primary Category', style: TextStyle(fontSize: 13, color: Colors.black38)),
-              decoration: const InputDecoration(
-                border: InputBorder.none,
-                enabledBorder: InputBorder.none,
-                focusedBorder: InputBorder.none,
-                errorBorder: InputBorder.none,
-                disabledBorder: InputBorder.none,
-                contentPadding: EdgeInsets.zero,
-              ),
+              style: const TextStyle(fontSize: 13, color: AppColors.primary, fontWeight: FontWeight.bold),
               items: _primaryCategories.isNotEmpty
                   ? _primaryCategories.map((c) {
                       return DropdownMenuItem(
                         value: c['slug']?.toString(),
-                        child: Text(c['name']?.toString() ?? '', style: const TextStyle(fontSize: 13)),
+                        child: Text(c['name']?.toString() ?? '', style: const TextStyle(fontSize: 13), overflow: TextOverflow.ellipsis),
                       );
                     }).toList()
                   : (SessionManager.isMerchant ? _primaryFallback : _primaryFallback.where((c) => c['slug'] != 'biz').toList()).map((c) {
                       return DropdownMenuItem(
                         value: c['slug'],
-                        child: Text(c['name']!, style: const TextStyle(fontSize: 13)),
+                        child: Text(c['name']!, style: const TextStyle(fontSize: 13), overflow: TextOverflow.ellipsis),
                       );
                     }).toList(),
               onChanged: (val) => setState(() => _primaryCategory = val ?? ''),
@@ -1467,7 +1467,7 @@ class _AddPackageScreenState extends State<AddPackageScreen> {
           ),
         ),
         const SizedBox(height: 12),
-        // Secondary
+        // Secondary Category Dropdown
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 16),
           decoration: BoxDecoration(
@@ -1476,32 +1476,25 @@ class _AddPackageScreenState extends State<AddPackageScreen> {
             border: Border.all(color: AppColors.primary.withValues(alpha: 0.1)),
           ),
           child: DropdownButtonHideUnderline(
-            child: DropdownButtonFormField<String>(
+            child: DropdownButton<String>(
               key: ValueKey(_secondaryCategory),
-              // ignore: deprecated_member_use
+              isExpanded: true,
               value: (_secondaryCategories.any((c) => c['slug'] == _secondaryCategory) || _secondaryFallback.any((c) => c['slug'] == _secondaryCategory))
                   ? (_secondaryCategory.isEmpty ? null : _secondaryCategory)
                   : null,
               hint: const Text('Secondary Category (Optional)', style: TextStyle(fontSize: 13, color: Colors.black38)),
-              decoration: const InputDecoration(
-                border: InputBorder.none,
-                enabledBorder: InputBorder.none,
-                focusedBorder: InputBorder.none,
-                errorBorder: InputBorder.none,
-                disabledBorder: InputBorder.none,
-                contentPadding: EdgeInsets.zero,
-              ),
+              style: const TextStyle(fontSize: 13, color: AppColors.primary, fontWeight: FontWeight.bold),
               items: _secondaryCategories.isNotEmpty
                   ? _secondaryCategories.map((c) {
                       return DropdownMenuItem(
                         value: c['slug']?.toString(),
-                        child: Text(c['name']?.toString() ?? '', style: const TextStyle(fontSize: 13)),
+                        child: Text(c['name']?.toString() ?? '', style: const TextStyle(fontSize: 13), overflow: TextOverflow.ellipsis),
                       );
                     }).toList()
                   : _secondaryFallback.map((c) {
                       return DropdownMenuItem(
                         value: c['slug'],
-                        child: Text(c['name']!, style: const TextStyle(fontSize: 13)),
+                        child: Text(c['name']!, style: const TextStyle(fontSize: 13), overflow: TextOverflow.ellipsis),
                       );
                     }).toList(),
               onChanged: (val) => setState(() => _secondaryCategory = val ?? ''),
@@ -1536,8 +1529,8 @@ class _AddPackageScreenState extends State<AddPackageScreen> {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // Pricing Card for Merchants
-          _buildSectionHeader('Pricing Card'),
+          // Pricing Card
+          _buildSectionHeader('Pricing'),
           Container(
             padding: const EdgeInsets.all(18),
             decoration: BoxDecoration(
@@ -1548,25 +1541,70 @@ class _AddPackageScreenState extends State<AddPackageScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                _buildLabel('Price *'),
-                _buildPriceInputField(
-                  controller: _sellingPriceController,
-                  onChanged: (val) => setState(() {}),
+                // Price & Discounted Price Row
+                Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          _buildLabel('Price *'),
+                          _buildPriceInputField(
+                            controller: _sellingPriceController,
+                            onChanged: (val) => setState(() {}),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          _buildLabel('Discounted Price'),
+                          _buildPriceInputField(
+                            controller: _discountedPriceController,
+                            hint: '0.00',
+                            onChanged: (val) => setState(() {}),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
                 ),
                 const SizedBox(height: 16),
-                _buildLabel('Discounted Price'),
-                _buildPriceInputField(
-                  controller: _discountedPriceController,
-                  hint: '0.00 (Optional)',
-                  onChanged: (val) => setState(() {}),
+                _buildLabel('Currency'),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: AppColors.primary.withValues(alpha: 0.1)),
+                  ),
+                  child: DropdownButtonHideUnderline(
+                    child: DropdownButton<String>(
+                      isExpanded: true,
+                      value: _selectedCurrency,
+                      style: const TextStyle(fontSize: 13, color: AppColors.primary, fontWeight: FontWeight.bold),
+                      items: const [
+                        DropdownMenuItem(value: 'SGD', child: Text('SGD')),
+                        DropdownMenuItem(value: 'USD', child: Text('USD')),
+                        DropdownMenuItem(value: 'EUR', child: Text('EUR')),
+                        DropdownMenuItem(value: 'GBP', child: Text('GBP')),
+                      ],
+                      onChanged: (val) {
+                        if (val != null) setState(() => _selectedCurrency = val);
+                      },
+                    ),
+                  ),
                 ),
               ],
             ),
           ),
           const SizedBox(height: 24),
 
-          // Validity Card for Merchants
-          _buildSectionHeader('Validity'),
+          // Package Details Sub-Card
+          _buildSectionHeader('Package Details'),
           Container(
             padding: const EdgeInsets.all(18),
             decoration: BoxDecoration(
@@ -1577,7 +1615,7 @@ class _AddPackageScreenState extends State<AddPackageScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                _buildLabel('Expiry Date *'),
+                _buildLabel('Expiry Date'),
                 GestureDetector(
                   onTap: _showDatePicker,
                   child: Container(
@@ -1596,6 +1634,30 @@ class _AddPackageScreenState extends State<AddPackageScreen> {
                         ),
                         const Icon(Icons.calendar_today_outlined, size: 16, color: AppColors.primary),
                       ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                _buildLabel('Status'),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: AppColors.primary.withValues(alpha: 0.1)),
+                  ),
+                  child: DropdownButtonHideUnderline(
+                    child: DropdownButton<String>(
+                      isExpanded: true,
+                      value: _packageStatus == 'publish' ? 'published' : _packageStatus,
+                      style: const TextStyle(fontSize: 13, color: AppColors.primary, fontWeight: FontWeight.w500),
+                      items: const [
+                        DropdownMenuItem(value: 'draft', child: Text('Draft')),
+                        DropdownMenuItem(value: 'published', child: Text('Published')),
+                      ],
+                      onChanged: (val) {
+                        if (val != null) setState(() => _packageStatus = val);
+                      },
                     ),
                   ),
                 ),
@@ -2027,55 +2089,56 @@ class _AddPackageScreenState extends State<AddPackageScreen> {
             ),
           ),
         ],
-        const SizedBox(height: 24),
-
-        // Submission Receipt Card
-        _buildSectionHeader('Submission Receipt*'),
-        const Text(
-          'Upload a receipt or proof of purchase for admin verification.',
-          style: TextStyle(fontSize: 11, color: Colors.black45),
-        ),
-        const SizedBox(height: 12),
-
-        // Alert bar
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-          decoration: BoxDecoration(
-            color: const Color(0xFFF3E5F5), // Light purple alert
-            borderRadius: BorderRadius.circular(12),
+        if (!SessionManager.isMerchant) ...[
+          const SizedBox(height: 24),
+          // Submission Receipt Card
+          _buildSectionHeader('Submission Receipt*'),
+          const Text(
+            'Upload a receipt or proof of purchase for admin verification.',
+            style: TextStyle(fontSize: 11, color: Colors.black45),
           ),
-          child: Row(
-            children: const [
-              Icon(Icons.warning_amber_rounded, size: 16, color: Colors.purple),
-              SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  'Receipt is required to complete your package submission.',
-                  style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.purple),
+          const SizedBox(height: 12),
+
+          // Alert bar
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF3E5F5), // Light purple alert
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Row(
+              children: const [
+                Icon(Icons.warning_amber_rounded, size: 16, color: Colors.purple),
+                SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Receipt is required to complete your package submission.',
+                    style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.purple),
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
-        ),
-        const SizedBox(height: 14),
+          const SizedBox(height: 14),
 
-        _buildUploadDottedBox(
-          icon: Icons.receipt_long_outlined,
-          label: _receiptFileName.isEmpty ? 'Click to browse PDF, JPG or PNG' : _receiptFileName,
-          onTap: () async {
-            try {
-              final XFile? file = await _picker.pickImage(source: ImageSource.gallery);
-              if (file != null) {
-                setState(() {
-                  _receiptFileName = file.name;
-                });
-                _showToast('Receipt selected successfully', type: SnackBarType.success);
+          _buildUploadDottedBox(
+            icon: Icons.receipt_long_outlined,
+            label: _receiptFileName.isEmpty ? 'Click to browse PDF, JPG or PNG' : _receiptFileName,
+            onTap: () async {
+              try {
+                final XFile? file = await _picker.pickImage(source: ImageSource.gallery);
+                if (file != null) {
+                  setState(() {
+                    _receiptFileName = file.name;
+                  });
+                  _showToast('Receipt selected successfully', type: SnackBarType.success);
+                }
+              } catch (e) {
+                _showToast('Failed to pick receipt: $e', type: SnackBarType.error);
               }
-            } catch (e) {
-              _showToast('Failed to pick receipt: $e', type: SnackBarType.error);
-            }
-          },
-        ),
+            },
+          ),
+        ],
       ],
     );
   }
