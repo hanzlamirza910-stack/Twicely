@@ -62,24 +62,6 @@ class _MyOrdersScreenState extends State<MyOrdersScreen> {
     }
   }
 
-  String _payStatus(Map<String, dynamic> o) {
-    final p = (o['payment_status'] ?? '').toString().toLowerCase();
-    if (p == 'paid') return 'Paid';
-    if (p == 'refunded') return 'Refunded';
-    return _cap(p.isEmpty ? 'Pending' : p);
-  }
-
-  String _ordStatus(Map<String, dynamic> o) {
-    final s = (o['status'] ?? '').toString().toLowerCase();
-    if (s == 'completed') return 'Completed';
-    if (s == 'cancelled') return 'Cancelled';
-    if (s == 'on_hold') return 'On Hold';
-    if (s == 'processing') return 'Processing';
-    return _cap(s.isEmpty ? 'Pending' : s);
-  }
-
-  String _cap(String s) =>
-      s.isEmpty ? s : '${s[0].toUpperCase()}${s.substring(1)}';
 
   List<Map<String, dynamic>> get _filtered {
     return _orders.where((o) {
@@ -99,16 +81,32 @@ class _MyOrdersScreenState extends State<MyOrdersScreen> {
         }
       }
       if (_selectedFilter != 'All') {
-        final ps = _payStatus(o);
-        final os = _ordStatus(o);
-        if (_selectedFilter == 'Paid' && ps != 'Paid') return false;
-        if (_selectedFilter == 'On Hold' && os != 'On Hold') return false;
-        if (_selectedFilter == 'Completed' && os != 'Completed') return false;
-        if (_selectedFilter == 'Cancelled' && os != 'Cancelled') return false;
+        if (_getOrderCategory(o) != _selectedFilter) return false;
       }
       return true;
     }).toList();
   }
+
+  /// Categorise the same way the website does:
+  /// Pending  → not yet paid / processing
+  /// On Hold  → status == on_hold
+  /// Redeemed → redeemed_at set OR status == completed
+  /// Cancelled → status == cancelled
+  String _getOrderCategory(Map<String, dynamic> o) {
+    final st = (o['status'] ?? '').toString().toLowerCase();
+    final ps = (o['payment_status'] ?? '').toString().toLowerCase();
+    if (st == 'cancelled') return 'Cancelled';
+    if (o['redeemed_at'] != null || st == 'completed') return 'Redeemed';
+    if (st == 'on_hold' || o['is_on_hold'] == true) return 'On Hold';
+    if (ps == 'paid' || st == 'processing') return 'Pending';
+    return 'Pending';
+  }
+
+  int _countFor(String pill) {
+    if (pill == 'All') return _orders.length;
+    return _orders.where((o) => _getOrderCategory(o) == pill).length;
+  }
+
 
   @override
   Widget build(BuildContext context) {
@@ -165,7 +163,7 @@ class _MyOrdersScreenState extends State<MyOrdersScreen> {
                     const SizedBox(height: 14),
 
                     // Filter Pills
-                    _buildPills(['All', 'Paid', 'On Hold', 'Completed', 'Cancelled']),
+                    _buildPills(['All', 'Pending', 'On Hold', 'Redeemed', 'Cancelled']),
                     const SizedBox(height: 18),
 
                     // Orders List
@@ -194,26 +192,50 @@ class _MyOrdersScreenState extends State<MyOrdersScreen> {
         child: Row(
           children: pills.map((f) {
             final sel = _selectedFilter == f;
+            final count = _countFor(f);
             return GestureDetector(
               onTap: () => setState(() => _selectedFilter = f),
               child: AnimatedContainer(
                 duration: const Duration(milliseconds: 180),
                 margin: const EdgeInsets.only(right: 8),
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                 decoration: BoxDecoration(
-                  color: sel ? AppColors.primary : Colors.white,
+                  color: sel ? AppColors.primary : const Color(0xFFF4F5F7),
                   borderRadius: BorderRadius.circular(20),
                   border: Border.all(
-                    color: sel ? AppColors.primary : Colors.black.withValues(alpha: 0.1),
+                    color: sel ? AppColors.primary : Colors.black.withValues(alpha: 0.08),
                   ),
                 ),
-                child: Text(
-                  f,
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.bold,
-                    color: sel ? Colors.white : AppColors.primary,
-                  ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      f,
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                        color: sel ? Colors.white : AppColors.primary.withValues(alpha: 0.75),
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: sel
+                            ? Colors.white.withValues(alpha: 0.22)
+                            : AppColors.primary.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Text(
+                        '$count',
+                        style: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w800,
+                          color: sel ? Colors.white : AppColors.primary,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ),
             );

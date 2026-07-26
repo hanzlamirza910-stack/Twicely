@@ -264,8 +264,17 @@ class _WishlistScreenState extends State<WishlistScreen> {
       backgroundColor: AppColors.bgLight,
       appBar: _buildAppBar(),
       body: _isLoading
-          ? const Center(
-              child: CircularProgressIndicator(valueColor: AlwaysStoppedAnimation<Color>(AppColors.primary)),
+          ? GridView.builder(
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+              physics: const NeverScrollableScrollPhysics(),
+              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: 2,
+                crossAxisSpacing: 14,
+                mainAxisSpacing: 14,
+                childAspectRatio: 0.70,
+              ),
+              itemCount: 6,
+              itemBuilder: (context, index) => const PackageCardSkeleton(),
             )
           : RefreshIndicator(
               onRefresh: _loadWishlist,

@@ -27,9 +27,6 @@ class _PayoutScreenState extends State<PayoutScreen> {
   final TextEditingController _accountNumberController = TextEditingController();
   final TextEditingController _accountHolderController = TextEditingController();
 
-  // History
-  bool _isLoadingHistory = true;
-  List<Map<String, dynamic>> _history = [];
   double _availableBalance = 0.0;
   String _currency = 'SGD';
 
@@ -51,7 +48,7 @@ class _PayoutScreenState extends State<PayoutScreen> {
 
   Future<void> _loadAll() async {
     setState(() => _isLoading = true);
-    await Future.wait([_loadSettings(), _loadHistory(), _loadWallet()]);
+    await Future.wait([_loadSettings(), _loadWallet()]);
     if (mounted) setState(() => _isLoading = false);
   }
 
@@ -92,22 +89,6 @@ class _PayoutScreenState extends State<PayoutScreen> {
         });
       }
     } catch (_) {}
-  }
-
-  Future<void> _loadHistory() async {
-    setState(() => _isLoadingHistory = true);
-    try {
-      final res = await ApiService.getUserPayoutRequests(perPage: 50);
-      if (!mounted) return;
-      if (res['success'] == true && res['data'] != null) {
-        setState(() {
-          _history = (res['data'] as List<dynamic>)
-              .map((e) => Map<String, dynamic>.from(e as Map))
-              .toList();
-        });
-      }
-    } catch (_) {}
-    if (mounted) setState(() => _isLoadingHistory = false);
   }
 
   Future<void> _saveChanges() async {
@@ -162,15 +143,6 @@ class _PayoutScreenState extends State<PayoutScreen> {
       CustomSnackBar.show(context, message: 'Error saving settings.', type: SnackBarType.error);
     }
     if (mounted) setState(() => _isSaving = false);
-  }
-
-  Color _statusColor(String status) {
-    switch (status.toLowerCase()) {
-      case 'approved': case 'paid': return const Color(0xFF22C55E);
-      case 'pending': return const Color(0xFFF59E0B);
-      case 'rejected': return const Color(0xFFEF4444);
-      default: return AppColors.primary.withValues(alpha: 0.5);
-    }
   }
 
   @override
@@ -250,11 +222,7 @@ class _PayoutScreenState extends State<PayoutScreen> {
 
                     // ── Payout Method Settings ─────────────────────────────
                     _buildSettingsCard(),
-                    const SizedBox(height: 24),
-
-                    // ── History Section ────────────────────────────────────
-                    _buildHistorySection(),
-                    const SizedBox(height: 30),
+                    const SizedBox(height: 20),
                   ],
                 ),
               ),
@@ -601,123 +569,6 @@ class _PayoutScreenState extends State<PayoutScreen> {
         const SizedBox(height: 4),
         Text(helper, style: TextStyle(fontSize: 11, color: AppColors.primary.withValues(alpha: 0.4))),
       ],
-    );
-  }
-
-  Widget _buildHistorySection() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            const Text(
-              'Payout History',
-              style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: AppColors.primary, fontFamily: 'Recoleta Alt'),
-            ),
-            if (!_isLoadingHistory)
-              GestureDetector(
-                onTap: _loadHistory,
-                child: Text('Refresh', style: TextStyle(fontSize: 12, color: AppColors.primary.withValues(alpha: 0.5))),
-              ),
-          ],
-        ),
-        const SizedBox(height: 14),
-        if (_isLoadingHistory)
-          const Center(child: CircularProgressIndicator(valueColor: AlwaysStoppedAnimation<Color>(AppColors.primary)))
-        else if (_history.isEmpty)
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.symmetric(vertical: 32),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: Colors.black.withValues(alpha: 0.05)),
-            ),
-            child: Column(
-              children: [
-                Icon(Icons.inbox_rounded, size: 40, color: AppColors.primary.withValues(alpha: 0.12)),
-                const SizedBox(height: 10),
-                Text('No payout requests yet',
-                    style: TextStyle(fontSize: 13, color: AppColors.primary.withValues(alpha: 0.35), fontWeight: FontWeight.w500)),
-              ],
-            ),
-          )
-        else
-          ...(_history.map((req) => _buildHistoryCard(req)).toList()),
-      ],
-    );
-  }
-
-  Widget _buildHistoryCard(Map<String, dynamic> req) {
-    final status = (req['status'] ?? 'pending').toString();
-    final amount = double.tryParse(req['amount']?.toString() ?? '0') ?? 0.0;
-    final rawMethod = (req['payout_method'] ?? 'paynow').toString();
-    final methodLabel = rawMethod == 'bank_transfer' ? 'Bank Transfer' : 'PayNow';
-    final createdAt = req['created_at']?.toString() ?? '';
-    String dateStr = '';
-    if (createdAt.isNotEmpty) {
-      try {
-        final dt = DateTime.parse(createdAt);
-        dateStr = '${dt.day}/${dt.month}/${dt.year}';
-      } catch (_) {
-        dateStr = createdAt.split('T').first;
-      }
-    }
-
-    return Container(
-      margin: const EdgeInsets.only(bottom: 10),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.black.withValues(alpha: 0.05)),
-        boxShadow: [
-          BoxShadow(color: Colors.black.withValues(alpha: 0.03), blurRadius: 8, offset: const Offset(0, 3)),
-        ],
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 42,
-            height: 42,
-            decoration: BoxDecoration(
-              color: _statusColor(status).withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Icon(Icons.account_balance_wallet_rounded, color: _statusColor(status), size: 20),
-          ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('Payout via $methodLabel',
-                    style: const TextStyle(fontWeight: FontWeight.bold, color: AppColors.primary, fontSize: 13)),
-                if (dateStr.isNotEmpty)
-                  Text(dateStr, style: TextStyle(fontSize: 11, color: AppColors.primary.withValues(alpha: 0.4))),
-              ],
-            ),
-          ),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              Text('S\$${amount.toStringAsFixed(2)}',
-                  style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14, color: AppColors.primary)),
-              const SizedBox(height: 4),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                decoration: BoxDecoration(
-                  color: _statusColor(status).withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Text(status.toUpperCase(),
-                    style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: _statusColor(status))),
-              ),
-            ],
-          ),
-        ],
-      ),
     );
   }
 }

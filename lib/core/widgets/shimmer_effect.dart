@@ -49,6 +49,7 @@ class _ShimmerEffectState extends State<ShimmerEffect> with SingleTickerProvider
     return AnimatedBuilder(
       animation: _controller,
       builder: (context, child) {
+        final t = _controller.value;
         return Container(
           width: widget.width,
           height: widget.height,
@@ -58,16 +59,16 @@ class _ShimmerEffectState extends State<ShimmerEffect> with SingleTickerProvider
                   borderRadius: widget.borderRadius ?? BorderRadius.circular(8),
                 ),
             gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
+              begin: Alignment.centerLeft,
+              end: Alignment.centerRight,
               stops: [
-                (_controller.value - 0.3).clamp(0.0, 1.0),
-                _controller.value.clamp(0.0, 1.0),
-                (_controller.value + 0.3).clamp(0.0, 1.0),
+                (t - 0.25).clamp(0.0, 1.0),
+                t.clamp(0.0, 1.0),
+                (t + 0.25).clamp(0.0, 1.0),
               ],
               colors: const [
                 Color(0xFFE2E8F0),
-                Color(0xFFF1F5F9),
+                Color(0xFFF8FAFC),
                 Color(0xFFE2E8F0),
               ],
             ),

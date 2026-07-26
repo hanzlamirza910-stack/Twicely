@@ -4,6 +4,7 @@ import '../../../../core/services/api_service.dart';
 import '../../../../core/utils/session_manager.dart';
 import '../../../../core/widgets/app_search_bar.dart';
 import '../../../../core/widgets/marketplace_package_card.dart';
+import '../../../../core/widgets/shimmer_effect.dart';
 import '../../../auth/presentation/screens/login_screen.dart';
 import '../screens/notifications_screen.dart';
 import '../screens/shopping_cart_screen.dart';
@@ -409,11 +410,17 @@ class _HomeSearchViewState extends State<HomeSearchView> {
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 20.0),
                   child: _isLoading
-                      ? const Center(
-                          child: Padding(
-                            padding: EdgeInsets.symmetric(vertical: 40.0),
-                            child: CircularProgressIndicator(color: AppColors.primary),
+                      ? GridView.builder(
+                          shrinkWrap: true,
+                          physics: const NeverScrollableScrollPhysics(),
+                          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                            crossAxisCount: 2,
+                            crossAxisSpacing: 14,
+                            mainAxisSpacing: 14,
+                            childAspectRatio: 0.78,
                           ),
+                          itemCount: 6,
+                          itemBuilder: (context, index) => const PackageCardSkeleton(),
                         )
                       : filtered.isEmpty
                           ? const Center(

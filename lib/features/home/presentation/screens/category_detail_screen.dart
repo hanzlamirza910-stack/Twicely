@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/services/api_service.dart';
 import '../../../../core/widgets/package_image_carousel.dart';
+import '../../../../core/widgets/shimmer_effect.dart';
 import 'package_detail_screen.dart';
 
 class CategoryDetailScreen extends StatefulWidget {
@@ -419,9 +420,49 @@ class _CategoryDetailScreenState extends State<CategoryDetailScreen> {
               // Deals List
               Expanded(
                 child: _isLoading
-                    ? const Center(
-                        child: CircularProgressIndicator(
-                          valueColor: AlwaysStoppedAnimation<Color>(AppColors.primary),
+                    ? ListView.builder(
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        physics: const NeverScrollableScrollPhysics(),
+                        itemCount: 4,
+                        itemBuilder: (context, index) => Container(
+                          margin: const EdgeInsets.only(bottom: 16),
+                          height: 120,
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(color: Colors.black.withValues(alpha: 0.08), width: 1.0),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withValues(alpha: 0.03),
+                                blurRadius: 8,
+                                offset: const Offset(0, 4),
+                              ),
+                            ],
+                          ),
+                          child: Row(
+                            children: [
+                              const ShimmerEffect(
+                                width: 120,
+                                height: 120,
+                                borderRadius: BorderRadius.horizontal(left: Radius.circular(15)),
+                              ),
+                              Expanded(
+                                child: Padding(
+                                  padding: const EdgeInsets.all(12),
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                    children: const [
+                                      ShimmerEffect(width: 80, height: 10, borderRadius: BorderRadius.all(Radius.circular(4))),
+                                      ShimmerEffect(width: 150, height: 14, borderRadius: BorderRadius.all(Radius.circular(4))),
+                                      ShimmerEffect(width: 60, height: 14, borderRadius: BorderRadius.all(Radius.circular(4))),
+                                      ShimmerEffect(width: 80, height: 10, borderRadius: BorderRadius.all(Radius.circular(4))),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
                       )
                     : displayList.isEmpty

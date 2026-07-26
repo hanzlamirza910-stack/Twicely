@@ -32,6 +32,7 @@ class _AddPackageScreenState extends State<AddPackageScreen> {
   String _selectedMerchant = '';
   final List<String> _galleryImages = [];
   String _receiptFileName = '';
+  String _receiptFilePath = '';
   
   final TextEditingController _titleController = TextEditingController();
   final TextEditingController _shortDescriptionController = TextEditingController();
@@ -55,8 +56,8 @@ class _AddPackageScreenState extends State<AddPackageScreen> {
   final TextEditingController _sessionsToSellController = TextEditingController();
   final TextEditingController _totalSessionsController = TextEditingController();
 
-  final TextEditingController _validityDaysController = TextEditingController(text: '365');
-  final TextEditingController _remainingDaysController = TextEditingController(text: '180');
+  final TextEditingController _validityDaysController = TextEditingController();
+  final TextEditingController _remainingDaysController = TextEditingController();
   String _selectedCurrency = 'SGD';
   DateTime _expiryDate = DateTime.now().add(const Duration(days: 365));
 
@@ -691,22 +692,27 @@ class _AddPackageScreenState extends State<AddPackageScreen> {
       }
     }
     // Resolve vendor_mode and merchant_id / manual fields
-    if (_isCustomMerchant) {
-      payload['vendor_mode'] = 'manual';
-      payload['manual_vendor_name'] = _customMerchantController.text.trim();
-      if (_manualOutletController.text.trim().isNotEmpty) {
-        payload['manual_vendor_outlet'] = _manualOutletController.text.trim();
-      }
-    } else {
-      payload['vendor_mode'] = 'self';
-      final matchedMerchant = _apiMerchants.firstWhere(
-        (m) => m['business_name']?.toString() == _selectedMerchant || m['name']?.toString() == _selectedMerchant,
-        orElse: () => <String, dynamic>{},
-      );
-      if (matchedMerchant.isNotEmpty && matchedMerchant['id'] != null) {
-        payload['merchant_id'] = matchedMerchant['id'] is int
-            ? matchedMerchant['id']
-            : int.tryParse(matchedMerchant['id'].toString());
+    if (!SessionManager.isMerchant) {
+      if (_isCustomMerchant) {
+        payload['vendor_mode'] = 'manual';
+        payload['manual_vendor_name'] = _customMerchantController.text.trim();
+        if (_manualOutletController.text.trim().isNotEmpty) {
+          payload['manual_vendor_outlet'] = _manualOutletController.text.trim();
+        }
+        payload['clearance_confirmed'] = _isTransferApprovalConfirmed;
+      } else {
+        payload['vendor_mode'] = 'self';
+        final matchedMerchant = _apiMerchants.firstWhere(
+          (m) => m['business_name']?.toString() == _selectedMerchant || m['name']?.toString() == _selectedMerchant,
+          orElse: () => <String, dynamic>{},
+        );
+        if (matchedMerchant.isNotEmpty && matchedMerchant['id'] != null) {
+          final mId = matchedMerchant['id'] is int
+              ? matchedMerchant['id']
+              : int.tryParse(matchedMerchant['id'].toString());
+          payload['merchant_id'] = mId;
+          payload['presented_by_merchant_id'] = mId;
+        }
       }
     }
 
@@ -727,11 +733,24 @@ class _AddPackageScreenState extends State<AddPackageScreen> {
         packageId = createdPkg['id'] is int ? createdPkg['id'] : int.tryParse(createdPkg['id']?.toString() ?? '');
       }
 
-      // Check for local file paths
-      final localPaths = _galleryImages.where((path) => !path.startsWith('http') && !path.startsWith('assets/')).toList();
-      if (packageId != null && localPaths.isNotEmpty) {
-        debugPrint('[DEBUG] Uploading package images: $localPaths');
-        await ApiService.uploadPackageImages(packageId, localPaths);
+      if (packageId != null) {
+        // Upload receipt or clearance evidence based on vendor_mode
+        if (!SessionManager.isMerchant) {
+          if (_isCustomMerchant && _receiptFilePath.isNotEmpty) {
+            debugPrint('[DEBUG] Uploading clearance evidence for package $packageId: $_receiptFilePath');
+            await ApiService.uploadPackageClearanceEvidence(packageId, _receiptFilePath);
+          } else if (!_isCustomMerchant && _receiptFilePath.isNotEmpty) {
+            debugPrint('[DEBUG] Uploading receipt for package $packageId: $_receiptFilePath');
+            await ApiService.uploadPackageReceipt(packageId, _receiptFilePath);
+          }
+        }
+
+        // Check for local file paths
+        final localPaths = _galleryImages.where((path) => !path.startsWith('http') && !path.startsWith('assets/')).toList();
+        if (localPaths.isNotEmpty) {
+          debugPrint('[DEBUG] Uploading package images: $localPaths');
+          await ApiService.uploadPackageImages(packageId, localPaths);
+        }
       }
     }
 
@@ -1059,8 +1078,12 @@ class _AddPackageScreenState extends State<AddPackageScreen> {
                       _manualOutletController.clear();
                       _selectedMerchant = '';
                       _isTransferApprovalConfirmed = false;
+                      _receiptFileName = '';
+                      _receiptFilePath = '';
                     } else {
                       _selectedMerchant = _customMerchantController.text.trim();
+                      _receiptFileName = '';
+                      _receiptFilePath = '';
                     }
                   });
                 },
@@ -1137,6 +1160,7 @@ class _AddPackageScreenState extends State<AddPackageScreen> {
                   if (file != null) {
                     setState(() {
                       _receiptFileName = file.name;
+                      _receiptFilePath = file.path;
                     });
                     _showToast('Evidence file attached', type: SnackBarType.success);
                   }
@@ -1548,7 +1572,7 @@ class _AddPackageScreenState extends State<AddPackageScreen> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          _buildLabel('Price *'),
+                          _buildLabel('Price *', minHeight: 32),
                           _buildPriceInputField(
                             controller: _sellingPriceController,
                             onChanged: (val) => setState(() {}),
@@ -1561,7 +1585,7 @@ class _AddPackageScreenState extends State<AddPackageScreen> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          _buildLabel('Discounted Price'),
+                          _buildLabel('Discounted Price', minHeight: 32),
                           _buildPriceInputField(
                             controller: _discountedPriceController,
                             hint: '0.00',
@@ -1748,7 +1772,7 @@ class _AddPackageScreenState extends State<AddPackageScreen> {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              _buildLabel('Sessions To Sell'),
+                              _buildLabel('Sessions To Sell', minHeight: 32),
                               _buildPriceInputField(
                                 controller: _sessionsToSellController,
                                 isCurrency: false,
@@ -1763,7 +1787,7 @@ class _AddPackageScreenState extends State<AddPackageScreen> {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              _buildLabel('Total Sessions'),
+                              _buildLabel('Total Sessions', minHeight: 32),
                               _buildPriceInputField(
                                 controller: _totalSessionsController,
                                 isCurrency: false,
@@ -1782,7 +1806,7 @@ class _AddPackageScreenState extends State<AddPackageScreen> {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              _buildLabel('Total Validity Days'),
+                              _buildLabel('Total Validity Days', minHeight: 32),
                               _buildPriceInputField(
                                 controller: _validityDaysController,
                                 isCurrency: false,
@@ -1797,7 +1821,7 @@ class _AddPackageScreenState extends State<AddPackageScreen> {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              _buildLabel('Remaining Validity Days'),
+                              _buildLabel('Remaining Validity Days', minHeight: 32),
                               _buildPriceInputField(
                                 controller: _remainingDaysController,
                                 isCurrency: false,
@@ -2130,6 +2154,7 @@ class _AddPackageScreenState extends State<AddPackageScreen> {
                 if (file != null) {
                   setState(() {
                     _receiptFileName = file.name;
+                    _receiptFilePath = file.path;
                   });
                   _showToast('Receipt selected successfully', type: SnackBarType.success);
                 }
@@ -2193,9 +2218,11 @@ class _AddPackageScreenState extends State<AddPackageScreen> {
     );
   }
 
-  Widget _buildLabel(String text) {
-    return Padding(
+  Widget _buildLabel(String text, {double? minHeight}) {
+    return Container(
+      constraints: minHeight != null ? BoxConstraints(minHeight: minHeight) : null,
       padding: const EdgeInsets.only(bottom: 6.0),
+      alignment: Alignment.bottomLeft,
       child: Text(
         text,
         style: TextStyle(
@@ -2312,50 +2339,28 @@ class _AddPackageScreenState extends State<AddPackageScreen> {
       ),
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
       child: SafeArea(
-        child: Row(
-          children: [
-            // Save Draft button
-            OutlinedButton.icon(
-              onPressed: () {
-                _showToast('Draft Saved!');
-              },
-              icon: const Icon(Icons.lock_outline_rounded, size: 14, color: AppColors.primary),
-              label: const Text(
-                'Save Draft',
-                style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: AppColors.primary),
-              ),
-              style: OutlinedButton.styleFrom(
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                side: BorderSide(color: AppColors.primary.withValues(alpha: 0.2)),
-              ),
+        child: SizedBox(
+          width: double.infinity,
+          child: ElevatedButton(
+            onPressed: _currentStep == 3 ? _submitForm : _nextStep,
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF1F2E4E),
+              padding: const EdgeInsets.symmetric(vertical: 14),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+              minimumSize: const Size(0, 48), // override theme minimumSize
             ),
-            const SizedBox(width: 14),
-
-            // Next Step/Submit button
-            Expanded(
-              child: ElevatedButton(
-                onPressed: _currentStep == 3 ? _submitForm : _nextStep,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF1F2E4E),
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-                  minimumSize: const Size(0, 48), // override theme minimumSize
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text(
+                  _currentStep == 3 ? (widget.packageToEdit != null ? 'Save Changes' : 'Submit Package') : 'Next Step',
+                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.white),
                 ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Text(
-                      _currentStep == 3 ? (widget.packageToEdit != null ? 'Save Changes' : 'Submit Package') : 'Next Step',
-                      style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.white),
-                    ),
-                    const SizedBox(width: 6),
-                    const Icon(Icons.arrow_forward, size: 14, color: Colors.white),
-                  ],
-                ),
-              ),
+                const SizedBox(width: 6),
+                const Icon(Icons.arrow_forward, size: 14, color: Colors.white),
+              ],
             ),
-          ],
+          ),
         ),
       ),
     );

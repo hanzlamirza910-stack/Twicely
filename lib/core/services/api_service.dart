@@ -996,19 +996,33 @@ class ApiService {
         'page': page.toString(),
         'per_page': perPage.toString(),
       };
-      if (search != null && search.isNotEmpty) queryParams['search'] = search;
-      if (category != null && category.isNotEmpty)
+      if (search != null && search.isNotEmpty) {
+        queryParams['search'] = search;
+      }
+      if (category != null && category.isNotEmpty) {
         queryParams['category'] = category;
-      if (status != null && status.isNotEmpty) queryParams['status'] = status;
-      if (featured == true) queryParams['featured'] = 'true';
-      if (merchantId != null)
+      }
+      if (status != null && status.isNotEmpty) {
+        queryParams['status'] = status;
+      }
+      if (featured == true) {
+        queryParams['featured'] = 'true';
+      }
+      if (merchantId != null) {
         queryParams['merchant_id'] = merchantId.toString();
-      if (ownerId != null) queryParams['owner_id'] = ownerId.toString();
-      if (ownerType != null && ownerType.isNotEmpty)
+      }
+      if (ownerId != null) {
+        queryParams['owner_id'] = ownerId.toString();
+      }
+      if (ownerType != null && ownerType.isNotEmpty) {
         queryParams['owner_type'] = ownerType;
-      if (vendorMode != null && vendorMode.isNotEmpty)
+      }
+      if (vendorMode != null && vendorMode.isNotEmpty) {
         queryParams['vendor_mode'] = vendorMode;
-      if (sort != null && sort.isNotEmpty) queryParams['sort'] = sort;
+      }
+      if (sort != null && sort.isNotEmpty) {
+        queryParams['sort'] = sort;
+      }
 
       final queryString = Uri(queryParameters: queryParams).query;
       final path = '/packages${queryString.isNotEmpty ? '?$queryString' : ''}';
@@ -1194,6 +1208,84 @@ class ApiService {
     }
   }
 
+  // 10. Upload Package Submission Receipt (C2C Original Purchase Proof)
+  static Future<Map<String, dynamic>> uploadPackageReceipt(
+    int packageId,
+    String filePath,
+  ) async {
+    try {
+      final url = Uri.parse('$baseUrl/packages/$packageId/receipt');
+      final request = http.MultipartRequest('POST', url);
+
+      if (SessionManager.accessToken != null) {
+        request.headers['Authorization'] = 'Bearer ${SessionManager.accessToken}';
+      }
+
+      if (!filePath.startsWith('assets/') && filePath.isNotEmpty) {
+        final file = await http.MultipartFile.fromPath('file', filePath);
+        request.files.add(file);
+      }
+
+      if (request.files.isEmpty) {
+        request.files.add(
+          http.MultipartFile.fromBytes(
+            'file',
+            [137, 80, 78, 71, 13, 10, 26, 10], // Placeholder PNG
+            filename: 'receipt.png',
+          ),
+        );
+      }
+
+      debugPrint('\n[API Multipart Request] POST $url');
+      final streamedResponse = await request.send();
+      final response = await http.Response.fromStream(streamedResponse);
+      debugPrint('[API Response] Status: ${response.statusCode}, Body: ${response.body}');
+
+      return _safeDecode(response, 'Failed to upload package receipt.');
+    } catch (e) {
+      return {'success': false, 'message': 'Failed to upload package receipt: $e'};
+    }
+  }
+
+  // 11. Upload Legal Clearance Evidence (C2C Manual Vendor Clearance Proof)
+  static Future<Map<String, dynamic>> uploadPackageClearanceEvidence(
+    int packageId,
+    String filePath,
+  ) async {
+    try {
+      final url = Uri.parse('$baseUrl/packages/$packageId/clearance-evidence');
+      final request = http.MultipartRequest('POST', url);
+
+      if (SessionManager.accessToken != null) {
+        request.headers['Authorization'] = 'Bearer ${SessionManager.accessToken}';
+      }
+
+      if (!filePath.startsWith('assets/') && filePath.isNotEmpty) {
+        final file = await http.MultipartFile.fromPath('file', filePath);
+        request.files.add(file);
+      }
+
+      if (request.files.isEmpty) {
+        request.files.add(
+          http.MultipartFile.fromBytes(
+            'file',
+            [137, 80, 78, 71, 13, 10, 26, 10], // Placeholder PNG
+            filename: 'clearance_evidence.png',
+          ),
+        );
+      }
+
+      debugPrint('\n[API Multipart Request] POST $url');
+      final streamedResponse = await request.send();
+      final response = await http.Response.fromStream(streamedResponse);
+      debugPrint('[API Response] Status: ${response.statusCode}, Body: ${response.body}');
+
+      return _safeDecode(response, 'Failed to upload clearance evidence.');
+    } catch (e) {
+      return {'success': false, 'message': 'Failed to upload clearance evidence: $e'};
+    }
+  }
+
   // 10. Like Package (Add to wishlist)
   static Future<Map<String, dynamic>> likePackage(int id) async {
     wishlistIdsCache.add(id);
@@ -1318,8 +1410,9 @@ class ApiService {
               'page': page.toString(),
               'per_page': perPage.toString(),
             };
-            if (status != null && status.isNotEmpty)
+            if (status != null && status.isNotEmpty) {
               assignedParams['status'] = status;
+            }
             final assignedQS = Uri(queryParameters: assignedParams).query;
             final assignedResponse = await get(
               '/packages?$assignedQS',

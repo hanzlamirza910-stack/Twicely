@@ -197,65 +197,111 @@ class MarketplacePackageCard extends StatelessWidget {
             // Content Metadata Section (Flex 48)
             Expanded(
               flex: 48,
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(10, 6, 10, 6),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Column(
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  final bool titleIsLong = title.length > 25 || title.contains('\n');
+                  // Switch to inline ONLY as an emergency fallback when height is severely constrained (< 96px)
+                  final bool needsInline = isDiscounted && titleIsLong && constraints.maxHeight > 0 && constraints.maxHeight < 96;
+
+                  return Padding(
+                    padding: const EdgeInsets.fromLTRB(10, 6, 10, 6),
+                    child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisSize: MainAxisSize.min,
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        // Line 1: Category & Subcategory RichText
-                        _buildCategoryRichText(categoryTag),
-                        const SizedBox(height: 2),
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            // Line 1: Category & Subcategory RichText
+                            _buildCategoryRichText(categoryTag),
+                            const SizedBox(height: 2),
 
-                        // Line 2 & Line 3: Title (Recoleta Alt Font)
-                        Text(
-                          title,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.bold,
-                            color: Color(0xFF1A1A2E),
-                            fontFamily: 'Recoleta Alt',
-                            height: 1.2,
-                          ),
-                        ),
-
-                        // Line 4: Strikethrough Original Purchase Price (if discounted)
-                        if (isDiscounted) ...[
-                          const SizedBox(height: 2),
-                          Text(
-                            _formatPrice(origPrice),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              fontSize: 9,
-                              decoration: TextDecoration.lineThrough,
-                              decorationColor: Color(0xFF9E9E9E),
-                              color: Color(0xFF9E9E9E),
+                            // Line 2 & Line 3: Title (Recoleta Alt Font)
+                            Text(
+                              title,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.bold,
+                                color: Color(0xFF1A1A2E),
+                                fontFamily: 'Recoleta Alt',
+                                height: 1.2,
+                              ),
                             ),
-                          ),
-                        ],
-                        const SizedBox(height: 2),
+                            const SizedBox(height: 2),
 
-                        // Line 5: Selling / Resale Price
-                        Text(
-                          _formatPrice(resalePrice),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w800,
-                            color: Color(0xFF273DB7),
-                            letterSpacing: -0.2,
-                          ),
+                            if (needsInline)
+                              // Fallback Inline Price Row when height is tight to prevent overflow
+                              Row(
+                                crossAxisAlignment: CrossAxisAlignment.baseline,
+                                textBaseline: TextBaseline.alphabetic,
+                                children: [
+                                  Text(
+                                    _formatPrice(resalePrice),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w800,
+                                      color: Color(0xFF273DB7),
+                                      letterSpacing: -0.2,
+                                    ),
+                                  ),
+                                  if (isDiscounted) ...[
+                                    const SizedBox(width: 5),
+                                    Flexible(
+                                      child: Text(
+                                        _formatPrice(origPrice),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: const TextStyle(
+                                          fontSize: 9.5,
+                                          decoration: TextDecoration.lineThrough,
+                                          decorationColor: Color(0xFF9E9E9E),
+                                          color: Color(0xFF9E9E9E),
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ],
+                              )
+                            else
+                              // Standard Stacked Price Layout (Original Price on top, Selling Price below)
+                              Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  if (isDiscounted) ...[
+                                    Text(
+                                      _formatPrice(origPrice),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(
+                                        fontSize: 9,
+                                        decoration: TextDecoration.lineThrough,
+                                        decorationColor: Color(0xFF9E9E9E),
+                                        color: Color(0xFF9E9E9E),
+                                      ),
+                                    ),
+                                    const SizedBox(height: 1),
+                                  ],
+                                  Text(
+                                    _formatPrice(resalePrice),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w800,
+                                      color: Color(0xFF273DB7),
+                                      letterSpacing: -0.2,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                          ],
                         ),
-                      ],
-                    ),
 
                     // Line 6: Footer Row (Merchant Avatar, Name, Heart/Likes)
                     Row(
@@ -351,10 +397,12 @@ class MarketplacePackageCard extends StatelessWidget {
                     ),
                   ],
                 ),
-              ),
-            ),
-          ],
+              );
+            },
+          ),
         ),
+      ],
+    ),
       ),
     );
   }

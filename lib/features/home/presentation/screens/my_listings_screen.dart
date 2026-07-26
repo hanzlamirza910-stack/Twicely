@@ -600,10 +600,20 @@ class _MyListingsScreenState extends State<MyListingsScreen> {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.baseline,
+                  textBaseline: TextBaseline.alphabetic,
                   children: [
-                    if (origPrice > price)
+                    Text(
+                      'S\$${price.toStringAsFixed(2)}',
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w900,
+                        color: Color(0xFF273DB7),
+                      ),
+                    ),
+                    if (origPrice > price) ...[
+                      const SizedBox(width: 6),
                       Text(
                         'S\$${origPrice.toStringAsFixed(2)}',
                         style: TextStyle(
@@ -612,14 +622,7 @@ class _MyListingsScreenState extends State<MyListingsScreen> {
                           color: Colors.grey.shade400,
                         ),
                       ),
-                    Text(
-                      'S\$ ${price.toStringAsFixed(2)}',
-                      style: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w900,
-                        color: Color(0xFF273DB7),
-                      ),
-                    ),
+                    ],
                   ],
                 ),
 
