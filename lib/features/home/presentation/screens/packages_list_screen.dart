@@ -2,8 +2,7 @@ import 'package:flutter/material.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/services/api_service.dart';
 import '../../../../core/utils/session_manager.dart';
-import '../../../../core/widgets/package_image_carousel.dart';
-import '../../../../core/widgets/marketplace_package_card.dart';
+import '../../../../core/widgets/search_package_card.dart';
 import '../../../../core/widgets/shimmer_effect.dart';
 import 'package_detail_screen.dart';
 
@@ -465,44 +464,54 @@ class _PackagesListScreenState extends State<PackagesListScreen> {
         slivers: [
           // HEADER
           SliverAppBar(
-            expandedHeight: 160,
             pinned: true,
             backgroundColor: AppColors.bgLight,
             elevation: 0,
-            scrolledUnderElevation: 0,
+            scrolledUnderElevation: 0.5,
+            shadowColor: Colors.black12,
             leading: IconButton(
               icon: const Icon(Icons.arrow_back_rounded, color: AppColors.primary),
               onPressed: () => Navigator.of(context).pop(),
             ),
-            flexibleSpace: FlexibleSpaceBar(
-              collapseMode: CollapseMode.parallax,
-              background: Container(
-                color: AppColors.bgLight,
-                padding: const EdgeInsets.fromLTRB(20, 68, 20, 16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisAlignment: MainAxisAlignment.end,
-                  children: [
-                    const Text(
-                      'Ready to find your\nnext experience?',
-                      style: TextStyle(
-                        fontSize: 22,
-                        fontWeight: FontWeight.bold,
-                        color: AppColors.primary,
-                        height: 1.3,
-                        fontFamily: 'Recoleta Alt',
-                      ),
+            title: const Text(
+              'Popular Packages',
+              style: TextStyle(
+                color: AppColors.primary,
+                fontWeight: FontWeight.bold,
+                fontFamily: 'Recoleta Alt',
+                fontSize: 18,
+              ),
+            ),
+            centerTitle: true,
+          ),
+
+          // HEADER BANNER TEXT
+          SliverToBoxAdapter(
+            child: Container(
+              color: AppColors.bgLight,
+              padding: const EdgeInsets.fromLTRB(20, 10, 20, 8),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Ready to find your next experience?',
+                    style: TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                      color: AppColors.primary,
+                      fontFamily: 'Recoleta Alt',
+                      height: 1.25,
                     ),
-                    const SizedBox(height: 6),
-                    Text(
-                      'Deals for him. Deals for her. Or just anyone, really. One toggle away.',
-                      style: TextStyle(
-                        fontSize: 11,
-                        color: AppColors.primary.withValues(alpha: 0.65),
-                      ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Deals for him. Deals for her. Or just anyone, really. One toggle away.',
+                    style: TextStyle(
+                      fontSize: 11.5,
+                      color: AppColors.primary.withValues(alpha: 0.65),
                     ),
-                  ],
-                ),
+                  ),
+                ],
               ),
             ),
           ),
@@ -511,7 +520,7 @@ class _PackagesListScreenState extends State<PackagesListScreen> {
           SliverToBoxAdapter(
             child: Container(
               color: AppColors.bgLight,
-              padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
+              padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
               child: TextField(
                 controller: _searchController,
                 style: const TextStyle(fontSize: 13, color: AppColors.primary),
@@ -664,7 +673,7 @@ class _PackagesListScreenState extends State<PackagesListScreen> {
               sliver: SliverGrid(
                 gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
                   crossAxisCount: 2,
-                  childAspectRatio: 0.78,
+                  childAspectRatio: 0.72,
                   crossAxisSpacing: 12,
                   mainAxisSpacing: 12,
                 ),
@@ -708,7 +717,7 @@ class _PackagesListScreenState extends State<PackagesListScreen> {
                   crossAxisCount: 2,
                   crossAxisSpacing: 12,
                   mainAxisSpacing: 14,
-                  childAspectRatio: 0.78,
+                  childAspectRatio: 0.72,
                 ),
               ),
             ),
@@ -771,74 +780,11 @@ class _PackagesListScreenState extends State<PackagesListScreen> {
     );
   }
 
-  Widget _buildCategoryRichText(String tag) {
-    final parts = tag.split('>');
-    final List<InlineSpan> spans = [];
-    for (int i = 0; i < parts.length; i++) {
-      final part = parts[i].trim();
-      Color textColor = const Color(0xFF111111);
-      if (i == 0) {
-        textColor = const Color(0xFFFF014E);
-      } else if (i < parts.length - 1) {
-        textColor = const Color(0xFF0691D7);
-      }
-      spans.add(TextSpan(text: part, style: TextStyle(color: textColor)));
-      if (i < parts.length - 1) {
-        spans.add(const TextSpan(text: ' > ', style: TextStyle(color: Color(0xFF111111))));
-      }
-    }
-    return RichText(
-      text: TextSpan(
-        style: const TextStyle(
-          fontSize: 9,
-          fontWeight: FontWeight.bold,
-          fontFamily: 'Recoleta Alt',
-        ),
-        children: spans,
-      ),
-      maxLines: 1,
-      overflow: TextOverflow.ellipsis,
-    );
-  }
-
   Widget _buildPkgCard(Map<String, dynamic> pkg) {
-    return MarketplacePackageCard(
+    return SearchPackageCard(
       package: pkg,
       isFavorite: pkg['hasHeart'] == true,
       onTap: () => _openPackage(pkg),
-    );
-  }
-
-  // Builds a merchant avatar: logo image if available, otherwise initials with
-  // a consistent color derived from the merchant name hash (no pink/bright colors).
-  Widget _buildMerchantAvatar(String? name, String? logoUrl, {double radius = 12}) {
-    final displayName = (name != null && name.trim().isNotEmpty) ? name.trim() : 'Twicely';
-    final hasLogo = logoUrl != null && logoUrl.isNotEmpty;
-    final initial = displayName[0].toUpperCase();
-    // Fixed brand color for Twicely, deterministic neutral palette for real merchants
-    const colors = [
-      Color(0xFF4A6FA5),
-      Color(0xFF3D8B5E),
-      Color(0xFF7B5EA7),
-      Color(0xFF5B8DB8),
-      Color(0xFF8B6E3C),
-      Color(0xFF4A7C59),
-    ];
-    final Color avatarColor = hasLogo
-        ? Colors.grey.shade100
-        : (displayName.toLowerCase() == 'twicely'
-            ? const Color(0xFF273DB7)
-            : colors[displayName.hashCode.abs() % colors.length]);
-    return CircleAvatar(
-      radius: radius,
-      backgroundColor: avatarColor,
-      backgroundImage: hasLogo ? NetworkImage(logoUrl) : null,
-      child: hasLogo
-          ? null
-          : Text(
-              initial,
-              style: TextStyle(fontSize: radius * 0.85, color: Colors.white, fontWeight: FontWeight.bold),
-            ),
     );
   }
 }

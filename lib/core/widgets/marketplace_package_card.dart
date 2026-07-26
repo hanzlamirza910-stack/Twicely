@@ -121,8 +121,11 @@ class MarketplacePackageCard extends StatelessWidget {
     if (package['images'] is List) {
       for (var img in (package['images'] as List)) {
         String url = '';
-        if (img is Map && img['url'] != null) url = img['url'].toString();
-        else if (img is String) url = img;
+        if (img is Map && img['url'] != null) {
+          url = img['url'].toString();
+        } else if (img is String) {
+          url = img;
+        }
         if (url.isNotEmpty && !images.contains(url)) images.add(url);
       }
     }
@@ -199,9 +202,8 @@ class MarketplacePackageCard extends StatelessWidget {
               flex: 48,
               child: LayoutBuilder(
                 builder: (context, constraints) {
-                  final bool titleIsLong = title.length > 25 || title.contains('\n');
-                  // Switch to inline ONLY as an emergency fallback when height is severely constrained (< 96px)
-                  final bool needsInline = isDiscounted && titleIsLong && constraints.maxHeight > 0 && constraints.maxHeight < 96;
+                  final bool isSmallDeviceHeight = constraints.maxHeight > 0 && constraints.maxHeight < 105;
+                  final int maxTitleLines = isSmallDeviceHeight ? 1 : 2;
 
                   return Padding(
                     padding: const EdgeInsets.fromLTRB(10, 6, 10, 6),
@@ -217,89 +219,59 @@ class MarketplacePackageCard extends StatelessWidget {
                             _buildCategoryRichText(categoryTag),
                             const SizedBox(height: 2),
 
-                            // Line 2 & Line 3: Title (Recoleta Alt Font)
-                            Text(
-                              title,
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.bold,
-                                color: Color(0xFF1A1A2E),
-                                fontFamily: 'Recoleta Alt',
-                                height: 1.2,
+                            // Line 2 & Line 3: Title (fixed 30px container height for 100% card alignment)
+                            SizedBox(
+                              height: isSmallDeviceHeight ? 16.0 : 30.0,
+                              child: Text(
+                                title,
+                                maxLines: maxTitleLines,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.bold,
+                                  color: Color(0xFF1A1A2E),
+                                  fontFamily: 'Recoleta Alt',
+                                  height: 1.2,
+                                ),
                               ),
                             ),
                             const SizedBox(height: 2),
 
-                            if (needsInline)
-                              // Fallback Inline Price Row when height is tight to prevent overflow
-                              Row(
-                                crossAxisAlignment: CrossAxisAlignment.baseline,
-                                textBaseline: TextBaseline.alphabetic,
-                                children: [
-                                  Text(
-                                    _formatPrice(resalePrice),
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: const TextStyle(
-                                      fontSize: 13,
-                                      fontWeight: FontWeight.w800,
-                                      color: Color(0xFF273DB7),
-                                      letterSpacing: -0.2,
-                                    ),
+                            // Pricing Layout: Original crossed-out price on top, Selling price below (fixed 14px discount slot)
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                SizedBox(
+                                  height: 14.0,
+                                  child: isDiscounted
+                                      ? Text(
+                                          _formatPrice(origPrice),
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: const TextStyle(
+                                            fontSize: 9,
+                                            decoration: TextDecoration.lineThrough,
+                                            decorationColor: Color(0xFF9E9E9E),
+                                            color: Color(0xFF9E9E9E),
+                                          ),
+                                        )
+                                      : const SizedBox.shrink(),
+                                ),
+                                const SizedBox(height: 1),
+                                Text(
+                                  _formatPrice(resalePrice),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w800,
+                                    color: Color(0xFF273DB7),
+                                    letterSpacing: -0.2,
                                   ),
-                                  if (isDiscounted) ...[
-                                    const SizedBox(width: 5),
-                                    Flexible(
-                                      child: Text(
-                                        _formatPrice(origPrice),
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: const TextStyle(
-                                          fontSize: 9.5,
-                                          decoration: TextDecoration.lineThrough,
-                                          decorationColor: Color(0xFF9E9E9E),
-                                          color: Color(0xFF9E9E9E),
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                ],
-                              )
-                            else
-                              // Standard Stacked Price Layout (Original Price on top, Selling Price below)
-                              Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  if (isDiscounted) ...[
-                                    Text(
-                                      _formatPrice(origPrice),
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: const TextStyle(
-                                        fontSize: 9,
-                                        decoration: TextDecoration.lineThrough,
-                                        decorationColor: Color(0xFF9E9E9E),
-                                        color: Color(0xFF9E9E9E),
-                                      ),
-                                    ),
-                                    const SizedBox(height: 1),
-                                  ],
-                                  Text(
-                                    _formatPrice(resalePrice),
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: const TextStyle(
-                                      fontSize: 13,
-                                      fontWeight: FontWeight.w800,
-                                      color: Color(0xFF273DB7),
-                                      letterSpacing: -0.2,
-                                    ),
-                                  ),
-                                ],
-                              ),
+                                ),
+                              ],
+                            ),
                           ],
                         ),
 

@@ -3,20 +3,24 @@ import '../../../../core/constants/app_colors.dart';
 import '../../../../core/services/api_service.dart';
 import '../../../../core/utils/session_manager.dart';
 import '../../../../core/widgets/app_search_bar.dart';
-import '../../../../core/widgets/marketplace_package_card.dart';
+import '../../../../core/widgets/search_package_card.dart';
 import '../../../../core/widgets/shimmer_effect.dart';
 import '../../../auth/presentation/screens/login_screen.dart';
 import '../screens/notifications_screen.dart';
 import '../screens/shopping_cart_screen.dart';
 
+import 'home_recently_viewed_section.dart';
+
 class HomeSearchView extends StatefulWidget {
   final Function(Map<String, dynamic> package) onPackageTap;
   final VoidCallback? onProfileTap;
+  final List<Map<String, dynamic>>? recentlyViewedPackages;
 
   const HomeSearchView({
     super.key,
     required this.onPackageTap,
     this.onProfileTap,
+    this.recentlyViewedPackages,
   });
 
   @override
@@ -439,12 +443,12 @@ class _HomeSearchViewState extends State<HomeSearchView> {
                                 crossAxisCount: 2,
                                 crossAxisSpacing: 14,
                                 mainAxisSpacing: 14,
-                                childAspectRatio: 0.78,
+                                childAspectRatio: 0.72,
                               ),
                               itemCount: filtered.length,
                               itemBuilder: (context, index) {
                                 final pkg = filtered[index];
-                                return MarketplacePackageCard(
+                                return SearchPackageCard(
                                   package: pkg,
                                   isFavorite: pkg['hasHeart'] == true,
                                   onTap: () => widget.onPackageTap(pkg),
@@ -452,7 +456,16 @@ class _HomeSearchViewState extends State<HomeSearchView> {
                               },
                             ),
                 ),
-                const SizedBox(height: 30),
+                const SizedBox(height: 24),
+
+                // Recently Viewed Packages Section (rendered at bottom of search screen)
+                if (widget.recentlyViewedPackages != null && widget.recentlyViewedPackages!.isNotEmpty) ...[
+                  HomeRecentlyViewedSection(
+                    items: widget.recentlyViewedPackages!,
+                    onPackageTap: widget.onPackageTap,
+                  ),
+                  const SizedBox(height: 30),
+                ],
               ],
             ),
           ),

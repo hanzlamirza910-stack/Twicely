@@ -42,7 +42,7 @@ class _AddPackageScreenState extends State<AddPackageScreen> {
   bool _isAddingKeyPoint = false;
   String _primaryCategory = '';
   String _secondaryCategory = '';
-  String _packageStatus = 'draft'; // draft | pending | published
+  String _packageStatus = 'unpublish'; // unpublish | published
 
   bool _isCustomMerchant = false;
   final TextEditingController _customMerchantController = TextEditingController();
@@ -734,6 +734,8 @@ class _AddPackageScreenState extends State<AddPackageScreen> {
       }
 
       if (packageId != null) {
+        ApiService.trackCreatedPackageId(packageId);
+
         // Upload receipt or clearance evidence based on vendor_mode
         if (!SessionManager.isMerchant) {
           if (_isCustomMerchant && _receiptFilePath.isNotEmpty) {
@@ -750,6 +752,12 @@ class _AddPackageScreenState extends State<AddPackageScreen> {
         if (localPaths.isNotEmpty) {
           debugPrint('[DEBUG] Uploading package images: $localPaths');
           await ApiService.uploadPackageImages(packageId, localPaths);
+        }
+
+        // Explicitly sync package listing status via POST /packages/{id}/status API
+        if (_packageStatus.isNotEmpty) {
+          debugPrint('[DEBUG] Syncing package $packageId status to $_packageStatus');
+          await ApiService.updatePackageStatus(packageId, _packageStatus);
         }
       }
     }
@@ -1998,35 +2006,57 @@ class _AddPackageScreenState extends State<AddPackageScreen> {
                   color: Colors.black.withValues(alpha: 0.45),
                 ),
               ),
+
+              // Status Toggle (Shown ONLY when editing an existing package, matching website parity)
+              if (widget.packageToEdit != null) ...[
+                const SizedBox(height: 18),
+                _buildLabel('Status'),
+                const SizedBox(height: 4),
+                Row(
+                  children: [
+                    Transform.scale(
+                      scale: 0.85,
+                      alignment: Alignment.centerLeft,
+                      child: Switch(
+                        value: _packageStatus == 'published' || _packageStatus == 'publish',
+                        activeThumbColor: const Color(0xFF16A34A),
+                        onChanged: (val) async {
+                          final newSt = val ? 'published' : 'unpublish';
+                          setState(() {
+                            _packageStatus = newSt;
+                          });
+                          final pkgId = int.tryParse(widget.packageToEdit!['id']?.toString() ?? '');
+                          if (pkgId != null) {
+                            await ApiService.updatePackageStatus(pkgId, newSt);
+                          }
+                        },
+                      ),
+                    ),
+                    Text(
+                      (_packageStatus == 'published' || _packageStatus == 'publish')
+                          ? 'Published'
+                          : 'Unpublished',
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.bold,
+                        color: (_packageStatus == 'published' || _packageStatus == 'publish')
+                            ? const Color(0xFF16A34A)
+                            : Colors.black54,
+                      ),
+                    ),
+                  ],
+                ),
+                Text(
+                  'Changes take effect immediately, independent of Save.',
+                  style: TextStyle(
+                    fontSize: 10.5,
+                    color: Colors.black.withValues(alpha: 0.4),
+                  ),
+                ),
+              ],
             ],
           ),
         ),
-        if (SessionManager.isMerchant) ...[
-          const SizedBox(height: 24),
-          // Status Dropdown for Merchants only
-          _buildSectionHeader('Status'),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: AppColors.primary.withValues(alpha: 0.1)),
-            ),
-            child: DropdownButtonHideUnderline(
-              child: DropdownButton<String>(
-                isExpanded: true,
-                value: _packageStatus,
-                style: const TextStyle(fontSize: 13, color: AppColors.primary, fontWeight: FontWeight.w500),
-                items: const [
-                  DropdownMenuItem(value: 'draft', child: Text('Draft')),
-                  DropdownMenuItem(value: 'pending', child: Text('Pending Review')),
-                  DropdownMenuItem(value: 'published', child: Text('Published')),
-                ],
-                onChanged: (val) => setState(() => _packageStatus = val ?? 'draft'),
-              ),
-            ),
-          ),
-        ],
       ],
     );
   }

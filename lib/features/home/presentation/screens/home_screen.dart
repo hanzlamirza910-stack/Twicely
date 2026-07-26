@@ -21,7 +21,6 @@ import 'packages_list_screen.dart';
 import '../../../../core/services/api_service.dart';
 import 'merchant_dashboard.dart';
 import '../widgets/home_search_view.dart';
-import '../../../../core/widgets/package_image_carousel.dart';
 import '../../../../core/widgets/shimmer_effect.dart';
 
 
@@ -1426,6 +1425,7 @@ class _HomeScreenState extends State<HomeScreen> {
       onProfileTap: () {
         setState(() => _currentIndex = 4);
       },
+      recentlyViewedPackages: _recentlyViewedPackages,
     );
   }
 

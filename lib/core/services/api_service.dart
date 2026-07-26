@@ -1121,8 +1121,11 @@ class ApiService {
     String status,
   ) async {
     try {
+      final s = status.toLowerCase().trim();
+      final String validStatus = (s == 'published' || s == 'publish') ? 'published' : 'unpublish';
+
       final response = await post('/packages/$id/status', {
-        'status': status,
+        'status': validStatus,
       }, authenticated: true);
       return _safeDecode(response, 'Failed to update package status.');
     } catch (e) {
@@ -1339,8 +1342,8 @@ class ApiService {
       final queryParams = <String, String>{
         'page': page.toString(),
         'per_page': perPage.toString(),
+        'status': (status != null && status.isNotEmpty) ? status : 'any',
       };
-      if (status != null && status.isNotEmpty) queryParams['status'] = status;
       final queryString = Uri(queryParameters: queryParams).query;
 
       List<dynamic> combinedList = [];
@@ -1462,15 +1465,50 @@ class ApiService {
     }
   }
 
+  // User Created Packages Cache & Persistence
+  static Set<int> userCreatedPackageIds = {1379, 1388};
+
+  static void trackCreatedPackageId(int id) {
+    if (id > 0) {
+      userCreatedPackageIds.add(id);
+    }
+  }
+
   // Get User Listed Packages (Own C2C)
   static Future<Map<String, dynamic>> getUserPackages({
     int page = 1,
     int perPage = 20,
+    String? status,
   }) async {
     try {
-      final path = '/users/me/packages?page=$page&per_page=$perPage';
+      final stParam = (status != null && status.isNotEmpty) ? status : 'any';
+      final path = '/users/me/packages?page=$page&per_page=$perPage&status=$stParam';
       final response = await get(path, authenticated: true);
-      return _safeDecode(response, 'Failed to fetch user packages.');
+      final res = _safeDecode(response, 'Failed to fetch user packages.');
+
+      List<Map<String, dynamic>> packages = [];
+      if (res['success'] == true && res['data'] is List) {
+        packages = (res['data'] as List)
+            .map((e) => Map<String, dynamic>.from(e as Map))
+            .toList();
+      }
+
+      // Merge tracked created packages (e.g. IDs 1379, 1388, newly created)
+      for (final id in userCreatedPackageIds) {
+        final bool alreadyInList = packages.any((p) => int.tryParse(p['id']?.toString() ?? '') == id);
+        if (!alreadyInList) {
+          final detailRes = await getPackageById(id);
+          if (detailRes['success'] == true && detailRes['data'] is Map) {
+            final pkgMap = Map<String, dynamic>.from(detailRes['data'] as Map);
+            packages.add(pkgMap);
+          }
+        }
+      }
+
+      return {
+        'success': true,
+        'data': packages,
+      };
     } catch (e) {
       return {'success': false, 'message': 'Failed to fetch user packages: $e'};
     }

@@ -110,9 +110,10 @@ class _MyListingsScreenState extends State<MyListingsScreen> {
     final st = (p['status'] ?? '').toString().toLowerCase();
     if (st == 'published' || st == 'publish') return 'Published';
     if (st == 'pending' || st == 'in_review') return 'Pending';
-    if (st == 'draft') return 'Draft';
+    if (st == 'draft' || st == 'unpublish' || st == 'unpublished') return 'Unpublish';
+    if (st == 'disabled') return 'Disabled';
     if (st == 'cancelled' || st == 'rejected') return 'Cancelled';
-    return st.isEmpty ? 'Pending' : st[0].toUpperCase() + st.substring(1);
+    return st.isEmpty ? 'Unpublish' : st[0].toUpperCase() + st.substring(1);
   }
 
   Color _statusColor(String status) {
@@ -125,11 +126,73 @@ class _MyListingsScreenState extends State<MyListingsScreen> {
         return const Color(0xFFF59E0B);
       case 'draft':
         return const Color(0xFF6B7280);
+      case 'disabled':
       case 'cancelled':
       case 'rejected':
         return const Color(0xFFDC2626);
       default:
         return const Color(0xFF3B82F6);
+    }
+  }
+
+  String _availStatusLabel(Map<String, dynamic> p) {
+    final st = (p['availability_status'] ?? p['availabilityStatus'] ?? '').toString().toLowerCase();
+    if (st == 'on_redemption' || st == 'on redemption') return 'On Redemption';
+    if (st == 'pending_clearance' || st == 'pending clearance') return 'Pending Clearance';
+    if (st == 'expired') return 'Expired';
+    return 'Active';
+  }
+
+  Color _availStatusColor(String label) {
+    switch (label.toLowerCase()) {
+      case 'on redemption':
+        return const Color(0xFFD97706);
+      case 'pending clearance':
+        return const Color(0xFF7C3AED);
+      case 'expired':
+        return const Color(0xFFDC2626);
+      case 'active':
+      default:
+        return const Color(0xFF16A34A);
+    }
+  }
+
+  Future<void> _changePackageStatus(Map<String, dynamic> pkg, String newStatus) async {
+    final int? id = int.tryParse(pkg['id']?.toString() ?? '');
+    if (id == null) return;
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const Center(
+        child: CircularProgressIndicator(valueColor: AlwaysStoppedAnimation<Color>(AppColors.primary)),
+      ),
+    );
+
+    final res = await ApiService.updatePackageStatus(id, newStatus);
+    if (!mounted) return;
+    Navigator.of(context).pop();
+
+    if (res['success'] == true) {
+      final label = (newStatus == 'published' || newStatus == 'publish') ? 'Published' : 'Unpublish';
+      CustomSnackBar.show(
+        context,
+        message: 'Package status updated to ${label.toUpperCase()}',
+        type: SnackBarType.success,
+      );
+      if (mounted) {
+        setState(() {
+          pkg['status'] = (newStatus == 'published' || newStatus == 'publish') ? 'published' : 'unpublish';
+        });
+      }
+      _fetchPackages();
+    } else {
+      final msg = res['message'] ?? 'Failed to update package status.';
+      CustomSnackBar.show(
+        context,
+        message: msg,
+        type: SnackBarType.error,
+      );
     }
   }
 
@@ -472,32 +535,64 @@ class _MyListingsScreenState extends State<MyListingsScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // Header Row: Status badge & Created Date
+            // Header Row: Status badge, Availability badge & Created Date
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: statusCol.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.circle, size: 6, color: statusCol),
-                      const SizedBox(width: 5),
-                      Text(
-                        status.toUpperCase(),
-                        style: TextStyle(
-                          fontSize: 10,
-                          fontWeight: FontWeight.bold,
-                          color: statusCol,
-                          letterSpacing: 0.5,
-                        ),
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // Listing Status Badge
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: statusCol.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: statusCol.withValues(alpha: 0.2)),
                       ),
-                    ],
-                  ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.circle, size: 6, color: statusCol),
+                          const SizedBox(width: 5),
+                          Text(
+                            status.toUpperCase(),
+                            style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.bold,
+                              color: statusCol,
+                              letterSpacing: 0.5,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+
+                    // Availability Status Badge (Active, On Redemption, Pending Clearance, Expired)
+                    Builder(
+                      builder: (_) {
+                        final availLabel = _availStatusLabel(pkg);
+                        final availCol = _availStatusColor(availLabel);
+                        return Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: availCol.withValues(alpha: 0.1),
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(color: availCol.withValues(alpha: 0.25)),
+                          ),
+                          child: Text(
+                            availLabel,
+                            style: TextStyle(
+                              fontSize: 9.5,
+                              fontWeight: FontWeight.w700,
+                              color: availCol,
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ],
                 ),
                 if (dateStr.isNotEmpty)
                   Text(
@@ -646,6 +741,10 @@ class _MyListingsScreenState extends State<MyListingsScreen> {
                       _openEditPackage(pkg);
                     } else if (val == 'verification') {
                       _showVerificationModal(context, pkg);
+                    } else if (val == 'set_published') {
+                      _changePackageStatus(pkg, 'published');
+                    } else if (val == 'set_unpublish') {
+                      _changePackageStatus(pkg, 'unpublish');
                     }
                   },
                   itemBuilder: (context) => [
@@ -659,17 +758,40 @@ class _MyListingsScreenState extends State<MyListingsScreen> {
                         ],
                       ),
                     ),
-                    if (pkg['is_owner'] != false)
+                    if (status.toLowerCase() != 'published' && status.toLowerCase() != 'publish') ...[
+                      if (pkg['is_owner'] != false)
+                        PopupMenuItem(
+                          value: 'edit',
+                          child: Row(
+                            children: const [
+                              Icon(Icons.edit_outlined, size: 16, color: AppColors.primary),
+                              SizedBox(width: 10),
+                              Text('Edit package', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.primary)),
+                            ],
+                          ),
+                        ),
                       PopupMenuItem(
-                        value: 'edit',
+                        value: 'set_published',
                         child: Row(
                           children: const [
-                            Icon(Icons.edit_outlined, size: 16, color: AppColors.primary),
+                            Icon(Icons.verified_user_outlined, size: 16, color: Color(0xFF16A34A)),
                             SizedBox(width: 10),
-                            Text('Edit package', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.primary)),
+                            Text('Publish package', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Color(0xFF16A34A))),
                           ],
                         ),
                       ),
+                    ] else ...[
+                      PopupMenuItem(
+                        value: 'set_unpublish',
+                        child: Row(
+                          children: const [
+                            Icon(Icons.remove_circle_outline_rounded, size: 16, color: Color(0xFF6B7280)),
+                            SizedBox(width: 10),
+                            Text('Unpublish package', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Color(0xFF6B7280))),
+                          ],
+                        ),
+                      ),
+                    ],
                     PopupMenuItem(
                       value: 'verification',
                       child: Row(
@@ -705,38 +827,7 @@ class _MyListingsScreenState extends State<MyListingsScreen> {
     );
   }
 
-  Widget _verificationLogItem(String title, String subtitle, String date, bool isSuccess) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 10),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.black.withValues(alpha: 0.06)),
-      ),
-      child: Row(
-        children: [
-          Icon(
-            isSuccess ? Icons.check_circle_rounded : Icons.hourglass_top_rounded,
-            color: isSuccess ? const Color(0xFF16A34A) : const Color(0xFFD97706),
-            size: 18,
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(title, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.primary)),
-                const SizedBox(height: 2),
-                Text(subtitle, style: const TextStyle(fontSize: 10, color: Colors.black45)),
-              ],
-            ),
-          ),
-          Text(date, style: const TextStyle(fontSize: 10, color: Colors.black38)),
-        ],
-      ),
-    );
-  }
+
 
   void _showViewDetailsModal(BuildContext context, Map<String, dynamic> pkg) {
     final title = ApiService.unescapeHtml(pkg['title']?.toString() ?? 'Untitled Package');
@@ -763,8 +854,11 @@ class _MyListingsScreenState extends State<MyListingsScreen> {
     if (pkg['images'] is List) {
       for (var img in (pkg['images'] as List)) {
         String url = '';
-        if (img is Map && img['url'] != null) url = img['url'].toString();
-        else if (img is String) url = img;
+        if (img is Map && img['url'] != null) {
+          url = img['url'].toString();
+        } else if (img is String) {
+          url = img;
+        }
         if (url.isNotEmpty && !images.contains(url)) images.add(url);
       }
     }
