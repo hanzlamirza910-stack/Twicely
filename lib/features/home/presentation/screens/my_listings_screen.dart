@@ -157,6 +157,12 @@ class _MyListingsScreenState extends State<MyListingsScreen> {
     }
   }
 
+  bool _canEditPackage(Map<String, dynamic> pkg) {
+    if (pkg['is_owner'] == false) return false;
+    final availStatus = _availStatusLabel(pkg).toLowerCase();
+    return availStatus == 'active' || availStatus == 'pending clearance';
+  }
+
   Future<void> _changePackageStatus(Map<String, dynamic> pkg, String newStatus) async {
     final int? id = int.tryParse(pkg['id']?.toString() ?? '');
     if (id == null) return;
@@ -758,18 +764,18 @@ class _MyListingsScreenState extends State<MyListingsScreen> {
                         ],
                       ),
                     ),
-                    if (status.toLowerCase() != 'published' && status.toLowerCase() != 'publish') ...[
-                      if (pkg['is_owner'] != false)
-                        PopupMenuItem(
-                          value: 'edit',
-                          child: Row(
-                            children: const [
-                              Icon(Icons.edit_outlined, size: 16, color: AppColors.primary),
-                              SizedBox(width: 10),
-                              Text('Edit package', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.primary)),
-                            ],
-                          ),
+                    if (_canEditPackage(pkg))
+                      PopupMenuItem(
+                        value: 'edit',
+                        child: Row(
+                          children: const [
+                            Icon(Icons.edit_outlined, size: 16, color: AppColors.primary),
+                            SizedBox(width: 10),
+                            Text('Edit package', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.primary)),
+                          ],
                         ),
+                      ),
+                    if (status.toLowerCase() != 'published' && status.toLowerCase() != 'publish') ...[
                       PopupMenuItem(
                         value: 'set_published',
                         child: Row(
@@ -838,13 +844,14 @@ class _MyListingsScreenState extends State<MyListingsScreen> {
       pkg['description']?.toString() ?? pkg['content']?.toString() ?? pkg['details']?.toString() ?? 'No description provided.',
     );
     final expStr = _fmtDate(pkg['availability_end']?.toString() ?? pkg['expiry_date']?.toString());
-    
+
     // Merchant Info
     final presented = pkg['presented_by'] is Map ? pkg['presented_by'] as Map : {};
     final merchantName = ApiService.unescapeHtml(
-      presented['name']?.toString() ?? pkg['manual_vendor_name']?.toString() ?? 'Twicely Verified Seller',
+      presented['name']?.toString() ?? pkg['manual_vendor_name']?.toString() ?? pkg['vendor_name']?.toString() ?? pkg['merchant_name']?.toString() ?? '',
     );
     final merchantLogo = presented['logo']?.toString() ?? presented['avatar']?.toString() ?? '';
+    final hasMerchantInfo = merchantName.trim().isNotEmpty;
 
     // Images
     List<String> images = [];
@@ -1015,57 +1022,62 @@ class _MyListingsScreenState extends State<MyListingsScreen> {
                     ),
                     const SizedBox(height: 20),
 
-                    // Merchant Info Section
-                    Row(
-                      children: const [
-                        Icon(Icons.storefront_outlined, size: 16, color: Colors.black54),
-                        SizedBox(width: 6),
-                        Text(
-                          'MERCHANT INFORMATION',
-                          style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, letterSpacing: 0.5, color: Colors.black54),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-                    Container(
-                      padding: const EdgeInsets.all(14),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(color: Colors.black.withValues(alpha: 0.08)),
-                      ),
-                      child: Row(
-                        children: [
-                          CircleAvatar(
-                            radius: 20,
-                            backgroundColor: AppColors.primary.withValues(alpha: 0.08),
-                            backgroundImage: merchantLogo.startsWith('http') ? NetworkImage(merchantLogo) : null,
-                            child: merchantLogo.isEmpty ? const Icon(Icons.storefront, color: AppColors.primary, size: 20) : null,
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  merchantName,
-                                  style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: AppColors.primary),
-                                ),
-                                const SizedBox(height: 2),
-                                const Text(
-                                  'Verified Partner',
-                                  style: TextStyle(fontSize: 11, color: Colors.black45, fontWeight: FontWeight.w500),
-                                ),
-                              ],
-                            ),
+                    if (hasMerchantInfo) ...[
+                      Row(
+                        children: const [
+                          Icon(Icons.storefront_outlined, size: 16, color: Colors.black54),
+                          SizedBox(width: 6),
+                          Text(
+                            'MERCHANT INFORMATION',
+                            style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, letterSpacing: 0.5, color: Colors.black54),
                           ),
                         ],
                       ),
-                    ),
-                    const SizedBox(height: 24),
+                      const SizedBox(height: 8),
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(14),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(color: Colors.black.withValues(alpha: 0.08)),
+                        ),
+                        child: Row(
+                          children: [
+                            CircleAvatar(
+                              radius: 20,
+                              backgroundColor: AppColors.primary.withValues(alpha: 0.08),
+                              backgroundImage: merchantLogo.startsWith('http') ? NetworkImage(merchantLogo) : null,
+                              child: merchantLogo.isEmpty ? const Icon(Icons.storefront, color: AppColors.primary, size: 20) : null,
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    merchantName,
+                                    style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: AppColors.primary),
+                                  ),
+                                  const SizedBox(height: 2),
+                                  const Text(
+                                    'Verified Partner',
+                                    style: TextStyle(fontSize: 11, color: Colors.black45, fontWeight: FontWeight.w500),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 20),
+                    ],
+
+
 
                     // Right Sidebar Details Card (Matching Web UI)
                     Container(
+                      width: double.infinity,
                       padding: const EdgeInsets.all(16),
                       decoration: BoxDecoration(
                         color: const Color(0xFFF9FAFB),
@@ -1169,30 +1181,37 @@ class _MyListingsScreenState extends State<MyListingsScreen> {
                   Row(
                     children: [
                       Expanded(
-                        child: OutlinedButton(
-                          style: OutlinedButton.styleFrom(
-                            padding: const EdgeInsets.symmetric(vertical: 12),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                        child: SizedBox(
+                          height: 46,
+                          child: OutlinedButton(
+                            style: OutlinedButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(horizontal: 16),
+                              side: const BorderSide(color: Colors.black26, width: 1.5),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(23)),
+                            ),
+                            onPressed: () => Navigator.pop(ctx),
+                            child: const Text('Close', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.black87)),
                           ),
-                          onPressed: () => Navigator.pop(ctx),
-                          child: const Text('Close', style: TextStyle(fontWeight: FontWeight.bold, color: AppColors.primary)),
                         ),
                       ),
-                      if (pkg['is_owner'] != false) ...[
+                      if (_canEditPackage(pkg)) ...[
                         const SizedBox(width: 12),
                         Expanded(
-                          child: ElevatedButton(
-                            style: ElevatedButton.styleFrom(
-                              padding: const EdgeInsets.symmetric(vertical: 12),
-                              backgroundColor: const Color(0xFFEAB308),
-                              elevation: 0,
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                          child: SizedBox(
+                            height: 46,
+                            child: ElevatedButton(
+                              style: ElevatedButton.styleFrom(
+                                padding: const EdgeInsets.symmetric(horizontal: 16),
+                                backgroundColor: const Color(0xFFFBBD03),
+                                elevation: 0,
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(23)),
+                              ),
+                              onPressed: () {
+                                Navigator.pop(ctx);
+                                _openEditPackage(pkg);
+                              },
+                              child: const Text('Edit package', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: AppColors.primary)),
                             ),
-                            onPressed: () {
-                              Navigator.pop(ctx);
-                              _openEditPackage(pkg);
-                            },
-                            child: const Text('Edit package', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.black)),
                           ),
                         ),
                       ],

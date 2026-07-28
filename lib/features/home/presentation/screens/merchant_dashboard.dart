@@ -1,7 +1,6 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import '../../../../core/constants/app_colors.dart';
-import '../../../auth/presentation/screens/login_screen.dart';
 import '../../../chat/presentation/screens/conversations_screen.dart';
 import 'add_package_screen.dart';
 import 'notifications_screen.dart';
@@ -10,6 +9,7 @@ import 'my_sales_screen.dart';
 import 'my_orders_screen.dart';
 import 'wishlist_screen.dart';
 import 'payout_screen.dart';
+import 'stripe_account_screen.dart';
 import '../../../../core/services/api_service.dart';
 import '../../../../core/utils/session_manager.dart';
 import 'home_screen.dart';
@@ -47,9 +47,6 @@ class _MerchantDashboardState extends State<MerchantDashboard> {
   List<Map<String, dynamic>> _merchantPackages = [];
   bool _isLoadingPackages = false;
 
-  List<Map<String, dynamic>> _marketplaceSearchPackages = [];
-  bool _isLoadingMarketplaceSearch = false;
-
   // Dynamic Merchant statistics, wallet balance, and wishlist count
   double _walletBalance = 0.0;
   int _wishlistCount = 0;
@@ -62,34 +59,6 @@ class _MerchantDashboardState extends State<MerchantDashboard> {
     _loadMerchantData();
     _fetchMerchantPackages();
     _fetchDynamicData();
-    _fetchMarketplaceSearchPackages();
-  }
-
-  Future<void> _fetchMarketplaceSearchPackages() async {
-    if (!mounted) return;
-    setState(() => _isLoadingMarketplaceSearch = true);
-
-    try {
-      final res = await ApiService.getPackages(
-        perPage: 100,
-        search: _searchQuery.isNotEmpty ? _searchQuery : null,
-      );
-
-      if (!mounted) return;
-      if (res['success'] == true && res['data'] is List) {
-        final List<dynamic> raw = res['data'];
-        setState(() {
-          _marketplaceSearchPackages = raw
-              .map((p) => _mapApiPackage(p as Map<String, dynamic>))
-              .toList();
-          _isLoadingMarketplaceSearch = false;
-        });
-      } else {
-        setState(() => _isLoadingMarketplaceSearch = false);
-      }
-    } catch (e) {
-      if (mounted) setState(() => _isLoadingMarketplaceSearch = false);
-    }
   }
 
   @override
@@ -1038,13 +1007,6 @@ class _MerchantDashboardState extends State<MerchantDashboard> {
           ),
           const SizedBox(height: 12),
           _buildProfileOption(
-            title: 'Business Profile',
-            subtitle: 'Edit business details & address',
-            icon: Icons.business_outlined,
-            onTap: _openEditMerchantProfileScreen,
-          ),
-          const SizedBox(height: 12),
-          _buildProfileOption(
             title: 'Wallet',
             subtitle: 'Balance: S\$${_walletBalance.toStringAsFixed(2)}',
             icon: Icons.account_balance_wallet_outlined,
@@ -1095,6 +1057,18 @@ class _MerchantDashboardState extends State<MerchantDashboard> {
               );
             },
           ),
+          _buildProfileOption(
+            title: 'Stripe Account',
+            subtitle: 'Manage payment settings & payouts',
+            icon: Icons.account_balance_rounded,
+            onTap: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (context) => const StripeAccountScreen(),
+                ),
+              );
+            },
+          ),
           const SizedBox(height: 12),
           _buildProfileOption(
             title: 'Payout Methods',
@@ -1108,13 +1082,6 @@ class _MerchantDashboardState extends State<MerchantDashboard> {
               );
             },
           ),
-          const SizedBox(height: 12),
-          _buildProfileOption(
-            title: 'Settings',
-            subtitle: 'Notifications, Privacy',
-            icon: Icons.settings_outlined,
-            onTap: () {},
-          ),
           const SizedBox(height: 24),
 
           // Logout Action button
@@ -1123,7 +1090,7 @@ class _MerchantDashboardState extends State<MerchantDashboard> {
               final navigator = Navigator.of(context);
               await ApiService.logout();
               navigator.pushAndRemoveUntil(
-                MaterialPageRoute(builder: (context) => const LoginScreen()),
+                MaterialPageRoute(builder: (context) => const HomeScreen()),
                 (route) => false,
               );
             },
@@ -1273,7 +1240,7 @@ class _MerchantDashboardState extends State<MerchantDashboard> {
                   mainAxisAlignment: MainAxisAlignment.spaceAround,
                   children: [
                     Expanded(child: _buildNavBarItem(0, Icons.home_rounded, 'Home')),
-                    Expanded(child: _buildNavBarItem(1, Icons.search_rounded, 'Search')),
+                    Expanded(child: _buildNavBarItem(1, Icons.inventory_2_outlined, 'Packages')),
                     const SizedBox(width: 64), // Empty space for protruding center button
                     Expanded(child: _buildNavBarItem(3, Icons.chat_bubble_outline_rounded, 'Chat')),
                     Expanded(child: _buildNavBarItem(4, Icons.person_outline_rounded, 'Profile')),
@@ -1409,7 +1376,7 @@ class _MerchantDashboardState extends State<MerchantDashboard> {
               setState(() {
                 _searchQuery = val;
               });
-              _fetchMarketplaceSearchPackages();
+              _fetchMerchantPackages();
             },
             style: const TextStyle(fontSize: 14, color: AppColors.primary),
             decoration: InputDecoration(
@@ -1425,7 +1392,7 @@ class _MerchantDashboardState extends State<MerchantDashboard> {
                           _searchController.clear();
                           _searchQuery = '';
                         });
-                        _fetchMarketplaceSearchPackages();
+                        _fetchMerchantPackages();
                       },
                       child: const Icon(Icons.cancel_rounded, color: AppColors.primary, size: 20),
                     )
@@ -1760,39 +1727,61 @@ class _MerchantDashboardState extends State<MerchantDashboard> {
                                     ),
                                   ],
                                 ),
-                                Row(
-                                  children: [
-                                    // Eye
-                                    _buildActionButton(
-                                      icon: Icons.visibility_outlined,
-                                      bgColor: Colors.black.withValues(alpha: 0.03),
-                                      iconColor: AppColors.primary,
-                                      onTap: () {
-                                        _viewPackage(pkg);
-                                      },
+                                PopupMenuButton<String>(
+                                  icon: Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFFF4F5F7),
+                                      borderRadius: BorderRadius.circular(10),
+                                      border: Border.all(color: Colors.black.withValues(alpha: 0.08)),
                                     ),
-                                    if (pkg['is_owner'] == true) ...[
-                                      const SizedBox(width: 8),
-                                      // Edit
-                                      _buildActionButton(
-                                        icon: Icons.edit_outlined,
-                                        bgColor: Colors.black.withValues(alpha: 0.03),
-                                        iconColor: AppColors.primary,
-                                        onTap: () {
-                                          _editPackage(pkg);
-                                        },
+                                    child: const Icon(Icons.more_horiz_rounded, size: 20, color: AppColors.primary),
+                                  ),
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                                  elevation: 6,
+                                  color: Colors.white,
+                                  onSelected: (val) {
+                                    if (val == 'view') {
+                                      _viewPackage(pkg);
+                                    } else if (val == 'edit') {
+                                      _editPackage(pkg);
+                                    } else if (val == 'delete') {
+                                      _showDeleteConfirmation(pkg);
+                                    }
+                                  },
+                                  itemBuilder: (context) => [
+                                    PopupMenuItem(
+                                      value: 'view',
+                                      child: Row(
+                                        children: const [
+                                          Icon(Icons.visibility_outlined, size: 16, color: AppColors.primary),
+                                          SizedBox(width: 10),
+                                          Text('View details', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.primary)),
+                                        ],
                                       ),
-                                      const SizedBox(width: 8),
-                                      // Delete
-                                      _buildActionButton(
-                                        icon: Icons.delete_outline_rounded,
-                                        bgColor: const Color(0xFFFFEBEE),
-                                        iconColor: Colors.red,
-                                        onTap: () {
-                                          _showDeleteConfirmation(pkg);
-                                        },
+                                    ),
+                                    if (_canEditPackage(pkg))
+                                      PopupMenuItem(
+                                        value: 'edit',
+                                        child: Row(
+                                          children: const [
+                                            Icon(Icons.edit_outlined, size: 16, color: AppColors.primary),
+                                            SizedBox(width: 10),
+                                            Text('Edit package', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.primary)),
+                                          ],
+                                        ),
                                       ),
-                                    ],
+                                    if (pkg['is_owner'] != false)
+                                      PopupMenuItem(
+                                        value: 'delete',
+                                        child: Row(
+                                          children: const [
+                                            Icon(Icons.delete_outline_rounded, size: 16, color: Colors.red),
+                                            SizedBox(width: 10),
+                                            Text('Delete package', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Colors.red)),
+                                          ],
+                                        ),
+                                      ),
                                   ],
                                 ),
                               ],
@@ -1837,23 +1826,11 @@ class _MerchantDashboardState extends State<MerchantDashboard> {
     );
   }
 
-  Widget _buildActionButton({
-    required IconData icon,
-    required Color bgColor,
-    required Color iconColor,
-    required VoidCallback onTap,
-  }) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.all(8),
-        decoration: BoxDecoration(
-          color: bgColor,
-          shape: BoxShape.circle,
-        ),
-        child: Icon(icon, size: 18, color: iconColor),
-      ),
-    );
+  bool _canEditPackage(Map<String, dynamic> pkg) {
+    if (pkg['is_owner'] == false) return false;
+    final st = (pkg['availability_status'] ?? pkg['availabilityStatus'] ?? '').toString().toLowerCase();
+    if (st == 'on_redemption' || st == 'on redemption' || st == 'expired') return false;
+    return true;
   }
 
   // Edit package flow
@@ -1970,8 +1947,8 @@ class _MerchantDashboardState extends State<MerchantDashboard> {
 
   void _showPackageDetailsDialog(Map<String, dynamic> pkg) {
     final title = ApiService.unescapeHtml(pkg['title']?.toString() ?? 'Package Details');
-    final status = (pkg['status']?.toString() ?? 'Published').toUpperCase();
-    final price = pkg['resale_price'] ?? pkg['price'] ?? 0.0;
+    final statusStr = (pkg['status']?.toString() ?? 'Published').toUpperCase();
+    final priceVal = pkg['resale_price'] ?? pkg['price'] ?? 0.0;
     
     String expiryStr = '—';
     if (pkg['expiry_date'] != null) {
@@ -1983,278 +1960,308 @@ class _MerchantDashboardState extends State<MerchantDashboard> {
       }
     }
 
-    List<String> categories = [];
-    if (pkg['category'] != null) {
-      if (pkg['category'] is Map) {
-        categories.add(pkg['category']['name']?.toString() ?? '');
-      } else {
-        categories.add(pkg['category'].toString());
+    final description = pkg['description'] ?? pkg['content'] ?? 'No description provided.';
+    final merchantName = _merchantBusinessName.isNotEmpty ? _merchantBusinessName : (pkg['vendor_name']?.toString() ?? pkg['merchant_name']?.toString() ?? '');
+    final merchantLogo = _merchantLogoUrl;
+    final hasMerchantInfo = merchantName.trim().isNotEmpty;
+
+    // Images
+    List<String> images = [];
+    if (pkg['cover_url'] != null && pkg['cover_url'].toString().isNotEmpty) {
+      images.add(pkg['cover_url'].toString());
+    }
+    if (pkg['images'] is List) {
+      for (var img in (pkg['images'] as List)) {
+        String url = '';
+        if (img is Map && img['url'] != null) {
+          url = img['url'].toString();
+        } else if (img is String) {
+          url = img;
+        }
+        if (url.isNotEmpty && !images.contains(url)) images.add(url);
       }
     }
-    if (pkg['secondary_category'] != null) {
-      if (pkg['secondary_category'] is Map) {
-        categories.add(pkg['secondary_category']['name']?.toString() ?? '');
-      } else {
-        categories.add(pkg['secondary_category'].toString());
-      }
-    }
-    categories.removeWhere((c) => c.isEmpty);
-    final categoriesStr = categories.isNotEmpty ? categories.join(', ') : 'General';
+    if (images.isEmpty) images.add('assets/images/package_spa.jpg');
 
-    final description = pkg['description'] ?? 'No description provided.';
-    final location = _merchantAddress.isNotEmpty ? _merchantAddress : '—';
+    final statusCol = statusStr == 'PUBLISHED' ? const Color(0xFF16A34A) : const Color(0xFFF59E0B);
 
-    showDialog(
+    showModalBottomSheet(
       context: context,
-      builder: (context) => Dialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-        insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
-        child: SingleChildScrollView(
-          child: Padding(
-            padding: const EdgeInsets.all(24.0),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Expanded(
-                      child: Text(
-                        title,
-                        style: const TextStyle(
-                          fontFamily: 'Recoleta Alt',
-                          fontSize: 22,
-                          fontWeight: FontWeight.bold,
-                          color: AppColors.primary,
-                        ),
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => Container(
+        height: MediaQuery.of(ctx).size.height * 0.88,
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        ),
+        child: Column(
+          children: [
+            // Modal Header
+            Container(
+              padding: const EdgeInsets.fromLTRB(20, 16, 16, 16),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+                border: Border(bottom: BorderSide(color: Colors.black.withValues(alpha: 0.08))),
+              ),
+              child: Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: statusCol.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Text(
+                      statusStr,
+                      style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: statusCol),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        fontFamily: 'Recoleta Alt',
+                        color: AppColors.primary,
                       ),
                     ),
-                    const SizedBox(width: 8),
-                    IconButton(
-                      icon: const Icon(Icons.close, color: AppColors.primary),
-                      onPressed: () => Navigator.of(context).pop(),
-                      padding: EdgeInsets.zero,
-                      constraints: const BoxConstraints(),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: status == 'PUBLISHED' ? const Color(0xFFE8F5E9) : const Color(0xFFFFF8E1),
-                    borderRadius: BorderRadius.circular(12),
                   ),
-                  child: Text(
-                    status,
-                    style: TextStyle(
-                      color: status == 'PUBLISHED' ? Colors.green : Colors.amber[800],
-                      fontSize: 10,
-                      fontWeight: FontWeight.bold,
-                    ),
+                  IconButton(
+                    icon: const Icon(Icons.close_rounded, color: AppColors.primary, size: 22),
+                    onPressed: () => Navigator.pop(ctx),
                   ),
-                ),
-                const SizedBox(height: 24),
+                ],
+              ),
+            ),
 
-                Row(
+            // Modal Body Content (Scrollable)
+            Expanded(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.all(20),
+                child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text(
-                            'Status',
-                            style: TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.bold,
-                              color: AppColors.primary,
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    // Main Cover Image
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(16),
+                      child: AspectRatio(
+                        aspectRatio: 16 / 9,
+                        child: images.first.startsWith('http')
+                            ? Image.network(images.first, fit: BoxFit.cover)
+                            : Image.asset(images.first, fit: BoxFit.cover, errorBuilder: (_, __, ___) => Container(color: Colors.grey.shade200)),
+                      ),
+                    ),
+                    if (images.length > 1) ...[
+                      const SizedBox(height: 10),
+                      SizedBox(
+                        height: 56,
+                        child: ListView.builder(
+                          scrollDirection: Axis.horizontal,
+                          itemCount: images.length,
+                          itemBuilder: (_, idx) => Container(
+                            margin: const EdgeInsets.only(right: 8),
+                            width: 56,
                             decoration: BoxDecoration(
-                              color: status == 'PUBLISHED' ? const Color(0xFFE8F5E9) : const Color(0xFFFFF8E1),
-                              borderRadius: BorderRadius.circular(12),
+                              borderRadius: BorderRadius.circular(10),
+                              border: Border.all(color: Colors.black12),
                             ),
-                            child: Text(
-                              status,
-                              style: TextStyle(
-                                color: status == 'PUBLISHED' ? Colors.green : Colors.amber[800],
-                                fontSize: 10,
-                                fontWeight: FontWeight.bold,
-                              ),
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(9),
+                              child: images[idx].startsWith('http')
+                                  ? Image.network(images[idx], fit: BoxFit.cover)
+                                  : Image.asset(images[idx], fit: BoxFit.cover),
                             ),
                           ),
-                        ],
-                      ),
-                    ),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text(
-                            'Price',
-                            style: TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.bold,
-                              color: AppColors.primary,
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            'SGD $price',
-                            style: const TextStyle(
-                              fontSize: 14,
-                              color: Colors.black54,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 16),
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text(
-                            'Availability',
-                            style: TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.bold,
-                              color: AppColors.primary,
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            '— → $expiryStr',
-                            style: const TextStyle(
-                              fontSize: 14,
-                              color: Colors.black54,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text(
-                            'Location',
-                            style: TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.bold,
-                              color: AppColors.primary,
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            location,
-                            style: const TextStyle(
-                              fontSize: 14,
-                              color: Colors.black54,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 24),
-
-                const Text(
-                  'Categories',
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.bold,
-                    color: AppColors.primary,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  categoriesStr,
-                  style: const TextStyle(
-                    fontSize: 14,
-                    color: Colors.black54,
-                  ),
-                ),
-                const SizedBox(height: 24),
-
-                const Text(
-                  'DESCRIPTION',
-                  style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.black38,
-                    letterSpacing: 0.5,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  description,
-                  style: const TextStyle(
-                    fontSize: 14,
-                    color: Colors.black87,
-                    height: 1.4,
-                  ),
-                ),
-                const SizedBox(height: 24),
-
-                Text(
-                  "Need to make changes? Switch to the edit view to update package details.",
-                  style: TextStyle(
-                    fontSize: 11,
-                    color: Colors.black.withValues(alpha: 0.4),
-                  ),
-                ),
-                const SizedBox(height: 16),
-
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.end,
-                  children: [
-                    OutlinedButton(
-                      onPressed: () => Navigator.of(context).pop(),
-                      style: OutlinedButton.styleFrom(
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                        side: const BorderSide(color: Colors.black12),
-                        minimumSize: Size.zero,
-                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                      ),
-                      child: const Text('Close', style: TextStyle(color: Colors.black87, fontSize: 13, fontWeight: FontWeight.bold)),
-                    ),
-                    if (pkg['is_owner'] == true) ...[
-                      const SizedBox(width: 8),
-                      ElevatedButton(
-                        onPressed: () {
-                          Navigator.of(context).pop();
-                          _editPackage(pkg);
-                        },
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFFFBBD03),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                          minimumSize: Size.zero,
-                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                         ),
-                        child: const Text('Edit package', style: TextStyle(color: AppColors.primary, fontSize: 13, fontWeight: FontWeight.bold)),
                       ),
                     ],
+                    const SizedBox(height: 20),
+
+                    // Description Section
+                    Row(
+                      children: const [
+                        Icon(Icons.description_outlined, size: 16, color: Colors.black54),
+                        SizedBox(width: 6),
+                        Text(
+                          'DESCRIPTION',
+                          style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, letterSpacing: 0.5, color: Colors.black54),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(14),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF9FAFB),
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(color: Colors.black.withValues(alpha: 0.05)),
+                      ),
+                      child: Text(
+                        description,
+                        style: const TextStyle(fontSize: 13, color: AppColors.primary, height: 1.4),
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+
+                    if (hasMerchantInfo) ...[
+                      Row(
+                        children: const [
+                          Icon(Icons.storefront_outlined, size: 16, color: Colors.black54),
+                          SizedBox(width: 6),
+                          Text(
+                            'MERCHANT INFORMATION',
+                            style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, letterSpacing: 0.5, color: Colors.black54),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(14),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(color: Colors.black.withValues(alpha: 0.08)),
+                        ),
+                        child: Row(
+                          children: [
+                            CircleAvatar(
+                              radius: 20,
+                              backgroundColor: AppColors.primary.withValues(alpha: 0.08),
+                              backgroundImage: merchantLogo.startsWith('http') ? NetworkImage(merchantLogo) : null,
+                              child: merchantLogo.isEmpty ? const Icon(Icons.storefront, color: AppColors.primary, size: 20) : null,
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    merchantName,
+                                    style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: AppColors.primary),
+                                  ),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    _merchantAddress.isNotEmpty ? _merchantAddress : 'Verified Merchant',
+                                    style: const TextStyle(fontSize: 11, color: Colors.black45, fontWeight: FontWeight.w500),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 20),
+                    ],
+
+
+
+                    // Details Card
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF9FAFB),
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(color: Colors.black.withValues(alpha: 0.06)),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text('CURRENT STATUS', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.black45, letterSpacing: 0.5)),
+                          const SizedBox(height: 6),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: statusCol.withValues(alpha: 0.12),
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: Text(statusStr, style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: statusCol)),
+                          ),
+                          const SizedBox(height: 16),
+
+                          const Text('SELLING PRICE', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.black45, letterSpacing: 0.5)),
+                          const SizedBox(height: 4),
+                          Text('SGD $priceVal', style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w900, color: AppColors.primary)),
+                          const SizedBox(height: 16),
+
+                          const Text('EXPIRY DATE', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.black45, letterSpacing: 0.5)),
+                          const SizedBox(height: 4),
+                          Text(expiryStr.isNotEmpty ? expiryStr : 'No expiry', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.primary)),
+                        ],
+                      ),
+                    ),
                   ],
                 ),
-              ],
+              ),
             ),
-          ),
+
+            // Modal Footer Bar
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                border: Border(top: BorderSide(color: Colors.black.withValues(alpha: 0.08))),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const Text(
+                    'Need to make changes? Switch to the edit view to update package details.',
+                    style: TextStyle(fontSize: 10, color: Colors.black45),
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 10),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: SizedBox(
+                          height: 46,
+                          child: OutlinedButton(
+                            style: OutlinedButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(horizontal: 16),
+                              side: const BorderSide(color: Colors.black26, width: 1.5),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(23)),
+                            ),
+                            onPressed: () => Navigator.pop(ctx),
+                            child: const Text('Close', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.black87)),
+                          ),
+                        ),
+                      ),
+                      if (_canEditPackage(pkg)) ...[
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: SizedBox(
+                            height: 46,
+                            child: ElevatedButton(
+                              style: ElevatedButton.styleFrom(
+                                padding: const EdgeInsets.symmetric(horizontal: 16),
+                                backgroundColor: const Color(0xFFFBBD03),
+                                elevation: 0,
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(23)),
+                              ),
+                              onPressed: () {
+                                Navigator.pop(ctx);
+                                _editPackage(pkg);
+                              },
+                              child: const Text('Edit package', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: AppColors.primary)),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ],
         ),
       ),
     );

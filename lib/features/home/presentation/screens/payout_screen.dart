@@ -3,6 +3,7 @@ import '../../../../core/constants/app_colors.dart';
 import '../../../../core/services/api_service.dart';
 import '../../../../core/utils/session_manager.dart';
 import '../../../../core/widgets/custom_snackbar.dart';
+import 'stripe_account_screen.dart';
 
 class PayoutScreen extends StatefulWidget {
   final bool? isMerchant;
@@ -46,10 +47,24 @@ class _PayoutScreenState extends State<PayoutScreen> {
     super.dispose();
   }
 
+  String _stripeStatus = 'not_started';
+
   Future<void> _loadAll() async {
     setState(() => _isLoading = true);
-    await Future.wait([_loadSettings(), _loadWallet()]);
+    await Future.wait([_loadSettings(), _loadWallet(), _loadStripeStatus()]);
     if (mounted) setState(() => _isLoading = false);
+  }
+
+  Future<void> _loadStripeStatus() async {
+    if (!_isMerchantMode) return;
+    try {
+      final res = await ApiService.getStripeAccountStatus();
+      if (!mounted) return;
+      final st = (res['status'] ?? res['data']?['status'] ?? 'not_started').toString();
+      setState(() {
+        _stripeStatus = st;
+      });
+    } catch (_) {}
   }
 
   Future<void> _loadSettings() async {
@@ -305,6 +320,54 @@ class _PayoutScreenState extends State<PayoutScreen> {
           ),
           const SizedBox(height: 12),
 
+          // Preferred Payout Method Options
+          if (_isMerchantMode) ...[
+            // ── Stripe Option (Merchant Only) ───────────────────────────────────────
+            _buildMethodOption(
+              value: 'stripe',
+              icon: Icons.credit_card_rounded,
+              iconColor: const Color(0xFF635BFF),
+              iconBg: const Color(0xFFF2F0FF),
+              title: 'Stripe Account',
+              subtitle: 'Automatic transfers to your connected Stripe account',
+              badge: Row(
+                children: [
+                  Icon(
+                    _stripeStatus == 'active'
+                        ? Icons.check_circle_outline_rounded
+                        : _stripeStatus == 'pending'
+                            ? Icons.pending_actions_rounded
+                            : Icons.info_outline_rounded,
+                    size: 13,
+                    color: _stripeStatus == 'active'
+                        ? const Color(0xFF16A34A)
+                        : _stripeStatus == 'pending'
+                            ? const Color(0xFFD97706)
+                            : Colors.grey.shade600,
+                  ),
+                  const SizedBox(width: 4),
+                  Text(
+                    _stripeStatus == 'active'
+                        ? 'Status: Active'
+                        : _stripeStatus == 'pending'
+                            ? 'Status: Pending'
+                            : 'Status: Not Connected',
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.bold,
+                      color: _stripeStatus == 'active'
+                          ? const Color(0xFF16A34A)
+                          : _stripeStatus == 'pending'
+                              ? const Color(0xFFD97706)
+                              : Colors.grey.shade600,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 10),
+          ],
+
           // ── PayNow Option ──────────────────────────────────────────────
           _buildMethodOption(
             value: 'paynow',
@@ -328,14 +391,9 @@ class _PayoutScreenState extends State<PayoutScreen> {
           const SizedBox(height: 20),
 
           // ── Dynamic Fields ─────────────────────────────────────────────
-          AnimatedCrossFade(
-            duration: const Duration(milliseconds: 250),
-            crossFadeState: _selectedMethod == 'paynow'
-                ? CrossFadeState.showFirst
-                : CrossFadeState.showSecond,
-            firstChild: _buildPayNowFields(),
-            secondChild: _buildBankTransferFields(),
-          ),
+          if (_selectedMethod == 'paynow') _buildPayNowFields(),
+          if (_selectedMethod == 'bank_transfer') _buildBankTransferFields(),
+          if (_selectedMethod == 'stripe' && _isMerchantMode) _buildStripeFields(),
 
           const SizedBox(height: 24),
 
@@ -370,6 +428,7 @@ class _PayoutScreenState extends State<PayoutScreen> {
     required Color iconBg,
     required String title,
     required String subtitle,
+    Widget? badge,
   }) {
     final isSelected = _selectedMethod == value;
     return GestureDetector(
@@ -430,6 +489,10 @@ class _PayoutScreenState extends State<PayoutScreen> {
                   const SizedBox(height: 2),
                   Text(subtitle,
                       style: TextStyle(fontSize: 11, color: Colors.black.withValues(alpha: 0.45), height: 1.3)),
+                  if (badge != null) ...[
+                    const SizedBox(height: 4),
+                    badge,
+                  ],
                 ],
               ),
             ),
@@ -569,6 +632,61 @@ class _PayoutScreenState extends State<PayoutScreen> {
         const SizedBox(height: 4),
         Text(helper, style: TextStyle(fontSize: 11, color: AppColors.primary.withValues(alpha: 0.4))),
       ],
+    );
+  }
+
+  Widget _buildStripeFields() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF9FAFB),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.black.withValues(alpha: 0.08)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: const [
+              Icon(Icons.credit_card_rounded, color: Color(0xFF635BFF), size: 20),
+              SizedBox(width: 8),
+              Text(
+                'Stripe Connect Status',
+                style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: AppColors.primary),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          const Text(
+            'Manage your Stripe connected account status, onboarding, charges, and payouts directly.',
+            style: TextStyle(fontSize: 12, color: Colors.black54),
+          ),
+          const SizedBox(height: 14),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              style: OutlinedButton.styleFrom(
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                side: const BorderSide(color: Color(0xFF635BFF), width: 1.5),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              ),
+              onPressed: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (context) => const StripeAccountScreen(),
+                  ),
+                );
+              },
+              icon: const Icon(Icons.open_in_new_rounded, size: 16, color: Color(0xFF635BFF)),
+              label: const Text(
+                'Open Stripe Account Settings',
+                style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Color(0xFF635BFF)),
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

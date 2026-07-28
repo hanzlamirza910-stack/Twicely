@@ -513,36 +513,6 @@ class _SellerProfileScreenState extends State<SellerProfileScreen> {
     );
   }
 
-  Widget _buildCategoryRichText(String tag) {
-    final parts = tag.split('>');
-    final List<InlineSpan> spans = [];
-    for (int i = 0; i < parts.length; i++) {
-      final part = parts[i].trim();
-      Color textColor = const Color(0xFF111111);
-      if (i == 0) {
-        textColor = const Color(0xFFFF014E);
-      } else if (i < parts.length - 1) {
-        textColor = const Color(0xFF0691D7);
-      }
-      spans.add(TextSpan(text: part, style: TextStyle(color: textColor)));
-      if (i < parts.length - 1) {
-        spans.add(const TextSpan(text: ' > ', style: TextStyle(color: Color(0xFF111111))));
-      }
-    }
-    return RichText(
-      text: TextSpan(
-        style: const TextStyle(
-          fontSize: 8,
-          fontWeight: FontWeight.bold,
-          fontFamily: 'Recoleta Alt',
-        ),
-        children: spans,
-      ),
-      maxLines: 1,
-      overflow: TextOverflow.ellipsis,
-    );
-  }
-
   Color _merchantAvatarColor(String? name) {
     final displayName = (name != null && name.trim().isNotEmpty) ? name.trim() : 'Twicely';
     if (displayName.toLowerCase() == 'twicely') return const Color(0xFF273DB7);
@@ -555,23 +525,5 @@ class _SellerProfileScreenState extends State<SellerProfileScreen> {
       Color(0xFF4A7C59),
     ];
     return colors[displayName.hashCode.abs() % colors.length];
-  }
-
-  Widget _buildMerchantAvatar(String? name, String? logoUrl, {double radius = 12}) {
-    final displayName = (name != null && name.trim().isNotEmpty) ? name.trim() : 'Twicely';
-    final hasLogo = logoUrl != null && logoUrl.isNotEmpty;
-    final initial = displayName[0].toUpperCase();
-    final avatarColor = hasLogo ? Colors.grey.shade100 : _merchantAvatarColor(displayName);
-    return CircleAvatar(
-      radius: radius,
-      backgroundColor: avatarColor,
-      backgroundImage: hasLogo ? NetworkImage(logoUrl) : null,
-      child: hasLogo
-          ? null
-          : Text(
-              initial,
-              style: TextStyle(fontSize: radius * 0.85, color: Colors.white, fontWeight: FontWeight.bold),
-            ),
-    );
   }
 }

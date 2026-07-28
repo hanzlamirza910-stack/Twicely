@@ -1,14 +1,9 @@
 import 'package:flutter/material.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/services/api_service.dart';
-import '../../../../core/utils/session_manager.dart';
-import '../../../../core/utils/cart_manager.dart';
 import '../../../../core/widgets/package_image_carousel.dart';
-import '../../../../core/widgets/marketplace_package_card.dart';
 import '../../../../core/widgets/shimmer_effect.dart';
-import 'shopping_cart_screen.dart';
 import 'package_detail_screen.dart';
-import 'seller_profile_screen.dart';
 import '../../../../core/widgets/custom_snackbar.dart';
 
 class WishlistScreen extends StatefulWidget {
@@ -562,100 +557,6 @@ class _WishlistScreenState extends State<WishlistScreen> {
               ),
             ),
           ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildCategoryRichText(String tag) {
-    final parts = tag.split('>');
-    final List<InlineSpan> spans = [];
-    for (int i = 0; i < parts.length; i++) {
-      final part = parts[i].trim();
-      Color textColor = const Color(0xFF111111);
-      if (i == 0) {
-        textColor = const Color(0xFFFF014E);
-      } else if (i < parts.length - 1) {
-        textColor = const Color(0xFF0691D7);
-      }
-      spans.add(TextSpan(text: part, style: TextStyle(color: textColor)));
-      if (i < parts.length - 1) {
-        spans.add(const TextSpan(text: ' > ', style: TextStyle(color: Color(0xFF111111))));
-      }
-    }
-    return RichText(
-      text: TextSpan(
-        style: const TextStyle(
-          fontSize: 9,
-          fontWeight: FontWeight.bold,
-          fontFamily: 'Recoleta Alt',
-        ),
-        children: spans,
-      ),
-      maxLines: 1,
-      overflow: TextOverflow.ellipsis,
-    );
-  }
-
-  Widget _buildMerchantAvatar(String? name, String? logoUrl, {double radius = 12}) {
-    final displayName = (name != null && name.trim().isNotEmpty) ? name.trim() : 'Twicely';
-    final hasLogo = logoUrl != null && logoUrl.isNotEmpty;
-    final initial = displayName[0].toUpperCase();
-    const colors = [
-      Color(0xFF4A6FA5),
-      Color(0xFF3D8B5E),
-      Color(0xFF7B5EA7),
-      Color(0xFF5B8DB8),
-      Color(0xFF8B6E3C),
-      Color(0xFF4A7C59),
-    ];
-    final Color avatarColor = displayName.toLowerCase() == 'twicely'
-        ? const Color(0xFF273DB7)
-        : colors[displayName.hashCode.abs() % colors.length];
-
-    if (hasLogo) {
-      return ClipOval(
-        child: SizedBox(
-          width: radius * 2,
-          height: radius * 2,
-          child: Image.network(
-            logoUrl,
-            fit: BoxFit.cover,
-            loadingBuilder: (context, child, loadingProgress) {
-              if (loadingProgress == null) return child;
-              return ShimmerEffect.circular(size: radius * 2);
-            },
-            errorBuilder: (context, error, stackTrace) => Container(
-              color: avatarColor,
-              alignment: Alignment.center,
-              child: Text(
-                initial,
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: radius * 0.85,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ),
-          ),
-        ),
-      );
-    }
-
-    return Container(
-      width: radius * 2,
-      height: radius * 2,
-      decoration: BoxDecoration(
-        color: avatarColor,
-        shape: BoxShape.circle,
-      ),
-      alignment: Alignment.center,
-      child: Text(
-        initial,
-        style: TextStyle(
-          fontSize: radius * 0.9,
-          fontWeight: FontWeight.bold,
-          color: Colors.white,
         ),
       ),
     );

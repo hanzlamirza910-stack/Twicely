@@ -158,43 +158,22 @@ class ApiService {
     }
 
     if (response.statusCode == 401 && authenticated) {
-      // Check if it is expired_token
-      try {
-        final decoded = jsonDecode(response.body);
-        final code = decoded['code'];
-        if (code == 'expired_token') {
-          // Attempt to refresh token
-          final refreshSuccess = await _refreshTokens();
-          if (refreshSuccess) {
-            // Retry the original request with new token
-            final newHeaders = _getHeaders(authenticated: true);
-            debugPrint(
-              '\n[API Retry Request] ==================================',
-            );
-            debugPrint('METHOD: POST');
-            debugPrint('URL: $url');
-            debugPrint('Headers: $newHeaders');
-            debugPrint('Body: $bodyStr');
-            debugPrint(
-              '======================================================',
-            );
-            response = await http.post(url, headers: newHeaders, body: bodyStr);
-            debugPrint(
-              '\n[API Retry Response] =================================',
-            );
-            debugPrint('URL: $url');
-            debugPrint('Status Code: ${response.statusCode}');
-            debugPrint('Body: ${response.body}');
-            debugPrint(
-              '======================================================\n',
-            );
-          } else {
-            _handleForcedLogout();
-          }
-        } else if (code == 'invalid_token' || code == 'invalid_refresh_token') {
-          _handleForcedLogout();
-        }
-      } catch (_) {
+      final refreshSuccess = await _refreshTokens();
+      if (refreshSuccess) {
+        final newHeaders = _getHeaders(authenticated: true);
+        debugPrint('\n[API Retry Request] ==================================');
+        debugPrint('METHOD: POST');
+        debugPrint('URL: $url');
+        debugPrint('Headers: $newHeaders');
+        debugPrint('Body: $bodyStr');
+        debugPrint('======================================================');
+        response = await http.post(url, headers: newHeaders, body: bodyStr);
+        debugPrint('\n[API Retry Response] =================================');
+        debugPrint('URL: $url');
+        debugPrint('Status Code: ${response.statusCode}');
+        debugPrint('Body: ${response.body}');
+        debugPrint('======================================================\n');
+      } else {
         _handleForcedLogout();
       }
     }
@@ -230,39 +209,21 @@ class ApiService {
     }
 
     if (response.statusCode == 401 && authenticated) {
-      try {
-        final decoded = jsonDecode(response.body);
-        final code = decoded['code'];
-        if (code == 'expired_token') {
-          final refreshSuccess = await _refreshTokens();
-          if (refreshSuccess) {
-            final newHeaders = _getHeaders(authenticated: true);
-            debugPrint(
-              '\n[API Retry Request] ==================================',
-            );
-            debugPrint('METHOD: GET');
-            debugPrint('URL: $url');
-            debugPrint('Headers: $newHeaders');
-            debugPrint(
-              '======================================================',
-            );
-            response = await http.get(url, headers: newHeaders);
-            debugPrint(
-              '\n[API Retry Response] =================================',
-            );
-            debugPrint('URL: $url');
-            debugPrint('Status Code: ${response.statusCode}');
-            debugPrint('Body: ${response.body}');
-            debugPrint(
-              '======================================================\n',
-            );
-          } else {
-            _handleForcedLogout();
-          }
-        } else if (code == 'invalid_token' || code == 'invalid_refresh_token') {
-          _handleForcedLogout();
-        }
-      } catch (_) {
+      final refreshSuccess = await _refreshTokens();
+      if (refreshSuccess) {
+        final newHeaders = _getHeaders(authenticated: true);
+        debugPrint('\n[API Retry Request] ==================================');
+        debugPrint('METHOD: GET');
+        debugPrint('URL: $url');
+        debugPrint('Headers: $newHeaders');
+        debugPrint('======================================================');
+        response = await http.get(url, headers: newHeaders);
+        debugPrint('\n[API Retry Response] =================================');
+        debugPrint('URL: $url');
+        debugPrint('Status Code: ${response.statusCode}');
+        debugPrint('Body: ${response.body}');
+        debugPrint('======================================================\n');
+      } else {
         _handleForcedLogout();
       }
     }
@@ -298,39 +259,21 @@ class ApiService {
     }
 
     if (response.statusCode == 401 && authenticated) {
-      try {
-        final decoded = jsonDecode(response.body);
-        final code = decoded['code'];
-        if (code == 'expired_token') {
-          final refreshSuccess = await _refreshTokens();
-          if (refreshSuccess) {
-            final newHeaders = _getHeaders(authenticated: true);
-            debugPrint(
-              '\n[API Retry Request] ==================================',
-            );
-            debugPrint('METHOD: DELETE');
-            debugPrint('URL: $url');
-            debugPrint('Headers: $newHeaders');
-            debugPrint(
-              '======================================================',
-            );
-            response = await http.delete(url, headers: newHeaders);
-            debugPrint(
-              '\n[API Retry Response] =================================',
-            );
-            debugPrint('URL: $url');
-            debugPrint('Status Code: ${response.statusCode}');
-            debugPrint('Body: ${response.body}');
-            debugPrint(
-              '======================================================\n',
-            );
-          } else {
-            _handleForcedLogout();
-          }
-        } else if (code == 'invalid_token' || code == 'invalid_refresh_token') {
-          _handleForcedLogout();
-        }
-      } catch (_) {
+      final refreshSuccess = await _refreshTokens();
+      if (refreshSuccess) {
+        final newHeaders = _getHeaders(authenticated: true);
+        debugPrint('\n[API Retry Request] ==================================');
+        debugPrint('METHOD: DELETE');
+        debugPrint('URL: $url');
+        debugPrint('Headers: $newHeaders');
+        debugPrint('======================================================');
+        response = await http.delete(url, headers: newHeaders);
+        debugPrint('\n[API Retry Response] =================================');
+        debugPrint('URL: $url');
+        debugPrint('Status Code: ${response.statusCode}');
+        debugPrint('Body: ${response.body}');
+        debugPrint('======================================================\n');
+      } else {
         _handleForcedLogout();
       }
     }
@@ -369,40 +312,22 @@ class ApiService {
     }
 
     if (response.statusCode == 401 && authenticated) {
-      try {
-        final decoded = jsonDecode(response.body);
-        final code = decoded['code'];
-        if (code == 'expired_token') {
-          final refreshSuccess = await _refreshTokens();
-          if (refreshSuccess) {
-            final newHeaders = _getHeaders(authenticated: true);
-            debugPrint(
-              '\n[API Retry Request] ==================================',
-            );
-            debugPrint('METHOD: PUT');
-            debugPrint('URL: $url');
-            debugPrint('Headers: $newHeaders');
-            debugPrint('Body: $bodyStr');
-            debugPrint(
-              '======================================================',
-            );
-            response = await http.put(url, headers: newHeaders, body: bodyStr);
-            debugPrint(
-              '\n[API Retry Response] =================================',
-            );
-            debugPrint('URL: $url');
-            debugPrint('Status Code: ${response.statusCode}');
-            debugPrint('Body: ${response.body}');
-            debugPrint(
-              '======================================================\n',
-            );
-          } else {
-            _handleForcedLogout();
-          }
-        } else if (code == 'invalid_token' || code == 'invalid_refresh_token') {
-          _handleForcedLogout();
-        }
-      } catch (_) {
+      final refreshSuccess = await _refreshTokens();
+      if (refreshSuccess) {
+        final newHeaders = _getHeaders(authenticated: true);
+        debugPrint('\n[API Retry Request] ==================================');
+        debugPrint('METHOD: PUT');
+        debugPrint('URL: $url');
+        debugPrint('Headers: $newHeaders');
+        debugPrint('Body: $bodyStr');
+        debugPrint('======================================================');
+        response = await http.put(url, headers: newHeaders, body: bodyStr);
+        debugPrint('\n[API Retry Response] =================================');
+        debugPrint('URL: $url');
+        debugPrint('Status Code: ${response.statusCode}');
+        debugPrint('Body: ${response.body}');
+        debugPrint('======================================================\n');
+      } else {
         _handleForcedLogout();
       }
     }
@@ -413,7 +338,7 @@ class ApiService {
   // Token refresh logic
   static Future<bool> _refreshTokens() async {
     final refreshToken = SessionManager.refreshToken;
-    if (refreshToken == null) return false;
+    if (refreshToken == null || refreshToken.trim().isEmpty) return false;
 
     final url = Uri.parse('$baseUrl/auth/refresh');
     final headers = {
@@ -438,10 +363,18 @@ class ApiService {
       debugPrint('======================================================\n');
       if (response.statusCode == 200) {
         final decoded = jsonDecode(response.body);
-        if (decoded['success'] == true && decoded['data'] != null) {
-          final data = decoded['data'];
-          final newAccess = data['access_token'] as String;
-          final newRefresh = data['refresh_token'] as String;
+        Map<String, dynamic> data = {};
+        if (decoded is Map) {
+          if (decoded['data'] is Map) {
+            data = Map<String, dynamic>.from(decoded['data'] as Map);
+          } else {
+            data = Map<String, dynamic>.from(decoded);
+          }
+        }
+
+        final newAccess = data['access_token']?.toString() ?? '';
+        final newRefresh = data['refresh_token']?.toString() ?? refreshToken;
+        if (newAccess.isNotEmpty) {
           await SessionManager.updateTokens(
             accessToken: newAccess,
             refreshToken: newRefresh,
@@ -449,8 +382,8 @@ class ApiService {
           return true;
         }
       }
-    } catch (_) {
-      // Ignore and return false
+    } catch (e) {
+      debugPrint('Token refresh error: $e');
     }
     return false;
   }
@@ -1687,6 +1620,8 @@ class ApiService {
       return {'success': false, 'message': 'Failed to fetch wallet: $e'};
     }
   }
+
+  static Future<Map<String, dynamic>> getPaymentsWallet() => getWallet();
 
   // Get Wallet Transactions
   static Future<Map<String, dynamic>> getWalletTransactions({

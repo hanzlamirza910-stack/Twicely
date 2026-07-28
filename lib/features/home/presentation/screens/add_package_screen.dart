@@ -194,24 +194,33 @@ class _AddPackageScreenState extends State<AddPackageScreen> {
 
     // Vendor / Merchant handling
     final vendorMode = pkg['vendor_mode']?.toString().toLowerCase();
-    final manualVendorName = pkg['manual_vendor_name']?.toString() ?? pkg['custom_merchant']?.toString();
+    String? extractedVendorName = pkg['manual_vendor_name']?.toString() ??
+        pkg['custom_merchant']?.toString() ??
+        pkg['vendor_name']?.toString() ??
+        pkg['vendor']?.toString();
+    if (extractedVendorName == null || extractedVendorName.isEmpty || extractedVendorName == 'null') {
+      if (pkg['presented_by'] is Map) {
+        extractedVendorName = pkg['presented_by']['name']?.toString() ?? pkg['presented_by']['business_name']?.toString();
+      } else if (pkg['merchant_name'] != null && pkg['merchant_name'].toString().isNotEmpty) {
+        extractedVendorName = pkg['merchant_name'].toString();
+      } else if (pkg['merchant'] is Map) {
+        extractedVendorName = pkg['merchant']['name']?.toString() ?? pkg['merchant']['business_name']?.toString();
+      } else if (pkg['merchant'] is String && pkg['merchant'].toString().isNotEmpty) {
+        extractedVendorName = pkg['merchant'].toString();
+      }
+    }
     final manualOutlet = pkg['manual_outlet']?.toString() ?? pkg['manual_vendor_outlet']?.toString() ?? pkg['outlet']?.toString() ?? pkg['location']?.toString();
 
-    if (vendorMode == 'manual' || (manualVendorName != null && manualVendorName.isNotEmpty)) {
+    if (vendorMode == 'manual' || (extractedVendorName != null && extractedVendorName.isNotEmpty && extractedVendorName != 'null' && extractedVendorName != 'Not in the list')) {
       _isCustomMerchant = true;
-      _selectedMerchant = 'Not in the list';
-      if (manualVendorName != null) _customMerchantController.text = manualVendorName;
+      if (extractedVendorName != null && extractedVendorName.isNotEmpty && extractedVendorName != 'null' && extractedVendorName != 'Not in the list') {
+        _customMerchantController.text = extractedVendorName;
+        _selectedMerchant = extractedVendorName;
+      }
       if (manualOutlet != null) _manualOutletController.text = manualOutlet;
     } else {
-      if (pkg['presented_by'] is Map) {
-        final pb = pkg['presented_by'] as Map;
-        _selectedMerchant = pb['name']?.toString() ?? pb['business_name']?.toString() ?? _selectedMerchant;
-      } else if (pkg['merchant_name'] != null && pkg['merchant_name'].toString().isNotEmpty) {
-        _selectedMerchant = pkg['merchant_name'].toString();
-      } else if (pkg['merchant'] is Map) {
-        _selectedMerchant = pkg['merchant']['name']?.toString() ?? pkg['merchant']['business_name']?.toString() ?? _selectedMerchant;
-      } else if (pkg['merchant'] is String && pkg['merchant'].toString().isNotEmpty) {
-        _selectedMerchant = pkg['merchant'].toString();
+      if (extractedVendorName != null && extractedVendorName.isNotEmpty && extractedVendorName != 'null') {
+        _selectedMerchant = extractedVendorName;
       }
     }
 
@@ -365,8 +374,10 @@ class _AddPackageScreenState extends State<AddPackageScreen> {
                m['name']?.toString() == _selectedMerchant));
           if (!existsInApi) {
             _isCustomMerchant = true;
-            _customMerchantController.text = _selectedMerchant;
-            debugPrint('[DEBUG] Detected custom merchant: $_selectedMerchant');
+            if (_selectedMerchant != 'Not in the list') {
+              _customMerchantController.text = _selectedMerchant;
+            }
+            debugPrint('[DEBUG] Detected custom merchant: ${_customMerchantController.text}');
           }
         }
         

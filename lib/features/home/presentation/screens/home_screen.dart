@@ -35,9 +35,7 @@ class _HomeScreenState extends State<HomeScreen> {
   int _currentIndex = 0; // 0: Home, 1: Search, 2: Sell, 3: Chat, 4: Profile
   String _selectedFilter = 'For her';
   String _homeSearchQuery = '';
-  String _searchTabQuery = '';
   final TextEditingController _homeSearchController = TextEditingController();
-  final TextEditingController _searchTabController = TextEditingController();
 
   bool _isLoadingPackages = false;
   List<Map<String, dynamic>> _apiPackages = [];
@@ -124,10 +122,6 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
-  List<Map<String, dynamic>> get _displayRecentlyViewed {
-    return _recentlyViewedPackages;
-  }
-
   String _determineFilterCategory(Map<String, dynamic> apiPkg) {
     final title = (apiPkg['title'] ?? '').toString().toLowerCase();
     final description = (apiPkg['description'] ?? '').toString().toLowerCase();
@@ -192,13 +186,11 @@ class _HomeScreenState extends State<HomeScreen> {
     super.initState();
     _fetchPackages(filter: _selectedFilter);
     _loadProfile();
-    _fetchSearchTabPackages();
   }
 
   @override
   void dispose() {
     _homeSearchController.dispose();
-    _searchTabController.dispose();
     super.dispose();
   }
 
@@ -518,14 +510,6 @@ class _HomeScreenState extends State<HomeScreen> {
     };
   }
 
-  String _selectedMerchant = 'All Merchants';
-  String _selectedCategory = 'All Categories';
-  String? _selectedSubcat; // null means "All Types"
-  String _selectedSort = 'Sort: Price Low to High';
-
-  List<Map<String, dynamic>> _searchTabPackages = [];
-  bool _isLoadingSearchTab = false;
-
   static const Map<String, String> _subcatLabels = {
     'yoga-pilates': 'Yoga & Pilates',
     'spa-massage': 'Spa & Massage',
@@ -534,69 +518,6 @@ class _HomeScreenState extends State<HomeScreen> {
     'lifestyle-classes': 'Lifestyle Classes',
   };
 
-  List<String> get _availableMerchants {
-    final Set<String> set = {'All Merchants'};
-    for (final p in _apiPackages) {
-      if (p['merchantName'] != null) {
-        set.add(p['merchantName'].toString());
-      }
-    }
-    for (final p in _searchTabPackages) {
-      if (p['merchantName'] != null) {
-        set.add(p['merchantName'].toString());
-      }
-    }
-    return set.toList();
-  }
-
-  Future<void> _fetchSearchTabPackages() async {
-    if (!mounted) return;
-    setState(() => _isLoadingSearchTab = true);
-
-    try {
-      String? categorySlug;
-      if (_selectedCategory == 'For her' || _selectedCategory == 'For Her') {
-        categorySlug = 'for-her';
-      } else if (_selectedCategory == 'For him' || _selectedCategory == 'For Him') {
-        categorySlug = 'for-him';
-      } else if (_selectedCategory == 'General') {
-        categorySlug = 'general';
-      } else if (_selectedCategory == 'Biz+') {
-        categorySlug = 'biz';
-      }
-
-      final res = await ApiService.getPackages(
-        perPage: 100,
-        search: _searchTabQuery.isNotEmpty ? _searchTabQuery : null,
-        category: categorySlug,
-      );
-
-      if (!mounted) return;
-      if (res['success'] == true && res['data'] != null) {
-        final List<dynamic> raw = res['data'];
-        setState(() {
-          _searchTabPackages = raw
-              .map((p) {
-                try {
-                  return _mapApiPackage(p as Map<String, dynamic>, selectedFilter: _selectedCategory);
-                } catch (e) {
-                  debugPrint('Error mapping search tab package: $e');
-                  return null;
-                }
-              })
-              .where((p) => p != null)
-              .cast<Map<String, dynamic>>()
-              .toList();
-          _isLoadingSearchTab = false;
-        });
-      } else {
-        setState(() => _isLoadingSearchTab = false);
-      }
-    } catch (e) {
-      debugPrint('Error fetching search tab packages: $e');
-      if (mounted) setState(() => _isLoadingSearchTab = false);
-    }
-  }
 
 
 
@@ -1274,36 +1195,6 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _buildCategoryRichText(String tag) {
-    final parts = tag.split('>');
-    final List<InlineSpan> spans = [];
-    for (int i = 0; i < parts.length; i++) {
-      final part = parts[i].trim();
-      Color textColor = const Color(0xFF111111);
-      if (i == 0) {
-        textColor = const Color(0xFFFF014E);
-      } else if (i < parts.length - 1) {
-        textColor = const Color(0xFF0691D7);
-      }
-      spans.add(TextSpan(text: part, style: TextStyle(color: textColor)));
-      if (i < parts.length - 1) {
-        spans.add(const TextSpan(text: ' > ', style: TextStyle(color: Color(0xFF111111))));
-      }
-    }
-    return RichText(
-      text: TextSpan(
-        style: const TextStyle(
-          fontSize: 9,
-          fontWeight: FontWeight.bold,
-          fontFamily: 'Recoleta Alt',
-        ),
-        children: spans,
-      ),
-      maxLines: 1,
-      overflow: TextOverflow.ellipsis,
-    );
-  }
-
   Widget _buildPackageCard({
     String? imageUrl,
     String? tag,
@@ -1353,72 +1244,6 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  // Builds a merchant avatar: logo image if available, otherwise initials
-  // with a consistent color derived from the merchant name hash.
-  Widget _buildMerchantAvatar(String? name, String? logoUrl, {double radius = 12}) {
-    final displayName = (name != null && name.trim().isNotEmpty) ? name.trim() : 'Twicely';
-    final hasLogo = logoUrl != null && logoUrl.isNotEmpty;
-    final initial = displayName[0].toUpperCase();
-    const colors = [
-      Color(0xFF4A6FA5),
-      Color(0xFF3D8B5E),
-      Color(0xFF7B5EA7),
-      Color(0xFF5B8DB8),
-      Color(0xFF8B6E3C),
-      Color(0xFF4A7C59),
-    ];
-    final Color avatarColor = displayName.toLowerCase() == 'twicely'
-        ? const Color(0xFF273DB7)
-        : colors[displayName.hashCode.abs() % colors.length];
-
-    if (hasLogo) {
-      return ClipOval(
-        child: SizedBox(
-          width: radius * 2,
-          height: radius * 2,
-          child: Image.network(
-            logoUrl,
-            fit: BoxFit.cover,
-            loadingBuilder: (context, child, loadingProgress) {
-              if (loadingProgress == null) return child;
-              return ShimmerEffect.circular(size: radius * 2);
-            },
-            errorBuilder: (context, error, stackTrace) => Container(
-              color: avatarColor,
-              alignment: Alignment.center,
-              child: Text(
-                initial,
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: radius * 0.85,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ),
-          ),
-        ),
-      );
-    }
-
-    return Container(
-      width: radius * 2,
-      height: radius * 2,
-      decoration: BoxDecoration(
-        color: avatarColor,
-        shape: BoxShape.circle,
-      ),
-      alignment: Alignment.center,
-      child: Text(
-        initial,
-        style: TextStyle(
-          color: Colors.white,
-          fontSize: radius * 0.85,
-          fontWeight: FontWeight.bold,
-        ),
-      ),
-    );
-  }
-
   Widget _buildSearchTab() {
     return HomeSearchView(
       onPackageTap: (pkg) => _showPackageDetails(pkg),
@@ -1427,64 +1252,6 @@ class _HomeScreenState extends State<HomeScreen> {
       },
       recentlyViewedPackages: _recentlyViewedPackages,
     );
-  }
-
-  double _parsePrice(String priceStr) {
-    final clean = priceStr.replaceAll(r'S$', '').replaceAll(r'$', '').trim();
-    return double.tryParse(clean) ?? 0.0;
-  }
-
-  List<Map<String, dynamic>> get _searchTabFilteredPackages {
-    final baseList = _searchTabPackages;
-    List<Map<String, dynamic>> res = List.from(baseList);
-
-    if (_searchTabQuery.isNotEmpty) {
-      res = res.where((pkg) =>
-          pkg['title'].toString().toLowerCase().contains(_searchTabQuery.toLowerCase()) ||
-          pkg['tag'].toString().toLowerCase().contains(_searchTabQuery.toLowerCase()) ||
-          pkg['category'].toString().toLowerCase().contains(_searchTabQuery.toLowerCase())).toList();
-    }
-
-    if (_selectedMerchant != 'All Merchants') {
-      res = res.where((pkg) {
-        final mName = pkg['merchantName']?.toString() ?? '';
-        final mObjName = (pkg['merchant'] is Map) ? (pkg['merchant']['name']?.toString() ?? '') : '';
-        return mName.toLowerCase() == _selectedMerchant.toLowerCase() ||
-               mObjName.toLowerCase() == _selectedMerchant.toLowerCase();
-      }).toList();
-    }
-
-    if (_selectedCategory != 'All Categories') {
-      res = res.where((pkg) {
-        final int idVal = int.tryParse(pkg['id']?.toString() ?? '') ?? 0;
-        if (idVal != 0 && ApiService.packageCategoriesCache.containsKey(idVal)) {
-          final cached = ApiService.packageCategoriesCache[idVal]!;
-          final normalizedSelected = _selectedCategory.toLowerCase().replaceAll(' ', '');
-          for (final c in cached) {
-            if (c.toLowerCase().replaceAll(' ', '') == normalizedSelected) {
-              return true;
-            }
-          }
-        }
-        final cat = pkg['category']?.toString() ?? '';
-        return cat.toLowerCase() == _selectedCategory.toLowerCase();
-      }).toList();
-    }
-
-    if (_selectedSubcat != null) {
-      res = res.where((pkg) {
-        final sub = pkg['secondaryCategory']?.toString() ?? '';
-        return sub.toLowerCase() == _selectedSubcat!.toLowerCase();
-      }).toList();
-    }
-
-    if (_selectedSort == 'Sort: Price Low to High' || _selectedSort == 'Price: Low to High') {
-      res.sort((a, b) => _parsePrice(a['resalePrice'] as String).compareTo(_parsePrice(b['resalePrice'] as String)));
-    } else if (_selectedSort == 'Sort: Price High to Low' || _selectedSort == 'Price: High to Low') {
-      res.sort((a, b) => _parsePrice(b['resalePrice'] as String).compareTo(_parsePrice(a['resalePrice'] as String)));
-    }
-
-    return res;
   }
 
   Widget _buildChatTab() {
@@ -1709,7 +1476,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 final navigator = Navigator.of(context);
                 await ApiService.logout();
                 navigator.pushAndRemoveUntil(
-                  MaterialPageRoute(builder: (context) => const LoginScreen()),
+                  MaterialPageRoute(builder: (context) => const HomeScreen()),
                   (route) => false,
                 );
               },
@@ -1959,63 +1726,6 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
               ],
             ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildFilterPill({
-    required String label,
-    required String? selectedValue,
-    required IconData prefixIcon,
-    required VoidCallback onTap,
-    required VoidCallback onClear,
-  }) {
-    final hasValue = selectedValue != null && selectedValue != 'All Merchants' && selectedValue != 'All Categories' && selectedValue != 'All Types';
-    return Align(
-      alignment: Alignment.centerLeft,
-      child: GestureDetector(
-        onTap: onTap,
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: Colors.black12),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(prefixIcon, size: 14, color: AppColors.primary),
-              const SizedBox(width: 4),
-              Text(
-                hasValue ? selectedValue : label,
-                style: const TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w600,
-                  color: AppColors.primary,
-                ),
-              ),
-              const SizedBox(width: 4),
-              if (hasValue)
-                GestureDetector(
-                  onTap: () {
-                    onClear();
-                  },
-                  child: const Icon(
-                    Icons.close_rounded,
-                    size: 14,
-                    color: AppColors.primary,
-                  ),
-                )
-              else
-                const Icon(
-                  Icons.keyboard_arrow_down_rounded,
-                  size: 14,
-                  color: AppColors.primary,
-                ),
-            ],
           ),
         ),
       ),
