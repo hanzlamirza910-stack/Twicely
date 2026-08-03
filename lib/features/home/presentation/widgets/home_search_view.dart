@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/services/api_service.dart';
@@ -30,8 +31,11 @@ class HomeSearchView extends StatefulWidget {
 class _HomeSearchViewState extends State<HomeSearchView> {
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
-  List<Map<String, dynamic>> _searchPackages = [];
+  List<Map<String, dynamic>> _searchPackages = []; // All packages from initial load
+  List<Map<String, dynamic>> _apiSearchResults = []; // API search results
   bool _isLoading = false;
+  bool _isApiSearching = false;
+  Timer? _searchDebounce;
 
   String _selectedMerchant = 'All Merchants';
   String _selectedCategory = 'All Categories';
@@ -68,7 +72,52 @@ class _HomeSearchViewState extends State<HomeSearchView> {
   @override
   void dispose() {
     _searchController.dispose();
+    _searchDebounce?.cancel();
     super.dispose();
+  }
+
+  void _onSearchChanged(String query) {
+    setState(() => _searchQuery = query);
+    _searchDebounce?.cancel();
+    if (query.trim().isEmpty) {
+      setState(() {
+        _apiSearchResults = [];
+        _isApiSearching = false;
+      });
+      return;
+    }
+    _searchDebounce = Timer(const Duration(milliseconds: 400), () {
+      _performApiSearch(query.trim());
+    });
+  }
+
+  Future<void> _performApiSearch(String query) async {
+    if (!mounted) return;
+    setState(() => _isApiSearching = true);
+    try {
+      if (SessionManager.isLoggedIn) {
+        await ApiService.getUserWishlist();
+      }
+      final res = await ApiService.getPackages(search: query, perPage: 50);
+      if (!mounted) return;
+      if (res['success'] == true && res['data'] != null) {
+        final List<dynamic> raw = res['data'];
+        await ApiService.prefetchOwners(raw);
+        if (!mounted) return;
+        final mapped = raw.map((p) => _mapPackage(p as Map<String, dynamic>)).toList();
+        setState(() {
+          _apiSearchResults = mapped;
+          _isApiSearching = false;
+        });
+      } else {
+        setState(() {
+          _apiSearchResults = [];
+          _isApiSearching = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) setState(() => _isApiSearching = false);
+    }
   }
 
   Future<void> _fetchPackages() async {
@@ -166,15 +215,39 @@ class _HomeSearchViewState extends State<HomeSearchView> {
   }
 
   List<Map<String, dynamic>> get _filteredPackages {
-    List<Map<String, dynamic>> res = List.from(_searchPackages);
-
+    // When search query active, use live API results
     if (_searchQuery.isNotEmpty) {
-      final q = _searchQuery.toLowerCase();
-      res = res.where((pkg) =>
-          pkg['title'].toString().toLowerCase().contains(q) ||
-          pkg['tag'].toString().toLowerCase().contains(q) ||
-          pkg['category'].toString().toLowerCase().contains(q)).toList();
+      List<Map<String, dynamic>> res = List.from(_apiSearchResults);
+
+      // Apply local filters on top of API results
+      if (_selectedMerchant != 'All Merchants') {
+        res = res.where((pkg) {
+          final mName = pkg['merchantName']?.toString() ?? pkg['merchant']?.toString() ?? '';
+          return mName.toLowerCase() == _selectedMerchant.toLowerCase();
+        }).toList();
+      }
+      if (_selectedCategory != 'All Categories') {
+        res = res.where((pkg) {
+          final cat = pkg['category']?.toString() ?? '';
+          return cat.toLowerCase() == _selectedCategory.toLowerCase();
+        }).toList();
+      }
+      if (_selectedSubcat != null) {
+        res = res.where((pkg) {
+          final sub = pkg['secondaryCategory']?.toString() ?? '';
+          return sub.toLowerCase() == _selectedSubcat!.toLowerCase();
+        }).toList();
+      }
+      if (_selectedSort == 'Sort: Price Low to High') {
+        res.sort((a, b) => _parsePrice(a['resalePriceVal'] ?? a['resalePrice']).compareTo(_parsePrice(b['resalePriceVal'] ?? b['resalePrice'])));
+      } else if (_selectedSort == 'Sort: Price High to Low') {
+        res.sort((a, b) => _parsePrice(b['resalePriceVal'] ?? b['resalePrice']).compareTo(_parsePrice(a['resalePriceVal'] ?? a['resalePrice'])));
+      }
+      return res;
     }
+
+    // No search — show all loaded packages with filters
+    List<Map<String, dynamic>> res = List.from(_searchPackages);
 
     if (_selectedMerchant != 'All Merchants') {
       res = res.where((pkg) {
@@ -313,11 +386,7 @@ class _HomeSearchViewState extends State<HomeSearchView> {
                   child: AppSearchBar(
                     controller: _searchController,
                     hintText: 'Search packages by name...',
-                    onChanged: (val) {
-                      setState(() {
-                        _searchQuery = val;
-                      });
-                    },
+                    onChanged: _onSearchChanged,
                   ),
                 ),
                 const SizedBox(height: 20),
@@ -372,7 +441,11 @@ class _HomeSearchViewState extends State<HomeSearchView> {
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       Text(
-                        _isLoading ? 'Searching...' : '${filtered.length} Results Found',
+                        _isLoading
+                            ? 'Loading...'
+                            : _isApiSearching
+                                ? 'Searching...'
+                                : '${filtered.length} Results Found',
                         style: const TextStyle(
                           fontSize: 15,
                           fontWeight: FontWeight.bold,
@@ -413,7 +486,7 @@ class _HomeSearchViewState extends State<HomeSearchView> {
                 // Results Grid
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 20.0),
-                  child: _isLoading
+                  child: (_isLoading || _isApiSearching)
                       ? GridView.builder(
                           shrinkWrap: true,
                           physics: const NeverScrollableScrollPhysics(),

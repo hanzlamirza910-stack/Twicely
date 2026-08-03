@@ -1302,33 +1302,7 @@ class ApiService {
         }
       }
 
-      // ── Step 2: For dual-role accounts (is_user: true), also fetch C2C packages ──
-      // e.g. tagpools@gmail.com has is_merchant=true AND is_user=true
-      if (SessionManager.isUser) {
-        final userPkgRes = await get(
-          '/users/me/packages?page=$page&per_page=$perPage${status != null && status.isNotEmpty ? '&status=$status' : ''}',
-          authenticated: true,
-        );
-        final userPkgDecoded = _safeDecode(userPkgRes, '');
 
-        if (userPkgDecoded['success'] == true &&
-            userPkgDecoded['data'] is List) {
-          for (var item in userPkgDecoded['data']) {
-            final bool alreadyExists = combinedList.any(
-              (e) => e['id'] == item['id'],
-            );
-            if (!alreadyExists) {
-              if (item is Map) {
-                final mapped = Map<String, dynamic>.from(item);
-                mapped['is_owner'] = true; // can edit & delete
-                combinedList.add(mapped);
-              } else {
-                combinedList.add(item);
-              }
-            }
-          }
-        }
-      }
 
       // ── Step 3: /packages?merchant_id=X (website-parity fallback) ──
       // The website merchant dashboard uses this. Backend may miss packages in
@@ -1399,7 +1373,7 @@ class ApiService {
   }
 
   // User Created Packages Cache & Persistence
-  static Set<int> userCreatedPackageIds = {1379, 1388};
+  static Set<int> userCreatedPackageIds = {};
 
   static void trackCreatedPackageId(int id) {
     if (id > 0) {

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../services/api_service.dart';
 import '../utils/session_manager.dart';
+import 'package_image_carousel.dart';
 
 /// A dedicated package card for Search, Popular, and See All screens.
 /// Enforces consistent alignment:
@@ -95,78 +96,97 @@ class SearchPackageCard extends StatelessWidget {
         presented['logo']?.toString() ??
         presented['avatar']?.toString();
 
-    // Image
-    String coverImage = 'assets/images/package_spa.jpg';
+    // Images
+    List<String> images = [];
     if (package['cover_url'] != null && package['cover_url'].toString().isNotEmpty) {
-      coverImage = package['cover_url'].toString();
-    } else if (package['imageUrl'] != null && package['imageUrl'].toString().isNotEmpty) {
-      coverImage = package['imageUrl'].toString();
+      images.add(package['cover_url'].toString());
     }
+    if (package['imageUrl'] != null && package['imageUrl'].toString().isNotEmpty) {
+      if (!images.contains(package['imageUrl'].toString())) images.add(package['imageUrl'].toString());
+    }
+    if (package['images'] is List) {
+      for (var img in (package['images'] as List)) {
+        String url = '';
+        if (img is Map && img['url'] != null) {
+          url = img['url'].toString();
+        } else if (img is String) {
+          url = img;
+        }
+        if (url.isNotEmpty && !images.contains(url)) images.add(url);
+      }
+    }
+    if (package['allImages'] is List) {
+      for (var img in (package['allImages'] as List)) {
+        final s = img.toString();
+        if (s.isNotEmpty && !images.contains(s)) images.add(s);
+      }
+    }
+    if (images.isEmpty) images.add('assets/images/package_spa.jpg');
 
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        clipBehavior: Clip.antiAlias,
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: Colors.black.withValues(alpha: 0.08)),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.04),
-              blurRadius: 8,
-              offset: const Offset(0, 4),
-            ),
-          ],
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            // ── Top Cover Image Section (Flex 50) ──
-            Expanded(
-              flex: 50,
-              child: Stack(
-                fit: StackFit.expand,
-                children: [
-                  ClipRRect(
+    return Container(
+      clipBehavior: Clip.antiAlias,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.black.withValues(alpha: 0.08)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.04),
+            blurRadius: 8,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // ── Top Cover Image Section (Flex 50) ──
+          Expanded(
+            flex: 50,
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                ClipRRect(
+                  borderRadius: const BorderRadius.vertical(top: Radius.circular(14.5)),
+                  child: PackageImageCarousel(
+                    images: images,
+                    fallbackImage: 'assets/images/package_spa.jpg',
                     borderRadius: const BorderRadius.vertical(top: Radius.circular(14.5)),
-                    child: Image.network(
-                      coverImage,
-                      fit: BoxFit.cover,
-                      errorBuilder: (_, __, ___) => Image.asset(
-                        'assets/images/package_spa.jpg',
-                        fit: BoxFit.cover,
+                    showThumbnails: false,
+                    onTap: onTap,
+                  ),
+                ),
+                // Discount badge
+                if (isDiscounted && discountBadge != null && discountBadge.isNotEmpty)
+                  Positioned(
+                    top: 6,
+                    right: 6,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2.5),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF27B6E),
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: Text(
+                        discountBadge,
+                        style: const TextStyle(
+                          fontSize: 8,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
+                        ),
                       ),
                     ),
                   ),
-                  // Discount badge
-                  if (isDiscounted && discountBadge != null && discountBadge.isNotEmpty)
-                    Positioned(
-                      top: 6,
-                      right: 6,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2.5),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFF27B6E),
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                        child: Text(
-                          discountBadge,
-                          style: const TextStyle(
-                            fontSize: 8,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.white,
-                          ),
-                        ),
-                      ),
-                    ),
-                ],
-              ),
+              ],
             ),
+          ),
 
-            // ── Content Metadata Section (Flex 50) ──
-            Expanded(
-              flex: 50,
+          // ── Content Metadata Section (Flex 50) ──
+          Expanded(
+            flex: 50,
+            child: GestureDetector(
+              onTap: onTap,
+              behavior: HitTestBehavior.opaque,
               child: LayoutBuilder(
                 builder: (context, constraints) {
                   final bool isSmallDeviceHeight = constraints.maxHeight > 0 && constraints.maxHeight < 105;
@@ -334,8 +354,8 @@ class SearchPackageCard extends StatelessWidget {
                 },
               ),
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }

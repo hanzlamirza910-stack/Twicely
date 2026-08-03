@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import '../../../../core/constants/app_colors.dart';
@@ -36,8 +37,13 @@ class _HomeScreenState extends State<HomeScreen> {
   String _selectedFilter = 'For her';
   String _homeSearchQuery = '';
   final TextEditingController _homeSearchController = TextEditingController();
+  List<Map<String, dynamic>> _searchResults = [];
+  bool _isSearching = false;
+  Timer? _searchDebounce;
 
   bool _isLoadingPackages = false;
+  // True while checking if the user should be redirected (prevents blank flash)
+  bool _isCheckingRole = true;
   List<Map<String, dynamic>> _apiPackages = [];
   final List<Map<String, dynamic>> _recentlyViewedPackages = [];
 
@@ -184,14 +190,80 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
-    _fetchPackages(filter: _selectedFilter);
-    _loadProfile();
+    // Guard: if a pure merchant (no C2C role) lands on this screen by mistake,
+    // redirect them to MerchantDashboard immediately. Show a loading spinner
+    // while the check runs so the user never sees a blank C2C screen.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      // isMerchant=true AND isUser=false → pure merchant, no C2C
+      if (SessionManager.isMerchant && !SessionManager.isUser) {
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(builder: (_) => const MerchantDashboard()),
+        );
+        return; // Don't load C2C data, we're leaving
+      }
+      // C2C user — safe to show, start loading content
+      setState(() => _isCheckingRole = false);
+      _fetchPackages(filter: _selectedFilter);
+      _loadProfile();
+    });
   }
 
   @override
   void dispose() {
     _homeSearchController.dispose();
+    _searchDebounce?.cancel();
     super.dispose();
+  }
+
+  /// Debounced real-time API search for home search bar
+  void _onHomeSearchChanged(String query) {
+    setState(() {
+      _homeSearchQuery = query;
+    });
+    _searchDebounce?.cancel();
+    if (query.trim().isEmpty) {
+      setState(() {
+        _searchResults = [];
+        _isSearching = false;
+      });
+      return;
+    }
+    _searchDebounce = Timer(const Duration(milliseconds: 400), () {
+      _performSearch(query.trim());
+    });
+  }
+
+  Future<void> _performSearch(String query) async {
+    if (!mounted) return;
+    setState(() => _isSearching = true);
+    try {
+      final res = await ApiService.getPackages(search: query, perPage: 30);
+      if (!mounted) return;
+      if (res['success'] == true && res['data'] != null) {
+        final List<dynamic> raw = res['data'];
+        await ApiService.prefetchOwners(raw);
+        if (!mounted) return;
+        final mapped = raw.map((p) {
+          try {
+            return _mapApiPackage(p as Map<String, dynamic>, selectedFilter: _selectedFilter);
+          } catch (_) {
+            return null;
+          }
+        }).where((p) => p != null).cast<Map<String, dynamic>>().toList();
+        setState(() {
+          _searchResults = mapped;
+          _isSearching = false;
+        });
+      } else {
+        setState(() {
+          _searchResults = [];
+          _isSearching = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) setState(() => _isSearching = false);
+    }
   }
 
 
@@ -657,20 +729,29 @@ class _HomeScreenState extends State<HomeScreen> {
 
 
   List<Map<String, dynamic>> get _filteredPackages {
-    // API already returns the correct category — just apply optional search filter
+    // API already returns the correct category — just apply optional search filter on local data
     var list = _apiPackages.isNotEmpty ? List<Map<String, dynamic>>.from(_apiPackages) : <Map<String, dynamic>>[];
+    // When a search query is active, use API search results instead
     if (_homeSearchQuery.isNotEmpty) {
-      list = list
-          .where((pkg) =>
-              pkg['title'].toString().toLowerCase().contains(_homeSearchQuery.toLowerCase()) ||
-              pkg['tag'].toString().toLowerCase().contains(_homeSearchQuery.toLowerCase()))
-          .toList();
+      return _searchResults;
     }
     return list;
   }
 
   @override
   Widget build(BuildContext context) {
+    // Show a clean loading spinner while checking if user should be redirected
+    if (_isCheckingRole) {
+      return Scaffold(
+        backgroundColor: AppColors.bgLight,
+        body: const Center(
+          child: CircularProgressIndicator(
+            color: AppColors.primary,
+            strokeWidth: 2,
+          ),
+        ),
+      );
+    }
     return Scaffold(
       backgroundColor: AppColors.bgLight,
       body: SafeArea(
@@ -791,24 +872,32 @@ class _HomeScreenState extends State<HomeScreen> {
             child: TextFormField(
               controller: _homeSearchController,
               style: const TextStyle(fontSize: 14, color: AppColors.primary),
-              onChanged: (val) {
-                setState(() {
-                  _homeSearchQuery = val;
-                });
-              },
+              onChanged: _onHomeSearchChanged,
               decoration: InputDecoration(
                 filled: true,
                 fillColor: Colors.white,
                 hintText: 'Search packages, categories...',
                 hintStyle: TextStyle(color: AppColors.primary.withValues(alpha: 0.4)),
-                prefixIcon: const Icon(Icons.search_rounded, color: AppColors.primary, size: 22),
+                prefixIcon: _isSearching
+                    ? const Padding(
+                        padding: EdgeInsets.all(12.0),
+                        child: SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.primary),
+                        ),
+                      )
+                    : const Icon(Icons.search_rounded, color: AppColors.primary, size: 22),
                 suffixIcon: _homeSearchQuery.isNotEmpty
                     ? GestureDetector(
                         onTap: () {
                           setState(() {
                             _homeSearchController.clear();
                             _homeSearchQuery = '';
+                            _searchResults = [];
+                            _isSearching = false;
                           });
+                          _searchDebounce?.cancel();
                         },
                         child: const Icon(Icons.cancel_rounded, color: AppColors.primary, size: 20),
                       )
@@ -831,6 +920,90 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
           const SizedBox(height: 20),
 
+          // Show search results overlay when user has typed something
+          if (_homeSearchQuery.isNotEmpty) ...[
+            if (_isSearching)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 32.0),
+                child: Center(
+                  child: Column(
+                    children: [
+                      CircularProgressIndicator(strokeWidth: 2, color: AppColors.primary),
+                      SizedBox(height: 12),
+                      Text('Searching packages...', style: TextStyle(color: Colors.black38, fontSize: 12)),
+                    ],
+                  ),
+                ),
+              )
+            else if (_searchResults.isEmpty)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 32.0),
+                child: Center(
+                  child: Column(
+                    children: [
+                      Icon(Icons.search_off_rounded, size: 48, color: Colors.black26),
+                      SizedBox(height: 12),
+                      Text('No packages found', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.black45, fontSize: 14)),
+                      SizedBox(height: 4),
+                      Text('Try a different keyword or clear the search', style: TextStyle(color: Colors.black38, fontSize: 12)),
+                    ],
+                  ),
+                ),
+              )
+            else ...[
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20.0),
+                child: Row(
+                  children: [
+                    Text(
+                      '${_searchResults.length} results for "$_homeSearchQuery"',
+                      style: const TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.bold,
+                        color: AppColors.primary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 12),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20.0),
+                child: GridView.builder(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: 2,
+                    crossAxisSpacing: 14,
+                    mainAxisSpacing: 14,
+                    childAspectRatio: 0.72,
+                  ),
+                  itemCount: _searchResults.length,
+                  itemBuilder: (context, index) {
+                    final pkg = _searchResults[index];
+                    return _buildPackageCard(
+                      id: pkg['id'],
+                      imageUrl: pkg['imageUrl']?.toString(),
+                      tag: pkg['tag']?.toString(),
+                      title: pkg['title']?.toString(),
+                      originalPrice: pkg['originalPrice']?.toString(),
+                      resalePrice: pkg['resalePrice']?.toString(),
+                      hasHeart: pkg['hasHeart'] == true,
+                      discountBadge: pkg['discountBadge']?.toString(),
+                      originalPriceVal: (pkg['originalPriceVal'] is num) ? (pkg['originalPriceVal'] as num).toDouble() : null,
+                      resalePriceVal: (pkg['resalePriceVal'] is num) ? (pkg['resalePriceVal'] as num).toDouble() : null,
+                      merchantName: pkg['merchantName']?.toString() ?? pkg['merchant']?.toString(),
+                      merchantLogo: pkg['merchantLogo']?.toString(),
+                      likesCount: (pkg['likesCount'] is num) ? (pkg['likesCount'] as num).toInt() : null,
+                      merchantId: pkg['merchant_id'],
+                      allImages: (pkg['allImages'] is List) ? (pkg['allImages'] as List).map((e) => e.toString()).toList() : null,
+                    );
+                  },
+                ),
+              ),
+              const SizedBox(height: 24),
+            ],
+          ] else ...[
           // 3. Hero Banner Card
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 20.0),
@@ -1118,6 +1291,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         },
                       ),
           ),
+          ], // closes else block for no-search-query content
         ],
       ),
     ),
@@ -1274,6 +1448,8 @@ class _HomeScreenState extends State<HomeScreen> {
     final phone = _profileData['phone_number']?.toString() ?? _profileData['phone']?.toString() ?? '';
     final verified = _profileData['verification_status']?.toString() == 'verified';
     final isMerchant = SessionManager.isMerchant;
+    final isBizPlus = SessionManager.isBizPlus;
+    final hasC2CAccess = SessionManager.hasC2CAccess;
     final initials = name.split(' ').where((w) => w.isNotEmpty).take(2).map((w) => w[0].toUpperCase()).join();
     final avatarUrl = _getAvatarUrl(_profileData);
 
@@ -1360,22 +1536,38 @@ class _HomeScreenState extends State<HomeScreen> {
             ],
             const SizedBox(height: 10),
 
-            // Badges
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
+            // Badges — dynamic based on role combination
+            Wrap(
+              alignment: WrapAlignment.center,
+              spacing: 8,
+              runSpacing: 6,
               children: [
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                  decoration: BoxDecoration(
-                    color: isMerchant ? const Color(0xFF1F2E4E) : const Color(0xFFF27B6E),
-                    borderRadius: BorderRadius.circular(20),
+                if (isMerchant)
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: isBizPlus ? const Color(0xFF6B21A8) : const Color(0xFF1F2E4E),
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Text(
+                      isBizPlus ? 'BIZ+ MERCHANT' : 'VERIFIED MERCHANT',
+                      style: const TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.w900, letterSpacing: 0.5),
+                    ),
                   ),
-                  child: Text(
-                    isMerchant ? 'MERCHANT' : 'C2C MEMBER',
-                    style: const TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.w900, letterSpacing: 0.5),
+                // Show C2C badge if this is a pure C2C account OR merchant with C2C access
+                if (!isMerchant || hasC2CAccess)
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF27B6E),
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: const Text(
+                      'C2C MEMBER',
+                      style: TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.w900, letterSpacing: 0.5),
+                    ),
                   ),
-                ),
-                if (verified) ...[const SizedBox(width: 8),
+                if (!isMerchant && verified) ...[  
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                     decoration: BoxDecoration(color: const Color(0xFF22C55E).withValues(alpha: 0.12), borderRadius: BorderRadius.circular(20)),

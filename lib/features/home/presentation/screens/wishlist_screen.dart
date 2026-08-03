@@ -442,6 +442,7 @@ class _WishlistScreenState extends State<WishlistScreen> {
                   images: allImages,
                   fallbackImage: 'assets/images/package_spa.jpg',
                   borderRadius: const BorderRadius.vertical(top: Radius.circular(14.5)),
+                  showThumbnails: false,
                   onTap: () {
                     Navigator.of(context).push(
                       MaterialPageRoute(

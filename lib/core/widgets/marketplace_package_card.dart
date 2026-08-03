@@ -137,69 +137,71 @@ class MarketplacePackageCard extends StatelessWidget {
     }
     if (images.isEmpty) images.add('assets/images/package_spa.jpg');
 
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        width: width ?? double.infinity,
-        clipBehavior: Clip.antiAlias,
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: Colors.black.withValues(alpha: 0.08), width: 1.0),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.03),
-              blurRadius: 8,
-              offset: const Offset(0, 4),
-            ),
-          ],
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            // Top Cover Image Stack (Flex 52)
-            Expanded(
-              flex: 52,
-              child: ClipRRect(
-                borderRadius: const BorderRadius.vertical(top: Radius.circular(14.5)),
-                child: Stack(
-                  fit: StackFit.expand,
-                  children: [
-                    PackageImageCarousel(
-                      images: images,
-                      fallbackImage: 'assets/images/package_spa.jpg',
-                      borderRadius: const BorderRadius.vertical(top: Radius.circular(14.5)),
-                      onTap: onTap,
-                    ),
-                    // Discount badge
-                    if (isDiscounted && discountBadge != null && discountBadge.isNotEmpty)
-                      Positioned(
-                        top: 8,
-                        right: 8,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFF27B6E),
-                            borderRadius: BorderRadius.circular(20),
-                          ),
-                          child: Text(
-                            discountBadge,
-                            style: const TextStyle(
-                              fontSize: 9,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.white,
-                            ),
+    return Container(
+      width: width ?? double.infinity,
+      clipBehavior: Clip.antiAlias,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.black.withValues(alpha: 0.08), width: 1.0),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.03),
+            blurRadius: 8,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // Top Cover Image Stack (Flex 52)
+          Expanded(
+            flex: 52,
+            child: ClipRRect(
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(14.5)),
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  PackageImageCarousel(
+                    images: images,
+                    fallbackImage: 'assets/images/package_spa.jpg',
+                    borderRadius: const BorderRadius.vertical(top: Radius.circular(14.5)),
+                    showThumbnails: false,
+                    onTap: onTap,
+                  ),
+                  // Discount badge
+                  if (isDiscounted && discountBadge != null && discountBadge.isNotEmpty)
+                    Positioned(
+                      top: 8,
+                      right: 8,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFF27B6E),
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: Text(
+                          discountBadge,
+                          style: const TextStyle(
+                            fontSize: 9,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.white,
                           ),
                         ),
                       ),
-                  ],
-                ),
+                    ),
+                ],
               ),
             ),
+          ),
 
-            // Content Metadata Section (Flex 48)
-            Expanded(
-              flex: 48,
+          // Content Metadata Section (Flex 48)
+          Expanded(
+            flex: 48,
+            child: GestureDetector(
+              onTap: onTap,
+              behavior: HitTestBehavior.opaque,
               child: LayoutBuilder(
                 builder: (context, constraints) {
                   final bool isSmallDeviceHeight = constraints.maxHeight > 0 && constraints.maxHeight < 105;
@@ -346,38 +348,38 @@ class MarketplacePackageCard extends StatelessWidget {
                                       await ApiService.likePackage(pkgId);
                                     }
                                   },
-                                  child: Icon(
-                                    isFav ? Icons.favorite_rounded : Icons.favorite_outline_rounded,
-                                    size: 13,
-                                    color: isFav ? const Color(0xFFFF014E) : Colors.black38,
-                                  ),
-                                ),
-                                const SizedBox(width: 3),
-                                Text(
-                                  '$currentLikes',
-                                  style: TextStyle(
-                                    fontSize: 9,
-                                    color: Colors.black.withValues(alpha: 0.6),
-                                    fontWeight: isFav ? FontWeight.bold : FontWeight.normal,
-                                  ),
-                                ),
-                              ],
-                            );
-                          },
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              );
-            },
-          ),
-        ),
-      ],
-    ),
-      ),
-    );
-  }
+                                   child: Icon(
+                                     isFav ? Icons.favorite_rounded : Icons.favorite_outline_rounded,
+                                     size: 13,
+                                     color: isFav ? const Color(0xFFFF014E) : Colors.black38,
+                                   ),
+                                 ),
+                                 const SizedBox(width: 3),
+                                 Text(
+                                   '$currentLikes',
+                                   style: TextStyle(
+                                     fontSize: 9,
+                                     color: Colors.black.withValues(alpha: 0.6),
+                                     fontWeight: isFav ? FontWeight.bold : FontWeight.normal,
+                                   ),
+                                 ),
+                               ],
+                             );
+                           },
+                         ),
+                       ],
+                     ),
+                   ],
+                 ),
+               );
+             },
+           ),
+         ),
+       ),
+     ],
+   ),
+ );
+}
 
   Widget _buildCategoryRichText(String tag) {
     if (tag.isEmpty) tag = 'General';

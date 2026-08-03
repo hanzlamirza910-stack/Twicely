@@ -648,28 +648,38 @@ class _PackageDetailScreenState extends State<PackageDetailScreen> {
     }
 
     final List<String> allImages = [];
-    if (pkg['allImages'] != null) {
-      try {
-        allImages.addAll(List<String>.from(pkg['allImages'] as Iterable));
-      } catch (_) {}
+    if (pkg['cover_url'] != null && pkg['cover_url'].toString().isNotEmpty) {
+      final cUrl = pkg['cover_url'].toString();
+      if (!allImages.contains(cUrl)) allImages.add(cUrl);
     }
-    if (allImages.isEmpty && pkg['images'] != null && pkg['images'] is List) {
-      for (var img in pkg['images']) {
-        if (img is Map && img['url'] != null && img['url'].toString().isNotEmpty) {
-          allImages.add(img['url'].toString());
-        } else if (img is String && img.isNotEmpty) {
-          allImages.add(img);
+    if (pkg['images'] != null && pkg['images'] is List) {
+      for (var img in (pkg['images'] as List)) {
+        String url = '';
+        if (img is Map && img['url'] != null) {
+          url = img['url'].toString();
+        } else if (img is String) {
+          url = img;
+        }
+        if (url.isNotEmpty && !allImages.contains(url)) {
+          allImages.add(url);
         }
       }
     }
-    if (allImages.isEmpty && pkg['cover_url'] != null && pkg['cover_url'].toString().isNotEmpty) {
-      allImages.add(pkg['cover_url'].toString());
+    if (pkg['allImages'] is Iterable) {
+      for (var img in (pkg['allImages'] as Iterable)) {
+        final s = img.toString();
+        if (s.isNotEmpty && !allImages.contains(s)) {
+          allImages.add(s);
+        }
+      }
     }
-    if (allImages.isEmpty && pkg['imageUrl'] != null && pkg['imageUrl'].toString().isNotEmpty) {
-      allImages.add(pkg['imageUrl'].toString());
+    if (pkg['imageUrl'] != null && pkg['imageUrl'].toString().isNotEmpty) {
+      final s = pkg['imageUrl'].toString();
+      if (!allImages.contains(s)) allImages.add(s);
     }
-    if (allImages.isEmpty && pkg['image'] != null && pkg['image'].toString().isNotEmpty) {
-      allImages.add(pkg['image'].toString());
+    if (pkg['image'] != null && pkg['image'] is String && pkg['image'].toString().isNotEmpty) {
+      final s = pkg['image'].toString();
+      if (!allImages.contains(s)) allImages.add(s);
     }
     if (allImages.isEmpty) {
       allImages.add(imageUrl);
@@ -734,6 +744,7 @@ class _PackageDetailScreenState extends State<PackageDetailScreen> {
                   height: 240,
                   width: double.infinity,
                   borderRadius: BorderRadius.circular(24),
+                  showThumbnails: true,
                 ),
                 Positioned(
                   top: 14,

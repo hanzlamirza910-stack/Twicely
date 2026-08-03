@@ -4,6 +4,7 @@ import '../../../../core/services/api_service.dart';
 import '../../../../core/utils/session_manager.dart';
 import '../../../../core/widgets/app_search_bar.dart';
 import '../../../../core/widgets/custom_snackbar.dart';
+import '../../../../core/widgets/package_image_carousel.dart';
 import 'add_package_screen.dart';
 import 'package_detail_screen.dart';
 
@@ -202,6 +203,66 @@ class _MyListingsScreenState extends State<MyListingsScreen> {
     }
   }
 
+  void _showDeleteConfirmation(Map<String, dynamic> pkg) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete Package', style: TextStyle(fontFamily: 'Recoleta Alt')),
+        content: Text('Are you sure you want to delete "${pkg['title'] ?? pkg['name'] ?? 'this package'}"?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Cancel', style: TextStyle(color: Colors.grey)),
+          ),
+          TextButton(
+            onPressed: () async {
+              Navigator.of(context).pop();
+
+              showDialog(
+                context: context,
+                barrierDismissible: false,
+                builder: (context) => const Center(
+                  child: CircularProgressIndicator(valueColor: AlwaysStoppedAnimation<Color>(AppColors.primary)),
+                ),
+              );
+
+              final packageId = pkg['id'] is int ? pkg['id'] : int.tryParse(pkg['id']?.toString() ?? '');
+              if (packageId != null) {
+                final res = await ApiService.deletePackage(packageId);
+                if (!context.mounted) return;
+                Navigator.of(context).pop();
+
+                if (res['success'] == true) {
+                  CustomSnackBar.show(
+                    context,
+                    message: 'Package deleted successfully',
+                    type: SnackBarType.success,
+                  );
+                  _fetchPackages();
+                } else {
+                  CustomSnackBar.show(
+                    context,
+                    message: res['message'] ?? 'Failed to delete package.',
+                    type: SnackBarType.error,
+                  );
+                }
+              } else {
+                if (!context.mounted) return;
+                Navigator.of(context).pop();
+                CustomSnackBar.show(
+                  context,
+                  message: 'Invalid Package ID.',
+                  type: SnackBarType.error,
+                );
+              }
+            },
+            child: const Text('Delete', style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+  }
+
   List<Map<String, dynamic>> get _filtered {
     return _packages.where((p) {
       final q = _searchQuery.toLowerCase();
@@ -279,7 +340,10 @@ class _MyListingsScreenState extends State<MyListingsScreen> {
       body: RefreshIndicator(
         onRefresh: _fetchPackages,
         color: AppColors.primary,
-        child: Column(
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 1000),
+            child: Column(
           children: [
             // Top Header Panel containing Stats, Search Bar, and Filters
             Container(
@@ -331,7 +395,9 @@ class _MyListingsScreenState extends State<MyListingsScreen> {
           ],
         ),
       ),
-    );
+    ),
+  ),
+);
   }
 
   Widget _buildStatsBanner() {
@@ -500,16 +566,29 @@ class _MyListingsScreenState extends State<MyListingsScreen> {
     );
     final dateStr = _fmtDate(pkg['created_at']?.toString());
 
-    String imageUrl = 'assets/images/package_spa.jpg';
+    String imageUrl = '';
     if (pkg['cover_url'] != null && pkg['cover_url'].toString().isNotEmpty) {
       imageUrl = pkg['cover_url'].toString();
     } else if (pkg['images'] is List && (pkg['images'] as List).isNotEmpty) {
       final img = (pkg['images'] as List).first;
-      if (img is Map && img['url'] != null) {
-        imageUrl = img['url'].toString();
-      } else if (img is String) {
-        imageUrl = img;
+      if (img is Map) {
+        imageUrl = img['url']?.toString() ?? img['src']?.toString() ?? img['link']?.toString() ?? '';
+      } else if (img != null) {
+        imageUrl = img.toString();
       }
+    }
+    if (imageUrl.isEmpty && pkg['image_url'] != null) {
+      imageUrl = pkg['image_url'].toString();
+    }
+    if (imageUrl.isEmpty && pkg['image'] != null) {
+      if (pkg['image'] is Map) {
+        imageUrl = pkg['image']['url']?.toString() ?? pkg['image']['src']?.toString() ?? '';
+      } else {
+        imageUrl = pkg['image'].toString();
+      }
+    }
+    if (imageUrl.isEmpty) {
+      imageUrl = 'assets/images/package_spa.jpg';
     }
 
     final totalSessions = pkg['total_sessions']?.toString() ?? '';
@@ -751,6 +830,8 @@ class _MyListingsScreenState extends State<MyListingsScreen> {
                       _changePackageStatus(pkg, 'published');
                     } else if (val == 'set_unpublish') {
                       _changePackageStatus(pkg, 'unpublish');
+                    } else if (val == 'delete') {
+                      _showDeleteConfirmation(pkg);
                     }
                   },
                   itemBuilder: (context) => [
@@ -805,6 +886,16 @@ class _MyListingsScreenState extends State<MyListingsScreen> {
                           Icon(Icons.verified_outlined, size: 16, color: AppColors.primary),
                           SizedBox(width: 10),
                           Text('Verification', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.primary)),
+                        ],
+                      ),
+                    ),
+                    PopupMenuItem(
+                      value: 'delete',
+                      child: Row(
+                        children: const [
+                          Icon(Icons.delete_outline_rounded, size: 16, color: Colors.red),
+                          SizedBox(width: 10),
+                          Text('Delete package', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Colors.red)),
                         ],
                       ),
                     ),
@@ -933,40 +1024,15 @@ class _MyListingsScreenState extends State<MyListingsScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // Main Cover Image
-                    ClipRRect(
+                    // Interactive Package Image Gallery Carousel (Swipeable + Clickable Thumbnails)
+                    PackageImageCarousel(
+                      images: images,
+                      fallbackImage: 'assets/images/package_spa.jpg',
+                      height: 210,
+                      width: double.infinity,
                       borderRadius: BorderRadius.circular(16),
-                      child: AspectRatio(
-                        aspectRatio: 16 / 9,
-                        child: images.first.startsWith('http')
-                            ? Image.network(images.first, fit: BoxFit.cover)
-                            : Image.asset(images.first, fit: BoxFit.cover, errorBuilder: (_, __, ___) => Container(color: Colors.grey.shade200)),
-                      ),
+                      showThumbnails: true,
                     ),
-                    if (images.length > 1) ...[
-                      const SizedBox(height: 10),
-                      SizedBox(
-                        height: 56,
-                        child: ListView.builder(
-                          scrollDirection: Axis.horizontal,
-                          itemCount: images.length,
-                          itemBuilder: (_, idx) => Container(
-                            margin: const EdgeInsets.only(right: 8),
-                            width: 56,
-                            decoration: BoxDecoration(
-                              borderRadius: BorderRadius.circular(10),
-                              border: Border.all(color: Colors.black12),
-                            ),
-                            child: ClipRRect(
-                              borderRadius: BorderRadius.circular(9),
-                              child: images[idx].startsWith('http')
-                                  ? Image.network(images[idx], fit: BoxFit.cover)
-                                  : Image.asset(images[idx], fit: BoxFit.cover),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
                     const SizedBox(height: 20),
 
                     // Description Section

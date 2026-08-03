@@ -201,35 +201,7 @@ class _PayoutScreenState extends State<PayoutScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    // ── Verified Merchant Alert (From Website) ──────────────
-                    if (_isMerchantMode) ...[
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFFFF1F0), // light red/pink alert background
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: const Color(0xFFFFA39E)),
-                        ),
-                        child: Row(
-                          children: [
-                            const Icon(Icons.info_outline_rounded, color: Color(0xFFCF1322), size: 16),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: Text(
-                                'Verified merchants do not have payout methods access.',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w500,
-                                  color: const Color(0xFFCF1322),
-                                  fontFamily: 'Recoleta Alt',
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-                    ],
+
 
                     // ── Balance Card ───────────────────────────────────────
                     _buildBalanceCard(),

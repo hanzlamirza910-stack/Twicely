@@ -1692,11 +1692,13 @@ class _AddPackageScreenState extends State<AddPackageScreen> {
                   child: DropdownButtonHideUnderline(
                     child: DropdownButton<String>(
                       isExpanded: true,
-                      value: _packageStatus == 'publish' ? 'published' : _packageStatus,
+                      value: (_packageStatus == 'publish' || _packageStatus == 'published')
+                          ? 'published'
+                          : 'unpublish',
                       style: const TextStyle(fontSize: 13, color: AppColors.primary, fontWeight: FontWeight.w500),
                       items: const [
-                        DropdownMenuItem(value: 'draft', child: Text('Draft')),
                         DropdownMenuItem(value: 'published', child: Text('Published')),
+                        DropdownMenuItem(value: 'unpublish', child: Text('Unpublished')),
                       ],
                       onChanged: (val) {
                         if (val != null) setState(() => _packageStatus = val);
@@ -2018,45 +2020,46 @@ class _AddPackageScreenState extends State<AddPackageScreen> {
                 ),
               ),
 
-              // Status Toggle (Shown ONLY when editing an existing package, matching website parity)
-              if (widget.packageToEdit != null) ...[
+              // Status Dropdown (edit mode) — matches Package Details step style
+              if (widget.packageToEdit != null) ...[  
                 const SizedBox(height: 18),
                 _buildLabel('Status'),
-                const SizedBox(height: 4),
-                Row(
-                  children: [
-                    Transform.scale(
-                      scale: 0.85,
-                      alignment: Alignment.centerLeft,
-                      child: Switch(
-                        value: _packageStatus == 'published' || _packageStatus == 'publish',
-                        activeThumbColor: const Color(0xFF16A34A),
-                        onChanged: (val) async {
-                          final newSt = val ? 'published' : 'unpublish';
-                          setState(() {
-                            _packageStatus = newSt;
-                          });
-                          final pkgId = int.tryParse(widget.packageToEdit!['id']?.toString() ?? '');
-                          if (pkgId != null) {
-                            await ApiService.updatePackageStatus(pkgId, newSt);
-                          }
-                        },
-                      ),
-                    ),
-                    Text(
-                      (_packageStatus == 'published' || _packageStatus == 'publish')
-                          ? 'Published'
-                          : 'Unpublished',
-                      style: TextStyle(
+                const SizedBox(height: 6),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: AppColors.primary.withValues(alpha: 0.1)),
+                  ),
+                  child: DropdownButtonHideUnderline(
+                    child: DropdownButton<String>(
+                      isExpanded: true,
+                      value: (_packageStatus == 'published' || _packageStatus == 'publish')
+                          ? 'published'
+                          : 'unpublish',
+                      style: const TextStyle(
                         fontSize: 13,
-                        fontWeight: FontWeight.bold,
-                        color: (_packageStatus == 'published' || _packageStatus == 'publish')
-                            ? const Color(0xFF16A34A)
-                            : Colors.black54,
+                        color: AppColors.primary,
+                        fontWeight: FontWeight.w500,
                       ),
+                      items: const [
+                        DropdownMenuItem(value: 'published', child: Text('Published')),
+                        DropdownMenuItem(value: 'unpublish', child: Text('Unpublished')),
+                      ],
+                      onChanged: (val) async {
+                        if (val == null) return;
+                        setState(() => _packageStatus = val);
+                        final pkgId = int.tryParse(
+                            widget.packageToEdit!['id']?.toString() ?? '');
+                        if (pkgId != null) {
+                          await ApiService.updatePackageStatus(pkgId, val);
+                        }
+                      },
                     ),
-                  ],
+                  ),
                 ),
+                const SizedBox(height: 4),
                 Text(
                   'Changes take effect immediately, independent of Save.',
                   style: TextStyle(

@@ -71,8 +71,14 @@ class _LoginScreenState extends State<LoginScreen> {
           );
         }
 
-        // Route by actual server role — merchant wins if account has both
-        final goToMerchant = _isMerchant && isUserMerchant;
+        // Route by actual server role:
+        // - Pure merchant (no C2C) → always MerchantDashboard
+        // - Has both roles → respect the login tab selection
+        // - Pure C2C or guest → HomeScreen
+        // Use both is_user flag and c2c_account_status for reliability
+        final c2cStatus = user['c2c_account_status']?.toString() ?? 'none';
+        final hasC2CAccess = isUserC2C || c2cStatus == 'active';
+        final goToMerchant = isUserMerchant && (!hasC2CAccess || _isMerchant);
 
         Navigator.of(context).pushAndRemoveUntil(
           MaterialPageRoute(
@@ -152,7 +158,10 @@ class _LoginScreenState extends State<LoginScreen> {
       if (callbackRes['success'] == true) {
         final user = callbackRes['user'] as Map<String, dynamic>? ?? {};
         final isUserMerchant = user['is_merchant'] as bool? ?? false;
-        final goToMerchant = _isMerchant && isUserMerchant;
+        final isUserC2C = user['is_user'] as bool? ?? false;
+        final c2cStatus = user['c2c_account_status']?.toString() ?? 'none';
+        final hasC2CAccess = isUserC2C || c2cStatus == 'active';
+        final goToMerchant = isUserMerchant && (!hasC2CAccess || _isMerchant);
 
         CustomSnackBar.show(
           context,

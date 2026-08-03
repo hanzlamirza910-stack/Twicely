@@ -513,6 +513,7 @@ class _CategoryDetailScreenState extends State<CategoryDetailScreen> {
                                           width: 90,
                                           height: 90,
                                           borderRadius: BorderRadius.circular(12),
+                                          showThumbnails: false,
                                           onTap: () {
                                             Navigator.of(context).push(
                                               MaterialPageRoute(

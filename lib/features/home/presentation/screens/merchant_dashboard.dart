@@ -6,7 +6,7 @@ import 'add_package_screen.dart';
 import 'notifications_screen.dart';
 import 'wallet_screen.dart';
 import 'my_sales_screen.dart';
-import 'my_orders_screen.dart';
+
 import 'wishlist_screen.dart';
 import 'payout_screen.dart';
 import 'stripe_account_screen.dart';
@@ -15,6 +15,7 @@ import '../../../../core/utils/session_manager.dart';
 import 'home_screen.dart';
 import 'edit_merchant_profile_screen.dart';
 import '../../../../core/widgets/custom_snackbar.dart';
+import '../../../../core/widgets/shimmer_effect.dart';
 
 
 class MerchantDashboard extends StatefulWidget {
@@ -56,6 +57,9 @@ class _MerchantDashboardState extends State<MerchantDashboard> {
   @override
   void initState() {
     super.initState();
+    if (!SessionManager.isBizPlus) {
+      _currentIndex = 1; // Default starting tab for Verified Vendor is Package Directory (index 1)
+    }
     _loadMerchantData();
     _fetchMerchantPackages();
     _fetchDynamicData();
@@ -90,9 +94,24 @@ class _MerchantDashboardState extends State<MerchantDashboard> {
   Map<String, dynamic> _mapApiPackage(Map<String, dynamic> apiPkg) {
     String imageUrl = '';
     if (apiPkg['cover_url'] != null && apiPkg['cover_url'].toString().isNotEmpty) {
-      imageUrl = apiPkg['cover_url'];
-    } else if (apiPkg['images'] != null && (apiPkg['images'] as List).isNotEmpty) {
-      imageUrl = apiPkg['images'][0]['url'] ?? '';
+      imageUrl = apiPkg['cover_url'].toString();
+    } else if (apiPkg['images'] != null && apiPkg['images'] is List && (apiPkg['images'] as List).isNotEmpty) {
+      final img0 = (apiPkg['images'] as List)[0];
+      if (img0 is Map) {
+        imageUrl = img0['url']?.toString() ?? img0['src']?.toString() ?? img0['link']?.toString() ?? '';
+      } else if (img0 != null) {
+        imageUrl = img0.toString();
+      }
+    }
+    if (imageUrl.isEmpty && apiPkg['image_url'] != null) {
+      imageUrl = apiPkg['image_url'].toString();
+    }
+    if (imageUrl.isEmpty && apiPkg['image'] != null) {
+      if (apiPkg['image'] is Map) {
+        imageUrl = apiPkg['image']['url']?.toString() ?? apiPkg['image']['src']?.toString() ?? '';
+      } else {
+        imageUrl = apiPkg['image'].toString();
+      }
     }
 
     final double priceVal = double.tryParse(apiPkg['price']?.toString() ?? '') ?? 0.0;
@@ -154,6 +173,10 @@ class _MerchantDashboardState extends State<MerchantDashboard> {
         final mData = profileRes['data'] as Map<String, dynamic>;
         final mId = int.tryParse(mData['id']?.toString() ?? '') ?? 0;
         final logo = ApiService.getMerchantLogo(mId, mData['logo_url']?.toString() ?? mData['logo']?.toString());
+        final mTier = mData['merchant_tier']?.toString() ?? mData['tier']?.toString() ?? '';
+        if (mTier.isNotEmpty) {
+          SessionManager.updateMerchantTier(mTier);
+        }
         setState(() {
           _merchantBusinessName = (mData['business_name']?.toString().isNotEmpty == true
                   ? mData['business_name']
@@ -274,35 +297,46 @@ class _MerchantDashboardState extends State<MerchantDashboard> {
     return Scaffold(
       backgroundColor: AppColors.bgLight,
       body: SafeArea(
-        child: _buildPageBody(),
+        child: Align(
+          alignment: Alignment.topCenter,
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 1000),
+            child: _buildPageBody(),
+          ),
+        ),
       ),
-      bottomNavigationBar: _buildCustomBottomNavBar(),
+      bottomNavigationBar: SizedBox(
+        height: 72,
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 1000),
+            child: _buildCustomBottomNavBar(),
+          ),
+        ),
+      ),
     );
   }
 
   Widget _buildPageBody() {
     switch (_currentIndex) {
       case 0:
-        return _buildHomeTab();
+        return SessionManager.isBizPlus ? _buildHomeTab() : _buildPackagesTab();
       case 1:
         return _buildPackagesTab();
       case 3:
-        return ConversationsScreen(
-          onProfileTap: () {
-            setState(() {
-              _currentIndex = 4; // Go to profile
-            });
-          },
-        );
+        return SessionManager.isBizPlus
+            ? ConversationsScreen(
+                onProfileTap: () {
+                  setState(() {
+                    _currentIndex = 4; // Go to profile
+                  });
+                },
+              )
+            : _buildPackagesTab();
       case 4:
         return _buildProfileTab();
       default:
-        return Center(
-          child: Text(
-            'Tab $_currentIndex under development',
-            style: const TextStyle(color: AppColors.primary, fontWeight: FontWeight.bold),
-          ),
-        );
+        return _buildPackagesTab();
     }
   }
 
@@ -404,8 +438,8 @@ class _MerchantDashboardState extends State<MerchantDashboard> {
                     height: 52,
                     decoration: BoxDecoration(
                       color: Colors.white,
-                      border: Border.all(color: AppColors.primary.withValues(alpha: 0.20), width: 1.2),
                       borderRadius: BorderRadius.circular(30),
+                      border: Border.all(color: AppColors.primary.withValues(alpha: 0.12)),
                     ),
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.center,
@@ -425,50 +459,52 @@ class _MerchantDashboardState extends State<MerchantDashboard> {
                   ),
                 ),
               ),
-              const SizedBox(width: 12),
-              // Add Package
-              Expanded(
-                child: GestureDetector(
-                  onTap: () async {
-                    final added = await Navigator.of(context).push<bool>(
-                      MaterialPageRoute(
-                        builder: (context) => AddPackageScreen(
-                          onPackageAdded: (pkg) {
-                            setState(() {
-                              _merchantPackages.add(pkg);
-                            });
-                          },
-                        ),
-                      ),
-                    );
-                    if (added == true) {
-                      setState(() {});
-                    }
-                  },
-                  child: Container(
-                    height: 52,
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFFBBD03), // Yellow CTA color
-                      borderRadius: BorderRadius.circular(30),
-                    ),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: const [
-                        Icon(Icons.add, size: 18, color: AppColors.primary),
-                        SizedBox(width: 6),
-                        Text(
-                          'Add Package',
-                          style: TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.bold,
-                            color: AppColors.primary,
+              // Add Package button — ONLY for Biz+ Merchant who can create packages
+              if (SessionManager.isBizPlus) ...[
+                const SizedBox(width: 12),
+                Expanded(
+                  child: GestureDetector(
+                    onTap: () async {
+                      final added = await Navigator.of(context).push<bool>(
+                        MaterialPageRoute(
+                          builder: (context) => AddPackageScreen(
+                            onPackageAdded: (pkg) {
+                              setState(() {
+                                _merchantPackages.add(pkg);
+                              });
+                            },
                           ),
                         ),
-                      ],
+                      );
+                      if (added == true) {
+                        setState(() {});
+                      }
+                    },
+                    child: Container(
+                      height: 52,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFFBBD03), // Yellow CTA color
+                        borderRadius: BorderRadius.circular(30),
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: const [
+                          Icon(Icons.add, size: 18, color: AppColors.primary),
+                          SizedBox(width: 6),
+                          Text(
+                            'Add Package',
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.bold,
+                              color: AppColors.primary,
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                 ),
-              ),
+              ],
             ],
           ),
           const SizedBox(height: 24),
@@ -881,11 +917,11 @@ class _MerchantDashboardState extends State<MerchantDashboard> {
 
     return SingleChildScrollView(
       physics: const BouncingScrollPhysics(),
-      padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 20.0),
+      padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 16.0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const SizedBox(height: 20),
+          const SizedBox(height: 10),
           
           // Centered Profile Avatar & Header info
           Center(
@@ -974,114 +1010,123 @@ class _MerchantDashboardState extends State<MerchantDashboard> {
           ],
           const SizedBox(height: 10),
 
-          // Badges
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
+          // Badges — dynamic based on merchant_tier + c2c_account_status
+          Wrap(
+            alignment: WrapAlignment.center,
+            spacing: 8,
+            runSpacing: 6,
             children: [
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF1F2E4E),
+                  color: SessionManager.isBizPlus ? const Color(0xFF6B21A8) : const Color(0xFF1F2E4E),
                   borderRadius: BorderRadius.circular(20),
                 ),
-                child: const Text(
-                  'MERCHANT',
-                  style: TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.w900, letterSpacing: 0.5),
+                child: Text(
+                  SessionManager.isBizPlus ? 'BIZ+ MERCHANT' : 'VERIFIED MERCHANT',
+                  style: const TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.w900, letterSpacing: 0.5),
                 ),
               ),
+              if (SessionManager.hasC2CAccess)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF27B6E),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: const Text(
+                    'C2C MEMBER',
+                    style: TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.w900, letterSpacing: 0.5),
+                  ),
+                ),
             ],
           ),
           
           const SizedBox(height: 28),
 
           // Option cards
-          _buildProfileOption(
-            title: 'Switch to C2C Dashboard',
-            subtitle: 'Browse packages & buy items',
-            icon: Icons.swap_horiz_rounded,
-            onTap: () {
-              Navigator.of(context).pushReplacement(
-                MaterialPageRoute(builder: (_) => const HomeScreen()),
-              );
-            },
-          ),
-          const SizedBox(height: 12),
-          _buildProfileOption(
-            title: 'Wallet',
-            subtitle: 'Balance: S\$${_walletBalance.toStringAsFixed(2)}',
-            icon: Icons.account_balance_wallet_outlined,
-            onTap: () {
-              Navigator.of(context).push(
-                MaterialPageRoute(
-                  builder: (context) => const WalletScreen(isMerchant: true),
-                ),
-              );
-            },
-          ),
-          const SizedBox(height: 12),
-          _buildProfileOption(
-            title: 'My Sales',
-            subtitle: '${_merchantOrders.length} sale${_merchantOrders.length != 1 ? 's' : ''}',
-            icon: Icons.sell_outlined,
-            onTap: () {
-              Navigator.of(context).push(
-                MaterialPageRoute(
-                  builder: (context) => const MySalesScreen(isMerchant: true),
-                ),
-              );
-            },
-          ),
-          const SizedBox(height: 12),
-          _buildProfileOption(
-            title: 'My Orders',
-            subtitle: 'Track your purchases',
-            icon: Icons.shopping_bag_outlined,
-            onTap: () {
-              Navigator.of(context).push(
-                MaterialPageRoute(
-                  builder: (context) => const MyOrdersScreen(),
-                ),
-              );
-            },
-          ),
-          const SizedBox(height: 12),
-          _buildProfileOption(
-            title: 'Wishlist',
-            subtitle: '$_wishlistCount saved items',
-            icon: Icons.favorite_outline_rounded,
-            onTap: () {
-              Navigator.of(context).push(
-                MaterialPageRoute(
-                  builder: (context) => const WishlistScreen(),
-                ),
-              );
-            },
-          ),
-          _buildProfileOption(
-            title: 'Stripe Account',
-            subtitle: 'Manage payment settings & payouts',
-            icon: Icons.account_balance_rounded,
-            onTap: () {
-              Navigator.of(context).push(
-                MaterialPageRoute(
-                  builder: (context) => const StripeAccountScreen(),
-                ),
-              );
-            },
-          ),
-          const SizedBox(height: 12),
-          _buildProfileOption(
-            title: 'Payout Methods',
-            subtitle: 'Manage bank accounts',
-            icon: Icons.payment_outlined,
-            onTap: () {
-              Navigator.of(context).push(
-                MaterialPageRoute(
-                  builder: (context) => const PayoutScreen(isMerchant: true),
-                ),
-              );
-            },
-          ),
+          // Only show C2C switch if this merchant also has an active C2C account
+          if (SessionManager.hasC2CAccess) ...[  
+            _buildProfileOption(
+              title: 'Switch to C2C Dashboard',
+              subtitle: 'Browse packages & buy items',
+              icon: Icons.swap_horiz_rounded,
+              onTap: () {
+                Navigator.of(context).pushReplacement(
+                  MaterialPageRoute(builder: (_) => const HomeScreen()),
+                );
+              },
+            ),
+            const SizedBox(height: 12),
+          ],
+          // Options for Biz+ Merchant only (Hidden for Verified Merchant with 2 navigation items)
+          if (SessionManager.isBizPlus) ...[
+            const SizedBox(height: 12),
+            _buildProfileOption(
+              title: 'Wallet',
+              subtitle: 'Balance: S\$${_walletBalance.toStringAsFixed(2)}',
+              icon: Icons.account_balance_wallet_outlined,
+              onTap: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (context) => const WalletScreen(isMerchant: true),
+                  ),
+                );
+              },
+            ),
+            const SizedBox(height: 12),
+            _buildProfileOption(
+              title: 'My Sales',
+              subtitle: '${_merchantOrders.length} sale${_merchantOrders.length != 1 ? 's' : ''}',
+              icon: Icons.sell_outlined,
+              onTap: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (context) => const MySalesScreen(isMerchant: true),
+                  ),
+                );
+              },
+            ),
+            const SizedBox(height: 12),
+            _buildProfileOption(
+              title: 'Wishlist',
+              subtitle: '$_wishlistCount saved items',
+              icon: Icons.favorite_outline_rounded,
+              onTap: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (context) => const WishlistScreen(),
+                  ),
+                );
+              },
+            ),
+            const SizedBox(height: 12),
+            _buildProfileOption(
+              title: 'Stripe Account',
+              subtitle: 'Manage payment settings & payouts',
+              icon: Icons.account_balance_rounded,
+              onTap: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (context) => const StripeAccountScreen(),
+                  ),
+                );
+              },
+            ),
+            const SizedBox(height: 12),
+            _buildProfileOption(
+              title: 'Payout Methods',
+              subtitle: 'Manage bank accounts',
+              icon: Icons.payment_outlined,
+              onTap: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (context) => const PayoutScreen(isMerchant: true),
+                  ),
+                );
+              },
+            ),
+          ],
           const SizedBox(height: 24),
 
           // Logout Action button
@@ -1239,22 +1284,31 @@ class _MerchantDashboardState extends State<MerchantDashboard> {
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceAround,
                   children: [
-                    Expanded(child: _buildNavBarItem(0, Icons.home_rounded, 'Home')),
-                    Expanded(child: _buildNavBarItem(1, Icons.inventory_2_outlined, 'Packages')),
-                    const SizedBox(width: 64), // Empty space for protruding center button
-                    Expanded(child: _buildNavBarItem(3, Icons.chat_bubble_outline_rounded, 'Chat')),
+                    if (SessionManager.isBizPlus)
+                      Expanded(child: _buildNavBarItem(0, Icons.home_rounded, 'Home')),
+                    Expanded(
+                      child: _buildNavBarItem(
+                        1,
+                        Icons.inventory_2_outlined,
+                        SessionManager.isBizPlus ? 'Packages' : 'Package Directory',
+                      ),
+                    ),
+                    if (SessionManager.isBizPlus) const SizedBox(width: 64), // Empty space for protruding center button
+                    if (SessionManager.isBizPlus)
+                      Expanded(child: _buildNavBarItem(3, Icons.chat_bubble_outline_rounded, 'Chat')),
                     Expanded(child: _buildNavBarItem(4, Icons.person_outline_rounded, 'Profile')),
                   ],
                 ),
               ),
             ),
           ),
-          // Floating Center Button
-          Positioned(
-            top: -24,
-            left: 0,
-            right: 0,
-            child: Center(
+          // Floating Center Button (Only for Biz+ Merchant)
+          if (SessionManager.isBizPlus)
+            Positioned(
+              top: -24,
+              left: 0,
+              right: 0,
+              child: Center(
               child: GestureDetector(
                 onTap: () async {
                   final added = await Navigator.of(context).push<bool>(
@@ -1551,55 +1605,91 @@ class _MerchantDashboardState extends State<MerchantDashboard> {
         ),
         const SizedBox(height: 20),
 
-        // Section Title: My Packages
-        const Padding(
-          padding: EdgeInsets.symmetric(horizontal: 20.0),
-          child: Text(
-            'My Packages',
-            style: TextStyle(
-              fontFamily: 'Recoleta Alt',
-              fontSize: 20,
-              fontWeight: FontWeight.bold,
-              color: AppColors.primary,
-            ),
+        // Section Title: My Packages / Package Directory
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 20.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                SessionManager.isBizPlus ? 'My Packages' : 'Package Directory',
+                style: const TextStyle(
+                  fontFamily: 'Recoleta Alt',
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                  color: AppColors.primary,
+                ),
+              ),
+              if (!SessionManager.isBizPlus) ...[  
+                const SizedBox(height: 2),
+                Text(
+                  'Available packages listed under your merchant brand (Read-Only).',
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: Colors.black.withValues(alpha: 0.5),
+                  ),
+                ),
+              ],
+            ],
           ),
         ),
         const SizedBox(height: 12),
 
         // Packages List
         Expanded(
-          child: list.isEmpty
-              ? const Center(
-                  child: Text(
-                    'No packages found',
-                    style: TextStyle(color: Colors.black38),
+          child: _isLoadingPackages
+              ? ListView.builder(
+                  physics: const NeverScrollableScrollPhysics(),
+                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  itemCount: 4,
+                  itemBuilder: (context, index) => Padding(
+                    padding: const EdgeInsets.only(bottom: 16),
+                    child: Container(
+                      height: 110,
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      child: const ShimmerEffect(
+                        borderRadius: BorderRadius.all(Radius.circular(16)),
+                      ),
+                    ),
                   ),
                 )
+              : list.isEmpty
+                  ? const Center(
+                      child: Text(
+                        'No packages found',
+                        style: TextStyle(color: Colors.black38),
+                      ),
+                    )
               : ListView.builder(
                   physics: const BouncingScrollPhysics(),
                   padding: const EdgeInsets.symmetric(horizontal: 20),
                   itemCount: list.length,
                   itemBuilder: (context, index) {
                     final pkg = list[index];
-                    return Container(
-                      margin: const EdgeInsets.only(bottom: 16),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(16),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withValues(alpha: 0.02),
-                            blurRadius: 10,
-                            offset: const Offset(0, 4),
-                          ),
-                        ],
-                        border: Border.all(color: AppColors.primary.withValues(alpha: 0.04)),
-                      ),
-                      child: Padding(
-                        padding: const EdgeInsets.all(16.0),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
+                    return GestureDetector(
+                      onTap: () => _viewPackage(pkg),
+                      child: Container(
+                        margin: const EdgeInsets.only(bottom: 16),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(16),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withValues(alpha: 0.02),
+                              blurRadius: 10,
+                              offset: const Offset(0, 4),
+                            ),
+                          ],
+                          border: Border.all(color: AppColors.primary.withValues(alpha: 0.04)),
+                        ),
+                        child: Padding(
+                          padding: const EdgeInsets.all(16.0),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
                             // Badges top row
                             Row(
                               children: [
@@ -1727,71 +1817,131 @@ class _MerchantDashboardState extends State<MerchantDashboard> {
                                     ),
                                   ],
                                 ),
-                                PopupMenuButton<String>(
-                                  icon: Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                                    decoration: BoxDecoration(
-                                      color: const Color(0xFFF4F5F7),
-                                      borderRadius: BorderRadius.circular(10),
-                                      border: Border.all(color: Colors.black.withValues(alpha: 0.08)),
-                                    ),
-                                    child: const Icon(Icons.more_horiz_rounded, size: 20, color: AppColors.primary),
-                                  ),
-                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                                  elevation: 6,
-                                  color: Colors.white,
-                                  onSelected: (val) {
-                                    if (val == 'view') {
-                                      _viewPackage(pkg);
-                                    } else if (val == 'edit') {
-                                      _editPackage(pkg);
-                                    } else if (val == 'delete') {
-                                      _showDeleteConfirmation(pkg);
-                                    }
-                                  },
-                                  itemBuilder: (context) => [
-                                    PopupMenuItem(
-                                      value: 'view',
+                                if (!SessionManager.isBizPlus)
+                                  GestureDetector(
+                                    onTap: () => _viewPackage(pkg),
+                                    child: Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                                      decoration: BoxDecoration(
+                                        color: AppColors.primary.withValues(alpha: 0.08),
+                                        borderRadius: BorderRadius.circular(10),
+                                        border: Border.all(color: AppColors.primary.withValues(alpha: 0.12)),
+                                      ),
                                       child: Row(
+                                        mainAxisSize: MainAxisSize.min,
                                         children: const [
-                                          Icon(Icons.visibility_outlined, size: 16, color: AppColors.primary),
-                                          SizedBox(width: 10),
-                                          Text('View details', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.primary)),
+                                          Icon(Icons.remove_red_eye_outlined, size: 16, color: AppColors.primary),
+                                          SizedBox(width: 6),
+                                          Text(
+                                            'View details',
+                                            style: TextStyle(
+                                              fontSize: 12,
+                                              fontWeight: FontWeight.bold,
+                                              color: AppColors.primary,
+                                            ),
+                                          ),
                                         ],
                                       ),
                                     ),
-                                    if (_canEditPackage(pkg))
-                                      PopupMenuItem(
-                                        value: 'edit',
-                                        child: Row(
-                                          children: const [
-                                            Icon(Icons.edit_outlined, size: 16, color: AppColors.primary),
-                                            SizedBox(width: 10),
-                                            Text('Edit package', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.primary)),
-                                          ],
-                                        ),
+                                  )
+                                else
+                                  PopupMenuButton<String>(
+                                    icon: Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                      decoration: BoxDecoration(
+                                        color: const Color(0xFFF4F5F7),
+                                        borderRadius: BorderRadius.circular(10),
+                                        border: Border.all(color: Colors.black.withValues(alpha: 0.08)),
                                       ),
-                                    if (pkg['is_owner'] != false)
-                                      PopupMenuItem(
-                                        value: 'delete',
-                                        child: Row(
-                                          children: const [
-                                            Icon(Icons.delete_outline_rounded, size: 16, color: Colors.red),
-                                            SizedBox(width: 10),
-                                            Text('Delete package', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Colors.red)),
-                                          ],
+                                      child: const Icon(Icons.more_horiz_rounded, size: 20, color: AppColors.primary),
+                                    ),
+                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                                    elevation: 6,
+                                    color: Colors.white,
+                                    onSelected: (val) {
+                                      if (val == 'view') {
+                                        _viewPackage(pkg);
+                                      } else if (val == 'edit') {
+                                        _editPackage(pkg);
+                                      } else if (val == 'set_published') {
+                                        _changePackageStatus(pkg, 'published');
+                                      } else if (val == 'set_unpublish') {
+                                        _changePackageStatus(pkg, 'unpublish');
+                                      } else if (val == 'delete') {
+                                        _showDeleteConfirmation(pkg);
+                                      }
+                                    },
+                                    itemBuilder: (context) {
+                                      final statusStr = (pkg['status'] as String? ?? '').toLowerCase();
+                                      final isPublished = statusStr == 'published' || statusStr == 'publish';
+                                      final canEdit = _canEditPackage(pkg);
+                                      return [
+                                        PopupMenuItem(
+                                          value: 'view',
+                                          child: Row(
+                                            children: const [
+                                              Icon(Icons.visibility_outlined, size: 16, color: AppColors.primary),
+                                              SizedBox(width: 10),
+                                              Text('View details', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.primary)),
+                                            ],
+                                          ),
                                         ),
-                                      ),
-                                  ],
-                                ),
+                                        if (canEdit) ...[
+                                          PopupMenuItem(
+                                            value: 'edit',
+                                            child: Row(
+                                              children: const [
+                                                Icon(Icons.edit_outlined, size: 16, color: AppColors.primary),
+                                                SizedBox(width: 10),
+                                                Text('Edit package', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.primary)),
+                                              ],
+                                            ),
+                                          ),
+                                          if (!isPublished)
+                                            PopupMenuItem(
+                                              value: 'set_published',
+                                              child: Row(
+                                                children: const [
+                                                  Icon(Icons.verified_user_outlined, size: 16, color: Color(0xFF16A34A)),
+                                                  SizedBox(width: 10),
+                                                  Text('Publish package', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Color(0xFF16A34A))),
+                                                ],
+                                              ),
+                                            )
+                                          else
+                                            PopupMenuItem(
+                                              value: 'set_unpublish',
+                                              child: Row(
+                                                children: const [
+                                                  Icon(Icons.remove_circle_outline_rounded, size: 16, color: Color(0xFF6B7280)),
+                                                  SizedBox(width: 10),
+                                                  Text('Unpublish package', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Color(0xFF6B7280))),
+                                                ],
+                                              ),
+                                            ),
+                                          PopupMenuItem(
+                                            value: 'delete',
+                                            child: Row(
+                                              children: const [
+                                                Icon(Icons.delete_outline_rounded, size: 16, color: Colors.red),
+                                                SizedBox(width: 10),
+                                                Text('Delete package', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Colors.red)),
+                                              ],
+                                            ),
+                                          ),
+                                        ],
+                                      ];
+                                    },
+                                  ),
                               ],
                             ),
                           ],
                         ),
                       ),
-                    );
-                  },
-                ),
+                    ),
+                  );
+                },
+              ),
         ),
       ],
     );
@@ -1827,6 +1977,7 @@ class _MerchantDashboardState extends State<MerchantDashboard> {
   }
 
   bool _canEditPackage(Map<String, dynamic> pkg) {
+    if (!SessionManager.isBizPlus) return false;
     if (pkg['is_owner'] == false) return false;
     final st = (pkg['availability_status'] ?? pkg['availabilityStatus'] ?? '').toString().toLowerCase();
     if (st == 'on_redemption' || st == 'on redemption' || st == 'expired') return false;
@@ -2047,40 +2198,8 @@ class _MerchantDashboardState extends State<MerchantDashboard> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // Main Cover Image
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(16),
-                      child: AspectRatio(
-                        aspectRatio: 16 / 9,
-                        child: images.first.startsWith('http')
-                            ? Image.network(images.first, fit: BoxFit.cover)
-                            : Image.asset(images.first, fit: BoxFit.cover, errorBuilder: (_, __, ___) => Container(color: Colors.grey.shade200)),
-                      ),
-                    ),
-                    if (images.length > 1) ...[
-                      const SizedBox(height: 10),
-                      SizedBox(
-                        height: 56,
-                        child: ListView.builder(
-                          scrollDirection: Axis.horizontal,
-                          itemCount: images.length,
-                          itemBuilder: (_, idx) => Container(
-                            margin: const EdgeInsets.only(right: 8),
-                            width: 56,
-                            decoration: BoxDecoration(
-                              borderRadius: BorderRadius.circular(10),
-                              border: Border.all(color: Colors.black12),
-                            ),
-                            child: ClipRRect(
-                              borderRadius: BorderRadius.circular(9),
-                              child: images[idx].startsWith('http')
-                                  ? Image.network(images[idx], fit: BoxFit.cover)
-                                  : Image.asset(images[idx], fit: BoxFit.cover),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
+                    // Interactive Package Image Gallery Carousel (Swipeable + Clickable Thumbnails)
+                    _PackageDetailGallery(images: images),
                     const SizedBox(height: 20),
 
                     // Description Section
@@ -2267,7 +2386,53 @@ class _MerchantDashboardState extends State<MerchantDashboard> {
     );
   }
 
+  Future<void> _changePackageStatus(Map<String, dynamic> pkg, String newStatus) async {
+    if (!SessionManager.isBizPlus) {
+      CustomSnackBar.show(context, message: 'Verified merchants have read-only access.', type: SnackBarType.warning);
+      return;
+    }
+    final packageId = pkg['id'] is int ? pkg['id'] : int.tryParse(pkg['id']?.toString() ?? '');
+    if (packageId == null) return;
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const Center(
+        child: CircularProgressIndicator(valueColor: AlwaysStoppedAnimation<Color>(AppColors.primary)),
+      ),
+    );
+
+    final res = await ApiService.updatePackageStatus(packageId, newStatus);
+    if (!mounted) return;
+    Navigator.of(context).pop();
+
+    if (res['success'] == true) {
+      final isPub = newStatus == 'published' || newStatus == 'publish';
+      final label = isPub ? 'Published' : 'Unpublished';
+      CustomSnackBar.show(
+        context,
+        message: 'Package status updated to ${label.toUpperCase()}',
+        type: SnackBarType.success,
+      );
+      setState(() {
+        pkg['status'] = isPub ? 'PUBLISHED' : 'UNPUBLISH';
+      });
+      _fetchMerchantPackages();
+    } else {
+      final msg = res['message'] ?? 'Failed to update package status.';
+      CustomSnackBar.show(
+        context,
+        message: msg,
+        type: SnackBarType.error,
+      );
+    }
+  }
+
   void _showDeleteConfirmation(Map<String, dynamic> pkg) {
+    if (!SessionManager.isBizPlus) {
+      CustomSnackBar.show(context, message: 'Verified merchants have read-only access.', type: SnackBarType.warning);
+      return;
+    }
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -2434,3 +2599,190 @@ class _MerchantDashboardState extends State<MerchantDashboard> {
     );
   }
 }
+
+class _PackageDetailGallery extends StatefulWidget {
+  final List<String> images;
+
+  const _PackageDetailGallery({required this.images});
+
+  @override
+  State<_PackageDetailGallery> createState() => _PackageDetailGalleryState();
+}
+
+class _PackageDetailGalleryState extends State<_PackageDetailGallery> {
+  late final PageController _pageController;
+  int _activePage = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _pageController = PageController();
+  }
+
+  @override
+  void dispose() {
+    _pageController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final imgs = widget.images.where((i) => i.trim().isNotEmpty).toList();
+    if (imgs.isEmpty) {
+      imgs.add('assets/images/package_spa.jpg');
+    }
+
+    Widget buildSingleImage(String url) {
+      if (url.startsWith('http')) {
+        return Image.network(
+          url,
+          fit: BoxFit.cover,
+          errorBuilder: (_, __, ___) => Container(
+            color: const Color(0xFFE8EFF8),
+            child: const Icon(Icons.image_not_supported_rounded, color: Colors.black26, size: 32),
+          ),
+        );
+      } else {
+        return Image.asset(
+          url,
+          fit: BoxFit.cover,
+          errorBuilder: (_, __, ___) => Container(
+            color: const Color(0xFFE8EFF8),
+            child: const Icon(Icons.image_not_supported_rounded, color: Colors.black26, size: 32),
+          ),
+        );
+      }
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Main Image Slider (PageView)
+        ClipRRect(
+          borderRadius: BorderRadius.circular(16),
+          child: SizedBox(
+            height: 210,
+            width: double.infinity,
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                PageView.builder(
+                  controller: _pageController,
+                  itemCount: imgs.length,
+                  onPageChanged: (idx) {
+                    setState(() => _activePage = idx);
+                  },
+                  itemBuilder: (context, idx) => buildSingleImage(imgs[idx]),
+                ),
+
+                // Counter Badge (Top Right e.g. 1/3)
+                if (imgs.length > 1)
+                  Positioned(
+                    top: 10,
+                    right: 10,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: Colors.black.withValues(alpha: 0.65),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Text(
+                        '${_activePage + 1}/${imgs.length}',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 11,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ),
+
+                // Dots indicator (Bottom Center)
+                if (imgs.length > 1)
+                  Positioned(
+                    bottom: 10,
+                    left: 0,
+                    right: 0,
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: List.generate(imgs.length, (idx) {
+                        final isSelected = idx == _activePage;
+                        return AnimatedContainer(
+                          duration: const Duration(milliseconds: 250),
+                          margin: const EdgeInsets.symmetric(horizontal: 3),
+                          height: 6,
+                          width: isSelected ? 16 : 6,
+                          decoration: BoxDecoration(
+                            color: isSelected ? Colors.white : Colors.white.withValues(alpha: 0.5),
+                            borderRadius: BorderRadius.circular(3),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withValues(alpha: 0.2),
+                                blurRadius: 3,
+                                offset: const Offset(0, 1),
+                              ),
+                            ],
+                          ),
+                        );
+                      }),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ),
+
+        // Clickable Thumbnails Row
+        if (imgs.length > 1) ...[
+          const SizedBox(height: 12),
+          SizedBox(
+            height: 60,
+            child: ListView.builder(
+              scrollDirection: Axis.horizontal,
+              physics: const BouncingScrollPhysics(),
+              itemCount: imgs.length,
+              itemBuilder: (context, idx) {
+                final isSelected = idx == _activePage;
+                return GestureDetector(
+                  onTap: () {
+                    _pageController.animateToPage(
+                      idx,
+                      duration: const Duration(milliseconds: 300),
+                      curve: Curves.easeInOut,
+                    );
+                  },
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 200),
+                    margin: const EdgeInsets.only(right: 10),
+                    width: 60,
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: isSelected ? AppColors.primary : Colors.black.withValues(alpha: 0.12),
+                        width: isSelected ? 2.5 : 1.0,
+                      ),
+                    ),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(10),
+                      child: Stack(
+                        fit: StackFit.expand,
+                        children: [
+                          buildSingleImage(imgs[idx]),
+                          if (!isSelected)
+                            Container(
+                              color: Colors.black.withValues(alpha: 0.25),
+                            ),
+                        ],
+                      ),
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+}
+
