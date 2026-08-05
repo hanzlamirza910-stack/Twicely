@@ -3,7 +3,7 @@ import '../../../../core/constants/app_colors.dart';
 import '../../../../core/utils/cart_manager.dart';
 import '../../../../core/utils/session_manager.dart';
 import '../../../auth/presentation/screens/login_screen.dart';
-import '../../../chat/presentation/screens/conversations_screen.dart';
+import '../../../chat/presentation/screens/chat_detail_screen.dart';
 import 'shopping_cart_screen.dart';
 import 'seller_profile_screen.dart';
 import '../../../../core/services/api_service.dart';
@@ -11,6 +11,7 @@ import '../../../../core/widgets/custom_snackbar.dart';
 import '../../../../core/widgets/package_image_carousel.dart';
 import '../../../../core/widgets/marketplace_package_card.dart';
 import '../../../../core/widgets/shimmer_effect.dart';
+
 
 class PackageDetailScreen extends StatefulWidget {
   final Map<String, dynamic> package;
@@ -24,6 +25,7 @@ class PackageDetailScreen extends StatefulWidget {
 class _PackageDetailScreenState extends State<PackageDetailScreen> {
   bool _isFavorited = false;
   bool _isLoading = false;
+  bool _isChatLoading = false;
   Map<String, dynamic>? _detailedPackage;
   List<Map<String, dynamic>> _similarPackages = [];
   bool _loadingSimilar = false;
@@ -611,14 +613,102 @@ class _PackageDetailScreenState extends State<PackageDetailScreen> {
     }
   }
 
-  void _handleChat() {
-    if (_checkAuthWithPrompt(
+  /// Check if the current user owns this package (seller cannot chat with themselves)
+  bool get _isOwnPackage {
+    final pkg = _detailedPackage ?? widget.package;
+    if (pkg['is_owner'] == true) return true;
+    final ownerId = int.tryParse(pkg['owner_id']?.toString() ?? '');
+    final merchantId = int.tryParse(
+      pkg['merchant_id']?.toString() ??
+      (pkg['presented_by'] is Map ? (pkg['presented_by'] as Map)['merchant_id']?.toString() : null) ?? '',
+    );
+    final userId = int.tryParse(pkg['user_id']?.toString() ?? pkg['author_id']?.toString() ?? '');
+    final myId = SessionManager.userId;
+    final myMerchantId = int.tryParse(
+      SessionManager.userData?['merchant_id']?.toString() ??
+      SessionManager.userData?['merchant']?['id']?.toString() ?? '',
+    );
+    if (myId != null && myId > 0) {
+      if (ownerId != null && ownerId == myId) return true;
+      if (userId != null && userId == myId) return true;
+      if (merchantId != null && merchantId == myId) return true;
+    }
+    if (myMerchantId != null && myMerchantId > 0) {
+      if (ownerId != null && ownerId == myMerchantId) return true;
+      if (merchantId != null && merchantId == myMerchantId) return true;
+    }
+    return false;
+  }
+
+  Future<void> _handleChat() async {
+    if (!_checkAuthWithPrompt(
       title: 'Login Required',
       message: 'Please login to chat directly with the package seller.',
-    )) {
-      Navigator.of(context).push(
-        MaterialPageRoute(builder: (context) => const ConversationsScreen()),
+    )) { return; }
+
+    if (_isOwnPackage) {
+      CustomSnackBar.show(
+        context,
+        message: 'You cannot chat about your own package.',
+        type: SnackBarType.info,
       );
+      return;
+    }
+
+    final pkg = _detailedPackage ?? widget.package;
+    final rawId = pkg['id'];
+    final packageId = rawId is int ? rawId : int.tryParse(rawId?.toString() ?? '');
+    if (packageId == null) {
+      CustomSnackBar.show(
+        context,
+        message: 'Unable to identify this package.',
+        type: SnackBarType.error,
+      );
+      return;
+    }
+
+    if (mounted) setState(() => _isChatLoading = true);
+
+    try {
+      final res = await ApiService.startChatSession(packageId);
+      if (!mounted) return;
+      setState(() => _isChatLoading = false);
+
+      if (res['success'] == true && res['data'] != null) {
+        final session = Map<String, dynamic>.from(res['data'] as Map);
+        final sessionId = int.tryParse(session['id']?.toString() ?? '') ?? 0;
+        if (sessionId == 0) {
+          CustomSnackBar.show(
+            context,
+            message: 'Could not open chat. Please try again.',
+            type: SnackBarType.error,
+          );
+          return;
+        }
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => ChatDetailScreen(
+              sessionId: sessionId,
+              session: session,
+            ),
+          ),
+        );
+      } else {
+        CustomSnackBar.show(
+          context,
+          message: res['message']?.toString() ?? 'Could not start chat.',
+          type: SnackBarType.error,
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isChatLoading = false);
+        CustomSnackBar.show(
+          context,
+          message: 'Could not connect. Please try again.',
+          type: SnackBarType.error,
+        );
+      }
     }
   }
 
@@ -1307,20 +1397,30 @@ class _PackageDetailScreenState extends State<PackageDetailScreen> {
       child: SafeArea(
         child: Row(
           children: [
-            // Chat Outlined Button
-            OutlinedButton.icon(
-              onPressed: _handleChat,
-              icon: const Icon(Icons.chat_bubble_outline_rounded, size: 18, color: AppColors.primary),
-              label: const Text(
-                'Chat',
-                style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: AppColors.primary),
-              ),
-              style: OutlinedButton.styleFrom(
-                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
-                side: const BorderSide(color: AppColors.primary, width: 1.5),
-                minimumSize: const Size(0, 48), // override default theme minimumSize
-              ),
+            // Chat Outlined Button — hidden if user owns the package
+            if (!_isOwnPackage)
+              OutlinedButton.icon(
+                onPressed: _isChatLoading ? null : _handleChat,
+                icon: _isChatLoading
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 1.8,
+                          color: AppColors.primary,
+                        ),
+                      )
+                    : const Icon(Icons.chat_bubble_outline_rounded, size: 18, color: AppColors.primary),
+                label: Text(
+                  _isChatLoading ? 'Opening...' : 'Chat',
+                  style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: AppColors.primary),
+                ),
+                style: OutlinedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
+                  side: const BorderSide(color: AppColors.primary, width: 1.5),
+                  minimumSize: const Size(0, 48),
+                ),
             ),
             const SizedBox(width: 14),
 

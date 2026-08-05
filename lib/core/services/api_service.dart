@@ -9,8 +9,9 @@ class ApiService {
   // Global callback set by main.dart or UI to force redirect to login
   static void Function()? onUnauthorized;
 
-  // Merchant Cache
+  // Merchant & Package Caches
   static Map<int, Map<String, dynamic>> merchantsCache = {};
+  static Map<int, Map<String, dynamic>> packagesCache = {};
 
   static String getMerchantLogo(int? id, String? logoUrl) {
     if (logoUrl != null && logoUrl.isNotEmpty) return logoUrl;
@@ -979,9 +980,16 @@ class ApiService {
 
   // 3. Get Package by ID
   static Future<Map<String, dynamic>> getPackageById(int id) async {
+    if (packagesCache.containsKey(id)) {
+      return {'success': true, 'data': packagesCache[id]};
+    }
     try {
       final response = await get('/packages/$id', authenticated: false);
-      return _safeDecode(response, 'Failed to fetch package details.');
+      final decoded = _safeDecode(response, 'Failed to fetch package details.');
+      if (decoded['success'] == true && decoded['data'] is Map) {
+        packagesCache[id] = Map<String, dynamic>.from(decoded['data'] as Map);
+      }
+      return decoded;
     } catch (e) {
       return {
         'success': false,
@@ -1055,7 +1063,9 @@ class ApiService {
   ) async {
     try {
       final s = status.toLowerCase().trim();
-      final String validStatus = (s == 'published' || s == 'publish') ? 'published' : 'unpublish';
+      final String validStatus = (s == 'published' || s == 'publish')
+          ? 'published'
+          : 'unpublish';
 
       final response = await post('/packages/$id/status', {
         'status': validStatus,
@@ -1154,7 +1164,8 @@ class ApiService {
       final request = http.MultipartRequest('POST', url);
 
       if (SessionManager.accessToken != null) {
-        request.headers['Authorization'] = 'Bearer ${SessionManager.accessToken}';
+        request.headers['Authorization'] =
+            'Bearer ${SessionManager.accessToken}';
       }
 
       if (!filePath.startsWith('assets/') && filePath.isNotEmpty) {
@@ -1175,11 +1186,16 @@ class ApiService {
       debugPrint('\n[API Multipart Request] POST $url');
       final streamedResponse = await request.send();
       final response = await http.Response.fromStream(streamedResponse);
-      debugPrint('[API Response] Status: ${response.statusCode}, Body: ${response.body}');
+      debugPrint(
+        '[API Response] Status: ${response.statusCode}, Body: ${response.body}',
+      );
 
       return _safeDecode(response, 'Failed to upload package receipt.');
     } catch (e) {
-      return {'success': false, 'message': 'Failed to upload package receipt: $e'};
+      return {
+        'success': false,
+        'message': 'Failed to upload package receipt: $e',
+      };
     }
   }
 
@@ -1193,7 +1209,8 @@ class ApiService {
       final request = http.MultipartRequest('POST', url);
 
       if (SessionManager.accessToken != null) {
-        request.headers['Authorization'] = 'Bearer ${SessionManager.accessToken}';
+        request.headers['Authorization'] =
+            'Bearer ${SessionManager.accessToken}';
       }
 
       if (!filePath.startsWith('assets/') && filePath.isNotEmpty) {
@@ -1214,11 +1231,16 @@ class ApiService {
       debugPrint('\n[API Multipart Request] POST $url');
       final streamedResponse = await request.send();
       final response = await http.Response.fromStream(streamedResponse);
-      debugPrint('[API Response] Status: ${response.statusCode}, Body: ${response.body}');
+      debugPrint(
+        '[API Response] Status: ${response.statusCode}, Body: ${response.body}',
+      );
 
       return _safeDecode(response, 'Failed to upload clearance evidence.');
     } catch (e) {
-      return {'success': false, 'message': 'Failed to upload clearance evidence: $e'};
+      return {
+        'success': false,
+        'message': 'Failed to upload clearance evidence: $e',
+      };
     }
   }
 
@@ -1301,8 +1323,6 @@ class ApiService {
           }
         }
       }
-
-
 
       // ── Step 3: /packages?merchant_id=X (website-parity fallback) ──
       // The website merchant dashboard uses this. Backend may miss packages in
@@ -1389,7 +1409,8 @@ class ApiService {
   }) async {
     try {
       final stParam = (status != null && status.isNotEmpty) ? status : 'any';
-      final path = '/users/me/packages?page=$page&per_page=$perPage&status=$stParam';
+      final path =
+          '/users/me/packages?page=$page&per_page=$perPage&status=$stParam';
       final response = await get(path, authenticated: true);
       final res = _safeDecode(response, 'Failed to fetch user packages.');
 
@@ -1402,7 +1423,9 @@ class ApiService {
 
       // Merge tracked created packages (e.g. IDs 1379, 1388, newly created)
       for (final id in userCreatedPackageIds) {
-        final bool alreadyInList = packages.any((p) => int.tryParse(p['id']?.toString() ?? '') == id);
+        final bool alreadyInList = packages.any(
+          (p) => int.tryParse(p['id']?.toString() ?? '') == id,
+        );
         if (!alreadyInList) {
           final detailRes = await getPackageById(id);
           if (detailRes['success'] == true && detailRes['data'] is Map) {
@@ -1412,10 +1435,7 @@ class ApiService {
         }
       }
 
-      return {
-        'success': true,
-        'data': packages,
-      };
+      return {'success': true, 'data': packages};
     } catch (e) {
       return {'success': false, 'message': 'Failed to fetch user packages: $e'};
     }
@@ -1467,8 +1487,10 @@ class ApiService {
         decoded['success'] = true;
       } else {
         decoded['success'] = false;
-        if (decoded['message'] == null || decoded['message'].toString().isEmpty) {
-          decoded['message'] = 'Failed to send OTP code (${response.statusCode}).';
+        if (decoded['message'] == null ||
+            decoded['message'].toString().isEmpty) {
+          decoded['message'] =
+              'Failed to send OTP code (${response.statusCode}).';
         }
       }
       return decoded;
@@ -1478,20 +1500,23 @@ class ApiService {
   }
 
   // Verify Redemption (Submit OTP)
-  static Future<Map<String, dynamic>> verifyRedemption(int orderId, String code) async {
+  static Future<Map<String, dynamic>> verifyRedemption(
+    int orderId,
+    String code,
+  ) async {
     try {
-      final response = await post(
-        '/orders/$orderId/redemption/verify',
-        {'code': code},
-        authenticated: true,
-      );
+      final response = await post('/orders/$orderId/redemption/verify', {
+        'code': code,
+      }, authenticated: true);
       final decoded = _safeDecode(response, 'Failed to verify OTP code.');
       if (response.statusCode >= 200 && response.statusCode < 300) {
         decoded['success'] = true;
       } else {
         decoded['success'] = false;
-        if (decoded['message'] == null || decoded['message'].toString().isEmpty) {
-          decoded['message'] = 'Failed to verify OTP code (${response.statusCode}).';
+        if (decoded['message'] == null ||
+            decoded['message'].toString().isEmpty) {
+          decoded['message'] =
+              'Failed to verify OTP code (${response.statusCode}).';
         }
       }
       return decoded;
@@ -2220,5 +2245,424 @@ class ApiService {
 
     // 7. Default fallback for unassigned / missing owner packages
     return buildResult(name, avatar, isMerchant);
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // CHAT API ENDPOINTS
+  // ─────────────────────────────────────────────────────────────────────────
+
+  /// Start or resume a chat session between the authenticated buyer and the
+  /// owner of the given [packageId]. Returns the session object (new or
+  /// existing). Package owners cannot open a chat on their own packages.
+  static Future<Map<String, dynamic>> startChatSession(int packageId) async {
+    try {
+      final response = await post('/chat/sessions', {
+        'package_id': packageId,
+      }, authenticated: true);
+      final decoded = _safeDecode(response, 'Failed to start chat session.');
+      if ((response.statusCode >= 200 && response.statusCode < 300) &&
+          decoded['success'] == true) {
+        return {'success': true, 'data': decoded['data']};
+      }
+      return {
+        'success': false,
+        'message': _getMessage(decoded, 'Failed to start chat session.'),
+      };
+    } catch (e) {
+      return {'success': false, 'message': 'Failed to start chat session: $e'};
+    }
+  }
+
+  /// List chat sessions for the authenticated user.
+  /// [role] = 'buyer' (default) or 'seller'.
+  /// [status] = 'active' (default), 'closed', 'archived', or 'all'.
+  static Future<Map<String, dynamic>> getChatSessions({
+    String role = 'buyer',
+    String status = 'active',
+  }) async {
+    try {
+      final response = await get(
+        '/chat/sessions?role=$role&status=$status',
+        authenticated: true,
+      );
+      final decoded = _safeDecode(response, 'Failed to fetch chat sessions.');
+      if ((response.statusCode >= 200 && response.statusCode < 300) &&
+          decoded['success'] == true) {
+        return {'success': true, 'data': decoded['data']};
+      }
+      return {
+        'success': false,
+        'message': _getMessage(decoded, 'Failed to fetch chat sessions.'),
+      };
+    } catch (e) {
+      return {'success': false, 'message': 'Failed to fetch chat sessions: $e'};
+    }
+  }
+
+  /// Get a single chat session by [sessionId].
+  static Future<Map<String, dynamic>> getChatSessionById(int sessionId) async {
+    try {
+      final response = await get(
+        '/chat/sessions/$sessionId',
+        authenticated: true,
+      );
+      final decoded = _safeDecode(response, 'Failed to fetch chat session.');
+      if ((response.statusCode >= 200 && response.statusCode < 300) &&
+          decoded['success'] == true) {
+        return {'success': true, 'data': decoded['data']};
+      }
+      return {
+        'success': false,
+        'message': _getMessage(decoded, 'Failed to fetch chat session.'),
+      };
+    } catch (e) {
+      return {'success': false, 'message': 'Failed to fetch chat session: $e'};
+    }
+  }
+
+  /// Retrieve paginated messages for a session (oldest-first).
+  static Future<Map<String, dynamic>> getChatMessages(
+    int sessionId, {
+    int limit = 50,
+    int offset = 0,
+  }) async {
+    try {
+      final response = await get(
+        '/chat/sessions/$sessionId/messages?limit=$limit&offset=$offset',
+        authenticated: true,
+      );
+      final decoded = _safeDecode(response, 'Failed to fetch messages.');
+      if ((response.statusCode >= 200 && response.statusCode < 300) &&
+          decoded['success'] == true) {
+        return {'success': true, 'data': decoded['data']};
+      }
+      return {
+        'success': false,
+        'message': _getMessage(decoded, 'Failed to fetch messages.'),
+      };
+    } catch (e) {
+      return {'success': false, 'message': 'Failed to fetch messages: $e'};
+    }
+  }
+
+  /// Send a message in a session. Either [message] or [attachmentUrl] required.
+  static Future<Map<String, dynamic>> sendChatMessage(
+    int sessionId, {
+    String? message,
+    String? attachmentUrl,
+    String messageType = 'text',
+  }) async {
+    try {
+      final String finalMsg = (message != null && message.trim().isNotEmpty)
+          ? message.trim()
+          : (messageType == 'image' ? '[Photo]' : (attachmentUrl != null && attachmentUrl.isNotEmpty ? '[Attachment]' : ''));
+
+      final body = <String, dynamic>{
+        'message': finalMsg,
+        'message_type': messageType,
+      };
+      if (attachmentUrl != null && attachmentUrl.isNotEmpty) {
+        body['attachment_url'] = attachmentUrl;
+      }
+      final response = await post(
+        '/chat/sessions/$sessionId/messages',
+        body,
+        authenticated: true,
+      );
+      final decoded = _safeDecode(response, 'Failed to send message.');
+      if ((response.statusCode >= 200 && response.statusCode < 300) &&
+          decoded['success'] == true) {
+        return {'success': true, 'data': decoded['data']};
+      }
+      return {
+        'success': false,
+        'message': _getMessage(decoded, 'Failed to send message.'),
+      };
+    } catch (e) {
+      return {'success': false, 'message': 'Failed to send message: $e'};
+    }
+  }
+
+  /// Mark all unread messages in the session as read for the authenticated user.
+  static Future<Map<String, dynamic>> markChatSessionRead(int sessionId) async {
+    try {
+      final response = await post(
+        '/chat/sessions/$sessionId/read',
+        {},
+        authenticated: true,
+      );
+      return {
+        'success': response.statusCode >= 200 && response.statusCode < 300,
+      };
+    } catch (e) {
+      return {'success': false, 'message': 'Failed to mark as read: $e'};
+    }
+  }
+
+  /// Close a chat session. Only the package owner (seller) can close it.
+  static Future<Map<String, dynamic>> closeChatSession(
+    int sessionId, {
+    String? reason,
+  }) async {
+    try {
+      final response = await post('/chat/sessions/$sessionId/close', {
+        if (reason != null && reason.isNotEmpty) 'reason': reason,
+      }, authenticated: true);
+      final decoded = _safeDecode(response, 'Failed to close session.');
+      if ((response.statusCode >= 200 && response.statusCode < 300) &&
+          decoded['success'] == true) {
+        return {'success': true};
+      }
+      return {
+        'success': false,
+        'message': _getMessage(decoded, 'Failed to close session.'),
+      };
+    } catch (e) {
+      return {'success': false, 'message': 'Failed to close session: $e'};
+    }
+  }
+
+  /// Reopen a previously closed chat session. Only the package owner can reopen a session.
+  static Future<Map<String, dynamic>> reopenChatSession(int sessionId) async {
+    try {
+      final response = await post(
+        '/chat/sessions/$sessionId/reopen',
+        {},
+        authenticated: true,
+      );
+      final decoded = _safeDecode(response, 'Failed to reopen session.');
+      if ((response.statusCode >= 200 && response.statusCode < 300) &&
+          decoded['success'] == true) {
+        return {'success': true};
+      }
+      return {
+        'success': false,
+        'message': _getMessage(decoded, 'Failed to reopen session.'),
+      };
+    } catch (e) {
+      return {'success': false, 'message': 'Failed to reopen session: $e'};
+    }
+  }
+
+  /// Soft-delete a message. Only the original sender can delete their own messages.
+  static Future<Map<String, dynamic>> deleteChatMessage(int messageId) async {
+    try {
+      final response = await delete(
+        '/chat/messages/$messageId',
+        authenticated: true,
+      );
+      final decoded = _safeDecode(response, 'Failed to delete message.');
+      if ((response.statusCode >= 200 && response.statusCode < 300) &&
+          decoded['success'] == true) {
+        return {'success': true};
+      }
+      return {
+        'success': false,
+        'message': _getMessage(decoded, 'Failed to delete message.'),
+      };
+    } catch (e) {
+      return {'success': false, 'message': 'Failed to delete message: $e'};
+    }
+  }
+
+  static http.MediaType _getMediaType(String fileName) {
+    final ext = fileName.toLowerCase().split('.').last;
+    if (ext == 'png') return http.MediaType('image', 'png');
+    if (ext == 'gif') return http.MediaType('image', 'gif');
+    if (ext == 'webp') return http.MediaType('image', 'webp');
+    return http.MediaType('image', 'jpeg');
+  }
+
+  /// Upload a file attachment for use in a chat message (POST multipart/form-data).
+  static Future<Map<String, dynamic>> uploadChatAttachment(
+    int sessionId,
+    String filePath, {
+    Uint8List? bytes,
+    String? fileName,
+  }) async {
+    final String name =
+        fileName ??
+        (filePath.isNotEmpty ? filePath.split('/').last : 'image.jpg');
+    final mediaType = _getMediaType(name);
+
+    try {
+      final url = Uri.parse('$baseUrl/chat/sessions/$sessionId/attachments');
+      final request = http.MultipartRequest('POST', url);
+      if (SessionManager.accessToken != null) {
+        request.headers['Authorization'] =
+            'Bearer ${SessionManager.accessToken}';
+      }
+
+      if (bytes != null && bytes.isNotEmpty) {
+        request.files.add(
+          http.MultipartFile.fromBytes(
+            'attachment',
+            bytes,
+            filename: name,
+            contentType: mediaType,
+          ),
+        );
+      } else if (filePath.isNotEmpty) {
+        request.files.add(
+          await http.MultipartFile.fromPath(
+            'attachment',
+            filePath,
+            contentType: mediaType,
+          ),
+        );
+      }
+
+      final streamedResponse = await request.send();
+      final response = await http.Response.fromStream(streamedResponse);
+
+      if (response.body.contains('<!DOCTYPE html>') ||
+          response.body.contains('critical error')) {
+        debugPrint(
+          '[Attachment Upload] Endpoint HTML error. Executing fallback...',
+        );
+        return await uploadMediaFallback(
+          bytes: bytes,
+          filePath: filePath,
+          fileName: name,
+        );
+      }
+
+      final decoded = _safeDecode(response, 'Failed to upload attachment.');
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        final data = decoded['data'] ?? decoded;
+        final String? attachmentUrl = data is Map
+            ? (data['url']?.toString() ??
+                  data['attachment_url']?.toString() ??
+                  data['file_url']?.toString() ??
+                  data['source_url']?.toString())
+            : (decoded['url']?.toString() ??
+                  decoded['attachment_url']?.toString());
+        final String msgType = data is Map
+            ? (data['message_type']?.toString() ?? 'image')
+            : 'image';
+
+        if (attachmentUrl != null && attachmentUrl.isNotEmpty) {
+          return {
+            'success': true,
+            'url': attachmentUrl,
+            'message_type': msgType,
+          };
+        }
+      }
+
+      return await uploadMediaFallback(
+        bytes: bytes,
+        filePath: filePath,
+        fileName: name,
+      );
+    } catch (e) {
+      return await uploadMediaFallback(
+        bytes: bytes,
+        filePath: filePath,
+        fileName: name,
+      );
+    }
+  }
+
+  static Future<Map<String, dynamic>> uploadMediaFallback({
+    Uint8List? bytes,
+    required String filePath,
+    required String fileName,
+  }) async {
+    final mediaType = _getMediaType(fileName);
+    try {
+      final mediaUrl = Uri.parse(
+        'https://staging.twicely.sg/wp-json/wp/v2/media',
+      );
+      final request = http.MultipartRequest('POST', mediaUrl);
+      if (SessionManager.accessToken != null) {
+        request.headers['Authorization'] =
+            'Bearer ${SessionManager.accessToken}';
+      }
+
+      if (bytes != null && bytes.isNotEmpty) {
+        request.files.add(
+          http.MultipartFile.fromBytes(
+            'file',
+            bytes,
+            filename: fileName,
+            contentType: mediaType,
+          ),
+        );
+      } else if (filePath.isNotEmpty) {
+        request.files.add(
+          await http.MultipartFile.fromPath(
+            'file',
+            filePath,
+            contentType: mediaType,
+          ),
+        );
+      }
+
+      final streamedResponse = await request.send();
+      final response = await http.Response.fromStream(streamedResponse);
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        final decoded = _safeDecode(response, 'Failed to upload media.');
+        final String? sourceUrl =
+            decoded['source_url']?.toString() ??
+            decoded['guid']?['rendered']?.toString();
+        if (sourceUrl != null && sourceUrl.isNotEmpty) {
+          return {'success': true, 'url': sourceUrl, 'message_type': 'image'};
+        }
+      }
+    } catch (_) {}
+
+    // Ultimate Fallback: Inline Base64 Data URI
+    if (bytes != null && bytes.isNotEmpty) {
+      final base64Str = base64Encode(bytes);
+      final ext = fileName.toLowerCase().split('.').last;
+      final mime = (ext == 'png') ? 'image/png' : 'image/jpeg';
+      final dataUri = 'data:$mime;base64,$base64Str';
+      return {'success': true, 'url': dataUri, 'message_type': 'image'};
+    }
+
+    return {'success': false, 'message': 'Failed to upload attachment.'};
+  }
+
+  /// Authenticate a Pusher private or presence channel subscription.
+  static Future<Map<String, dynamic>> authenticatePusher({
+    required String socketId,
+    required String channelName,
+  }) async {
+    try {
+      final response = await post('/chat/pusher/auth', {
+        'socket_id': socketId,
+        'channel_name': channelName,
+      }, authenticated: true);
+      final decoded = _safeDecode(response, 'Failed to authenticate Pusher.');
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        return {'success': true, 'data': decoded};
+      }
+      return {
+        'success': false,
+        'message': _getMessage(decoded, 'Failed to authenticate Pusher.'),
+      };
+    } catch (e) {
+      return {'success': false, 'message': 'Failed to authenticate Pusher: $e'};
+    }
+  }
+
+  /// Convenience method: returns the total unread count across all seller sessions.
+  /// Used for the nav badge.
+  static Future<int> getTotalUnreadCount() async {
+    try {
+      final res = await getChatSessions(role: 'seller', status: 'active');
+      if (res['success'] == true && res['data'] is List) {
+        final sessions = res['data'] as List<dynamic>;
+        int total = 0;
+        for (final s in sessions) {
+          if (s is Map) {
+            total += (int.tryParse(s['unread_count']?.toString() ?? '0') ?? 0);
+          }
+        }
+        return total;
+      }
+    } catch (_) {}
+    return 0;
   }
 }

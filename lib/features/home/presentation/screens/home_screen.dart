@@ -58,6 +58,10 @@ class _HomeScreenState extends State<HomeScreen> {
   final bool _isUploadingAvatar = false;
   final int _avatarCacheBuster = 0;
 
+  // Chat unread count for nav badge
+  int _chatUnreadCount = 0;
+  Timer? _chatBadgeTimer;
+
   String _getAvatarUrl(Map<String, dynamic> data) {
     final uId = int.tryParse(data['id']?.toString() ?? '') ?? SessionManager.userId;
     final merchantLogo = ApiService.getMerchantLogo(uId, data['logo_url']?.toString() ?? data['logo']?.toString());
@@ -206,6 +210,13 @@ class _HomeScreenState extends State<HomeScreen> {
       setState(() => _isCheckingRole = false);
       _fetchPackages(filter: _selectedFilter);
       _loadProfile();
+      // Load chat unread count if logged in
+      if (SessionManager.isLoggedIn) {
+        _refreshChatBadge();
+        _chatBadgeTimer = Timer.periodic(const Duration(seconds: 30), (_) {
+          if (mounted && SessionManager.isLoggedIn) _refreshChatBadge();
+        });
+      }
     });
   }
 
@@ -213,7 +224,15 @@ class _HomeScreenState extends State<HomeScreen> {
   void dispose() {
     _homeSearchController.dispose();
     _searchDebounce?.cancel();
+    _chatBadgeTimer?.cancel();
     super.dispose();
+  }
+
+  Future<void> _refreshChatBadge() async {
+    try {
+      final count = await ApiService.getTotalUnreadCount();
+      if (mounted) setState(() => _chatUnreadCount = count);
+    } catch (_) {}
   }
 
   /// Debounced real-time API search for home search bar
@@ -1864,6 +1883,7 @@ class _HomeScreenState extends State<HomeScreen> {
     final isSelected = _currentIndex == index;
     const activeColor = Color(0xFF1F2E4E);
     final inactiveColor = const Color(0xFF1F2E4E).withValues(alpha: 0.38);
+    final bool showBadge = index == 3 && _chatUnreadCount > 0;
 
     return Expanded(
       child: Material(
@@ -1879,6 +1899,8 @@ class _HomeScreenState extends State<HomeScreen> {
                 );
                 return;
               }
+              // Refresh badge when entering chat
+              _refreshChatBadge();
             } else if (index == 4) {
               // Profile: navigate directly to login screen if not logged in
               if (!SessionManager.isLoggedIn) {
@@ -1898,14 +1920,41 @@ class _HomeScreenState extends State<HomeScreen> {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                AnimatedSwitcher(
-                  duration: const Duration(milliseconds: 200),
-                  child: Icon(
-                    icon,
-                    key: ValueKey(isSelected),
-                    color: isSelected ? activeColor : inactiveColor,
-                    size: 26,
-                  ),
+                Stack(
+                  clipBehavior: Clip.none,
+                  children: [
+                    AnimatedSwitcher(
+                      duration: const Duration(milliseconds: 200),
+                      child: Icon(
+                        icon,
+                        key: ValueKey(isSelected),
+                        color: isSelected ? activeColor : inactiveColor,
+                        size: 26,
+                      ),
+                    ),
+                    if (showBadge)
+                      Positioned(
+                        top: -4,
+                        right: -6,
+                        child: Container(
+                          padding: const EdgeInsets.all(3),
+                          decoration: const BoxDecoration(
+                            color: Color(0xFFE53935),
+                            shape: BoxShape.circle,
+                          ),
+                          constraints: const BoxConstraints(minWidth: 16, minHeight: 16),
+                          child: Text(
+                            _chatUnreadCount > 99 ? '99+' : '$_chatUnreadCount',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 9,
+                              fontWeight: FontWeight.bold,
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                        ),
+                      ),
+                  ],
                 ),
                 const SizedBox(height: 3),
                 Text(
