@@ -3,19 +3,22 @@ import 'core/constants/app_constants.dart';
 import 'core/theme/app_theme.dart';
 import 'core/utils/session_manager.dart';
 import 'core/services/api_service.dart';
-import 'features/auth/presentation/screens/login_screen.dart';
 import 'features/auth/presentation/screens/splash_screen.dart';
+
+import 'features/home/presentation/screens/home_screen.dart';
 
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await SessionManager.init();
+  await ApiService.initMerchantsCache();
+  await ApiService.initPackageCategoriesCache();
 
-  // Handle automatic redirects on unauthorized/expired tokens
+  // Handle automatic redirects on unauthorized/expired tokens: stay on Home Screen
   ApiService.onUnauthorized = () {
     navigatorKey.currentState?.pushAndRemoveUntil(
-      MaterialPageRoute(builder: (context) => const LoginScreen()),
+      MaterialPageRoute(builder: (context) => const HomeScreen()),
       (route) => false,
     );
   };
@@ -34,7 +37,8 @@ class TwicelyApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       theme: AppTheme.lightTheme,
       darkTheme: AppTheme.darkTheme,
-      themeMode: ThemeMode.light, // Locked to Light Mode to ensure the cream #fff8ea background is shown
+      themeMode: ThemeMode
+          .light, // Locked to Light Mode to ensure the cream #fff8ea background is shown
       home: const SplashScreen(),
     );
   }

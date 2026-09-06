@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/utils/cart_manager.dart';
+import '../../../../core/services/api_service.dart';
+import '../../../../core/widgets/custom_snackbar.dart';
 
 class CheckoutScreen extends StatefulWidget {
   final double totalAmount;
@@ -27,7 +29,38 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   final TextEditingController _cvcController = TextEditingController();
 
   String _selectedCountry = 'Singapore';
+  String _selectedPhoneCode = '+65';
   bool _isProcessing = false;
+
+  final List<Map<String, String>> _countryCodesList = [
+    {'code': '+65', 'name': 'Singapore', 'flag': '🇸🇬'},
+    {'code': '+60', 'name': 'Malaysia', 'flag': '🇲🇾'},
+    {'code': '+62', 'name': 'Indonesia', 'flag': '🇮🇩'},
+    {'code': '+66', 'name': 'Thailand', 'flag': '🇹🇭'},
+    {'code': '+91', 'name': 'India', 'flag': '🇮🇳'},
+    {'code': '+61', 'name': 'Australia', 'flag': '🇦🇺'},
+    {'code': '+44', 'name': 'United Kingdom', 'flag': '🇬🇧'},
+    {'code': '+1', 'name': 'United States', 'flag': '🇺🇸'},
+    {'code': '+92', 'name': 'Pakistan', 'flag': '🇵🇰'},
+    {'code': '+852', 'name': 'Hong Kong', 'flag': '🇭🇰'},
+    {'code': '+63', 'name': 'Philippines', 'flag': '🇵🇭'},
+    {'code': '+84', 'name': 'Vietnam', 'flag': '🇻🇳'},
+  ];
+
+  final List<String> _countriesList = [
+    'Singapore',
+    'Malaysia',
+    'Indonesia',
+    'Thailand',
+    'Australia',
+    'India',
+    'Hong Kong',
+    'Philippines',
+    'Vietnam',
+    'United Kingdom',
+    'United States',
+    'Pakistan',
+  ];
 
   @override
   void dispose() {
@@ -59,15 +92,14 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       _stateController.text = 'SG';
       _postcodeController.text = '018982';
     });
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Form autofilled for demo testing!'),
-        duration: Duration(seconds: 1),
-      ),
+    CustomSnackBar.show(
+      context,
+      message: 'Form autofilled for demo testing!',
+      type: SnackBarType.success,
     );
   }
 
-  void _handlePayment() {
+  void _handlePayment() async {
     if (!_formKey.currentState!.validate()) {
       return;
     }
@@ -76,95 +108,162 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       _isProcessing = true;
     });
 
-    // Simulate payment gateway call
-    Future.delayed(const Duration(seconds: 2), () {
-      if (!mounted) return;
-      setState(() {
-        _isProcessing = false;
-      });
+    final orderData = {
+      'billing': {
+        'first_name': _firstNameController.text.trim(),
+        'last_name': _lastNameController.text.trim(),
+        'email': _emailController.text.trim(),
+        'phone': '$_selectedPhoneCode ${_phoneController.text.trim()}',
+        'address_1': _addressController.text.trim(),
+        'city': _cityController.text.trim(),
+        'state': _stateController.text.trim(),
+        'postcode': _postcodeController.text.trim(),
+        'country': _selectedCountry,
+      },
+      'payment_method': 'stripe',
+    };
 
-      // Clear Cart on successful payment
-      CartManager().clear();
+    final orderRes = await ApiService.placeOrder(orderData);
 
-      // Show success modal dialog
-      showDialog(
-        context: context,
-        barrierDismissible: false,
-        builder: (context) {
-          return Dialog(
-            backgroundColor: Colors.transparent,
-            child: Container(
-              padding: const EdgeInsets.all(28),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(28),
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Container(
-                    width: 72,
-                    height: 72,
-                    decoration: const BoxDecoration(
-                      color: Color(0xFFE8F5E9),
-                      shape: BoxShape.circle,
-                    ),
-                    child: const Icon(
-                      Icons.check_circle_rounded,
-                      color: Color(0xFF4CAF50),
-                      size: 48,
-                    ),
-                  ),
-                  const SizedBox(height: 20),
-                  const Text(
-                    'Payment Successful!',
-                    style: TextStyle(
-                      fontFamily: 'Recoleta Alt',
-                      fontSize: 22,
-                      fontWeight: FontWeight.bold,
-                      color: AppColors.primary,
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  Text(
-                    'Your booking and packages have been processed successfully. A confirmation email has been sent.',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      fontSize: 13,
-                      color: AppColors.primary.withValues(alpha: 0.6),
-                      height: 1.4,
-                    ),
-                  ),
-                  const SizedBox(height: 24),
-                  GestureDetector(
-                    onTap: () {
-                      // Navigate back to the very first route (Home)
-                      Navigator.of(context).popUntil((route) => route.isFirst);
-                    },
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                      decoration: BoxDecoration(
-                        color: AppColors.primary,
-                        borderRadius: BorderRadius.circular(30),
-                      ),
-                      alignment: Alignment.center,
-                      child: const Text(
-                        'Return to Home',
-                        style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.white,
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          );
-        },
-      );
+    if (!orderRes['success']) {
+      if (mounted) {
+        setState(() {
+          _isProcessing = false;
+        });
+        CustomSnackBar.show(
+          context,
+          message: orderRes['message'] ?? 'Failed to place order.',
+          type: SnackBarType.error,
+        );
+      }
+      return;
+    }
+
+    final rawOrderId = orderRes['order_id'] ?? orderRes['id'] ?? orderRes['data']?['order_id'] ?? orderRes['data']?['id'];
+    if (rawOrderId == null) {
+      if (mounted) {
+        setState(() {
+          _isProcessing = false;
+        });
+        CustomSnackBar.show(
+          context,
+          message: 'Order placed but failed to retrieve order ID.',
+          type: SnackBarType.error,
+        );
+      }
+      return;
+    }
+
+    final int orderId = int.tryParse(rawOrderId.toString()) ?? 0;
+
+    // Create payment intent
+    final intentRes = await ApiService.createStripePaymentIntent(orderId);
+    if (!intentRes['success']) {
+      if (mounted) {
+        setState(() {
+          _isProcessing = false;
+        });
+        CustomSnackBar.show(
+          context,
+          message: intentRes['message'] ?? 'Failed to create payment intent.',
+          type: SnackBarType.error,
+        );
+      }
+      return;
+    }
+
+    final clientSecret = intentRes['client_secret'] ?? intentRes['data']?['client_secret'];
+    debugPrint('Stripe client secret retrieved: $clientSecret');
+
+    // Simulate Stripe payment processing delay
+    await Future.delayed(const Duration(seconds: 1));
+
+    if (!mounted) return;
+    setState(() {
+      _isProcessing = false;
     });
+
+    // Clear Cart on successful payment
+    CartManager().clear();
+
+    // Show success modal dialog
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) {
+        return Dialog(
+          backgroundColor: Colors.transparent,
+          child: Container(
+            padding: const EdgeInsets.all(28),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(28),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 72,
+                  height: 72,
+                  decoration: const BoxDecoration(
+                    color: Color(0xFFE8F5E9),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(
+                    Icons.check_circle_rounded,
+                    color: Color(0xFF4CAF50),
+                    size: 48,
+                  ),
+                ),
+                const SizedBox(height: 20),
+                const Text(
+                  'Payment Successful!',
+                  style: TextStyle(
+                    fontFamily: 'Recoleta Alt',
+                    fontSize: 22,
+                    fontWeight: FontWeight.bold,
+                    color: AppColors.primary,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Text(
+                  'Order #$orderId has been processed successfully. A confirmation email has been sent.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: AppColors.primary.withValues(alpha: 0.6),
+                    height: 1.4,
+                  ),
+                ),
+                const SizedBox(height: 24),
+                GestureDetector(
+                  onTap: () {
+                    // Navigate back to the very first route (Home)
+                    Navigator.of(context).popUntil((route) => route.isFirst);
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    decoration: BoxDecoration(
+                      color: AppColors.primary,
+                      borderRadius: BorderRadius.circular(30),
+                    ),
+                    alignment: Alignment.center,
+                    child: const Text(
+                      'Return to Home',
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
   }
 
   @override
@@ -277,16 +376,36 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                                     // Country Dropdown Circle/Oval representation
                                     Container(
                                       height: 48,
-                                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                                      padding: const EdgeInsets.only(left: 14, right: 6),
                                       decoration: BoxDecoration(
                                         color: Colors.white,
                                         borderRadius: BorderRadius.circular(24),
                                         border: Border.all(color: AppColors.primary.withValues(alpha: 0.15)),
                                       ),
-                                      child: const Row(
-                                        children: [
-                                          Icon(Icons.keyboard_arrow_down_rounded, size: 18, color: AppColors.primary),
-                                        ],
+                                      child: DropdownButtonHideUnderline(
+                                        child: DropdownButton<String>(
+                                          value: _selectedPhoneCode,
+                                          icon: const Icon(Icons.keyboard_arrow_down_rounded, size: 16, color: AppColors.primary),
+                                          style: const TextStyle(fontSize: 13, color: AppColors.primary, fontWeight: FontWeight.bold),
+                                          onChanged: (String? val) {
+                                            if (val != null) {
+                                              setState(() => _selectedPhoneCode = val);
+                                            }
+                                          },
+                                          items: _countryCodesList.map((map) {
+                                            return DropdownMenuItem<String>(
+                                              value: map['code'],
+                                              child: Row(
+                                                mainAxisSize: MainAxisSize.min,
+                                                children: [
+                                                  Text(map['flag']!, style: const TextStyle(fontSize: 14)),
+                                                  const SizedBox(width: 4),
+                                                  Text(map['code']!, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.primary)),
+                                                ],
+                                              ),
+                                            );
+                                          }).toList(),
+                                        ),
                                       ),
                                     ),
                                     const SizedBox(width: 10),
@@ -369,7 +488,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                                                 setState(() => _selectedCountry = val);
                                               }
                                             },
-                                            items: <String>['Singapore', 'Malaysia', 'Indonesia', 'Thailand']
+                                            items: _countriesList
                                                 .map<DropdownMenuItem<String>>((String value) {
                                               return DropdownMenuItem<String>(
                                                 value: value,
@@ -638,18 +757,38 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
             ],
           ),
           const SizedBox(height: 6),
-          const Padding(
-            padding: EdgeInsets.symmetric(horizontal: 40.0),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text('Info', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFFF43F5E))),
-                Text('Payment', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: AppColors.primary)),
-                Text('Review', style: TextStyle(fontSize: 11, color: Colors.black38)),
-              ],
-            ),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              _buildStepLabel('Info', color: const Color(0xFFF43F5E), isBold: true),
+              const SizedBox(width: 80),
+              _buildStepLabel('Payment', color: AppColors.primary, isBold: true),
+              const SizedBox(width: 80),
+              _buildStepLabel('Review', color: Colors.black38),
+            ],
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildStepLabel(String text, {required Color color, bool isBold = false}) {
+    return SizedBox(
+      width: 24,
+      height: 16,
+      child: OverflowBox(
+        maxWidth: 80,
+        maxHeight: 16,
+        alignment: Alignment.center,
+        child: Text(
+          text,
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            fontSize: 11,
+            fontWeight: isBold ? FontWeight.bold : FontWeight.normal,
+            color: color,
+          ),
+        ),
       ),
     );
   }

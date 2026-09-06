@@ -7,6 +7,7 @@ import '../../../home/presentation/screens/home_screen.dart';
 import '../../../home/presentation/screens/merchant_dashboard.dart';
 import 'otp_screen.dart';
 import 'singpass_webview_screen.dart';
+import '../../../../core/widgets/custom_snackbar.dart';
 
 class SignupScreen extends StatefulWidget {
   const SignupScreen({super.key});
@@ -73,11 +74,10 @@ class _SignupScreenState extends State<SignupScreen> {
         setState(() => _isLoading = false);
 
         if (result['success'] == true) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Merchant account created! Please verify your email.'),
-              backgroundColor: AppColors.success,
-            ),
+          CustomSnackBar.show(
+            context,
+            message: 'Merchant account created! Please verify your email.',
+            type: SnackBarType.success,
           );
           Navigator.of(context).push(
             MaterialPageRoute(
@@ -89,11 +89,10 @@ class _SignupScreenState extends State<SignupScreen> {
             ),
           );
         } else {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(result['message'] ?? 'Merchant registration failed. Please try again.'),
-              backgroundColor: AppColors.danger,
-            ),
+          CustomSnackBar.show(
+            context,
+            message: result['message'] ?? 'Merchant registration failed. Please try again.',
+            type: SnackBarType.error,
           );
         }
       } else {
@@ -131,11 +130,10 @@ class _SignupScreenState extends State<SignupScreen> {
             ),
           );
         } else {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(result['message'] ?? 'Registration failed. Please try again.'),
-              backgroundColor: AppColors.danger,
-            ),
+          CustomSnackBar.show(
+            context,
+            message: result['message'] ?? 'Registration failed. Please try again.',
+            type: SnackBarType.error,
           );
         }
       }
@@ -157,11 +155,10 @@ class _SignupScreenState extends State<SignupScreen> {
         setState(() {
           _isSingPassLoading = false;
         });
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(initRes['message'] ?? 'Singpass initialization failed'),
-            backgroundColor: AppColors.danger,
-          ),
+        CustomSnackBar.show(
+          context,
+          message: initRes['message'] ?? 'Singpass initialization failed',
+          type: SnackBarType.error,
         );
         return;
       }
@@ -181,11 +178,10 @@ class _SignupScreenState extends State<SignupScreen> {
         setState(() {
           _isSingPassLoading = false;
         });
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Singpass registration cancelled'),
-            backgroundColor: Colors.orange,
-          ),
+        CustomSnackBar.show(
+          context,
+          message: 'Singpass registration cancelled',
+          type: SnackBarType.warning,
         );
         return;
       }
@@ -206,11 +202,10 @@ class _SignupScreenState extends State<SignupScreen> {
         final isUserMerchant = user['is_merchant'] as bool? ?? false;
         final goToMerchant = _isMerchantSignup && isUserMerchant;
 
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Registered & Logged in successfully via Singpass'),
-            backgroundColor: AppColors.success,
-          ),
+        CustomSnackBar.show(
+          context,
+          message: 'Registered & Logged in successfully via Singpass',
+          type: SnackBarType.success,
         );
 
         // Route to Home or Merchant Dashboard
@@ -223,11 +218,10 @@ class _SignupScreenState extends State<SignupScreen> {
           (route) => false,
         );
       } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(callbackRes['message'] ?? 'Singpass registration failed'),
-            backgroundColor: AppColors.danger,
-          ),
+        CustomSnackBar.show(
+          context,
+          message: callbackRes['message'] ?? 'Singpass registration failed',
+          type: SnackBarType.error,
         );
       }
     } catch (e) {
@@ -235,11 +229,10 @@ class _SignupScreenState extends State<SignupScreen> {
         setState(() {
           _isSingPassLoading = false;
         });
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('An error occurred during Singpass registration: $e'),
-            backgroundColor: AppColors.danger,
-          ),
+        CustomSnackBar.show(
+          context,
+          message: 'An error occurred during Singpass registration: $e',
+          type: SnackBarType.error,
         );
       }
     }
@@ -270,16 +263,24 @@ class _SignupScreenState extends State<SignupScreen> {
                     ),
                     Expanded(
                       child: Center(
-                        child: Image.asset(
-                          'assets/images/logo.webp',
-                          width: 110,
-                          fit: BoxFit.contain,
-                          errorBuilder: (_, __, ___) => const Text(
-                            'twicely',
-                            style: TextStyle(
-                              fontSize: 22,
-                              fontWeight: FontWeight.bold,
-                              color: AppColors.primary,
+                        child: GestureDetector(
+                          onTap: () {
+                            Navigator.of(context).pushAndRemoveUntil(
+                              MaterialPageRoute(builder: (context) => const HomeScreen()),
+                              (route) => false,
+                            );
+                          },
+                          child: Image.asset(
+                            'assets/images/logo.webp',
+                            width: 110,
+                            fit: BoxFit.contain,
+                            errorBuilder: (_, __, ___) => const Text(
+                              'twicely',
+                              style: TextStyle(
+                                  fontSize: 22,
+                                  fontWeight: FontWeight.bold,
+                                  color: AppColors.primary,
+                              ),
                             ),
                           ),
                         ),

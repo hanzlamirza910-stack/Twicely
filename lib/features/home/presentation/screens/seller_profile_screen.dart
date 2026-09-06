@@ -1,0 +1,529 @@
+import 'package:flutter/material.dart';
+import '../../../../core/constants/app_colors.dart';
+import '../../../../core/services/api_service.dart';
+import '../../../../core/widgets/custom_snackbar.dart';
+import '../../../../core/widgets/shimmer_effect.dart';
+import '../../../../core/widgets/marketplace_package_card.dart';
+import 'package_detail_screen.dart';
+
+class SellerProfileScreen extends StatefulWidget {
+  final int? merchantId;
+  final int? ownerId;
+  final String merchantName;
+  final String merchantLogo;
+
+  const SellerProfileScreen({
+    super.key,
+    this.merchantId,
+    this.ownerId,
+    required this.merchantName,
+    required this.merchantLogo,
+  });
+
+  @override
+  State<SellerProfileScreen> createState() => _SellerProfileScreenState();
+}
+
+class _SellerProfileScreenState extends State<SellerProfileScreen> {
+  bool _isLoading = true;
+  List<Map<String, dynamic>> _packages = [];
+  String _displayName = '';
+
+  static const Map<String, String> _subcatLabels = {
+    'yoga-pilates': 'Yoga & Pilates',
+    'spa-massage': 'Spa & Massage',
+    'beauty-nails': 'Beauty & Nails',
+    'gym-fitness': 'Gym & Fitness',
+    'lifestyle-classes': 'Lifestyle Classes',
+  };
+
+  @override
+  void initState() {
+    super.initState();
+    _displayName = widget.merchantName;
+    _fetchSellerPackages();
+  }
+
+  Future<void> _fetchSellerPackages() async {
+    if (!mounted) return;
+    setState(() => _isLoading = true);
+
+    final res = await ApiService.getPackages(
+      page: 1,
+      perPage: 100,
+      merchantId: widget.merchantId,
+      ownerId: widget.ownerId,
+    );
+
+    if (!mounted) return;
+
+    if (res['success'] == true && res['data'] != null) {
+      final rawList = res['data'] as List<dynamic>;
+      final filteredList = rawList.where((p) {
+        if (p is! Map<String, dynamic>) return false;
+        final ownerInfo = ApiService.resolveOwnerInfo(p);
+
+        int? presMerchantId;
+        String presName = '';
+        if (p['presented_by'] is Map) {
+          presMerchantId = int.tryParse(p['presented_by']['merchant_id']?.toString() ?? '');
+          presName = p['presented_by']['name']?.toString().toLowerCase().trim() ?? '';
+        }
+
+        if (widget.merchantId != null && widget.merchantId! > 0) {
+          final pMerchantId = int.tryParse(ownerInfo['merchant_id']?.toString() ?? '') ??
+                              int.tryParse(p['merchant_id']?.toString() ?? '');
+          if (pMerchantId == widget.merchantId || presMerchantId == widget.merchantId) return true;
+        }
+
+        if (widget.ownerId != null && widget.ownerId! > 0) {
+          final pOwnerId = int.tryParse(ownerInfo['owner_id']?.toString() ?? '') ??
+                           int.tryParse(p['owner_id']?.toString() ?? '');
+          if (pOwnerId == widget.ownerId) return true;
+        }
+
+        final resName = ownerInfo['name']?.toString().toLowerCase().trim() ?? '';
+        final targetName = widget.merchantName.toLowerCase().trim();
+        if (targetName.isNotEmpty) {
+          if (resName == targetName || presName == targetName) return true;
+        }
+
+        return false;
+      }).toList();
+
+      setState(() {
+        _packages = filteredList.map((p) => _mapPkg(p as Map<String, dynamic>)).toList();
+        _isLoading = false;
+      });
+    } else {
+      setState(() => _isLoading = false);
+      CustomSnackBar.show(
+        context,
+        message: res['message'] ?? 'Failed to load seller packages.',
+        type: SnackBarType.error,
+      );
+    }
+  }
+
+  String _buildDynamicTag(Map<String, dynamic> apiPkg) {
+    final List<String> mainCats = [];
+    final int idVal = int.tryParse(apiPkg['id']?.toString() ?? '') ?? 0;
+    if (idVal != 0 && ApiService.packageCategoriesCache.containsKey(idVal)) {
+      final cached = List<String>.from(ApiService.packageCategoriesCache[idVal]!);
+      if (cached.isNotEmpty) {
+        const priority = ['For Her', 'For Him', 'Biz+', 'General'];
+        cached.sort((a, b) {
+          final ia = priority.indexOf(a);
+          final ib = priority.indexOf(b);
+          return (ia == -1 ? 99 : ia).compareTo(ib == -1 ? 99 : ib);
+        });
+        mainCats.add(cached.first);
+      }
+    }
+
+    if (mainCats.isEmpty && apiPkg['categories'] is List) {
+      for (final cat in apiPkg['categories']) {
+        if (cat is Map) {
+          final slug = (cat['slug']?.toString() ?? '').toLowerCase();
+          if (slug.contains('her') || slug.contains('women')) {
+            if (!mainCats.contains('For Her')) mainCats.add('For Her');
+          } else if (slug.contains('him') || slug.contains('men')) {
+            if (!mainCats.contains('For Him')) mainCats.add('For Him');
+          } else if (slug.contains('biz') || slug.contains('corporate')) {
+            if (!mainCats.contains('Biz+')) mainCats.add('Biz+');
+          } else if (slug.contains('general')) {
+            if (!mainCats.contains('General')) mainCats.add('General');
+          }
+        }
+      }
+    }
+
+    if (mainCats.isEmpty) {
+      final secondarySlug = apiPkg['secondary_category']?.toString() ?? '';
+      if (secondarySlug == 'yoga-pilates' || secondarySlug == 'spa-massage' || secondarySlug == 'beauty-nails') {
+        mainCats.add('For Her');
+      } else if (secondarySlug == 'gym-fitness') {
+        mainCats.add('For Him');
+      } else {
+        mainCats.add('General');
+      }
+    }
+
+    final secondarySlug = apiPkg['secondary_category']?.toString() ?? '';
+    String subcatLabel = _subcatLabels[secondarySlug] ?? '';
+
+    if (subcatLabel.isEmpty && apiPkg['categories'] is List) {
+      for (final cat in apiPkg['categories']) {
+        if (cat is Map) {
+          final name = (cat['name']?.toString() ?? '').replaceAll('&amp;', '&');
+          final slug = (cat['slug']?.toString() ?? '').toLowerCase();
+          if (!slug.contains('her') && !slug.contains('women') &&
+              !slug.contains('him') && !slug.contains('men') &&
+              !slug.contains('biz') && !slug.contains('corporate') &&
+              !slug.contains('general')) {
+            subcatLabel = name;
+            break;
+          }
+        }
+      }
+    }
+
+    if (subcatLabel.isNotEmpty) {
+      return '${mainCats.join(' > ')} > $subcatLabel';
+    } else {
+      return mainCats.join(' > ');
+    }
+  }
+
+  Map<String, dynamic> _mapPkg(Map<String, dynamic> p) {
+    String imageUrl = '';
+    if (p['cover_url'] != null && p['cover_url'].toString().isNotEmpty) {
+      imageUrl = p['cover_url'];
+    } else if (p['images'] != null && (p['images'] as List).isNotEmpty) {
+      imageUrl = (p['images'] as List)[0]['url']?.toString() ?? '';
+    }
+
+    final List<String> allImages = [];
+    if (p['images'] != null && (p['images'] as List).isNotEmpty) {
+      for (var img in p['images'] as List) {
+        if (img is Map && img['url'] != null && img['url'].toString().isNotEmpty) {
+          allImages.add(img['url'].toString());
+        } else if (img is String && img.isNotEmpty) {
+          allImages.add(img);
+        }
+      }
+    }
+    if (allImages.isEmpty && imageUrl.isNotEmpty) {
+      allImages.add(imageUrl);
+    }
+
+    final double basePrice = double.tryParse(p['price']?.toString() ?? '') ?? 0.0;
+    final double discPrice = double.tryParse(p['discounted_price']?.toString() ?? '') ?? 0.0;
+    final bool hasDiscount = discPrice > 0 && discPrice < basePrice;
+
+    final double originalPrice = basePrice;
+    final double resalePrice = hasDiscount ? discPrice : basePrice;
+
+    String? discountBadge;
+    if (hasDiscount) {
+      final pct = ((originalPrice - resalePrice) / originalPrice * 100).round();
+      if (pct > 0) { discountBadge = '$pct% OFF'; }
+    }
+
+    final secondarySlug = p['secondary_category']?.toString() ?? '';
+    final tag = _buildDynamicTag(p);
+
+    final ownerInfo = ApiService.resolveOwnerInfo(p);
+    final String pkgMerchantName = (ownerInfo['name'] != null && ownerInfo['name'].toString().trim().isNotEmpty)
+        ? ownerInfo['name'].toString().trim()
+        : _displayName;
+    final String pkgMerchantLogo = (ownerInfo['avatar'] != null && ownerInfo['avatar'].toString().isNotEmpty)
+        ? ownerInfo['avatar'].toString()
+        : widget.merchantLogo;
+
+    return {
+      'id': p['id'],
+      'title': ApiService.unescapeHtml(p['title']?.toString() ?? 'Package'),
+      'imageUrl': imageUrl.isNotEmpty ? imageUrl : 'assets/images/package_spa.jpg',
+      'allImages': allImages,
+      'originalPrice': 'S\$${originalPrice.toStringAsFixed(2)}',
+      'resalePrice': 'S\$${resalePrice.toStringAsFixed(2)}',
+      'originalPriceVal': originalPrice,
+      'resalePriceVal': resalePrice,
+      'discountBadge': discountBadge,
+      'tag': ApiService.unescapeHtml(tag),
+      'merchant': ApiService.unescapeHtml(pkgMerchantName),
+      'merchantLogo': pkgMerchantLogo,
+      'merchant_id': ownerInfo['merchant_id'] ?? widget.merchantId,
+      'owner_id': ownerInfo['owner_id'] ?? widget.ownerId,
+      'category': secondarySlug,
+      'secondary_category': secondarySlug,
+    };
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: AppColors.bgLight,
+      appBar: AppBar(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_rounded, color: AppColors.primary),
+          onPressed: () => Navigator.of(context).pop(),
+        ),
+        title: Text(
+          'Seller Profile',
+          style: TextStyle(
+            color: AppColors.primary,
+            fontWeight: FontWeight.bold,
+            fontFamily: 'Recoleta Alt',
+            fontSize: 18,
+          ),
+        ),
+        centerTitle: true,
+      ),
+      body: RefreshIndicator(
+        onRefresh: _fetchSellerPackages,
+        color: AppColors.primary,
+        child: Column(
+          children: [
+            // 1. Seller Profile Card at Top
+            _buildProfileHeaderCard(),
+            const SizedBox(height: 12),
+            // Header for active listings
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 8.0),
+              child: Row(
+                children: [
+                  const Text(
+                    'Active Listings',
+                    style: TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.bold,
+                      color: AppColors.primary,
+                      fontFamily: 'Recoleta Alt',
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: AppColors.primary.withValues(alpha: 0.08),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Text(
+                      '${_packages.length}',
+                      style: const TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.bold,
+                        color: AppColors.primary,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 8),
+            // 2. Grid of Listings
+            Expanded(
+              child: _isLoading
+                  ? GridView.builder(
+                      physics: const NeverScrollableScrollPhysics(),
+                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                        crossAxisCount: 2,
+                        childAspectRatio: 0.78,
+                        crossAxisSpacing: 12,
+                        mainAxisSpacing: 12,
+                      ),
+                      itemCount: 4,
+                      itemBuilder: (context, index) => const PackageCardSkeleton(),
+                    )
+                  : _packages.isEmpty
+                      ? _buildEmptyState()
+                      : GridView.builder(
+                          physics: const AlwaysScrollableScrollPhysics(
+                            parent: BouncingScrollPhysics(),
+                          ),
+                          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                            crossAxisCount: 2,
+                            childAspectRatio: 0.78,
+                            crossAxisSpacing: 14,
+                            mainAxisSpacing: 14,
+                          ),
+                          itemCount: _packages.length,
+                          itemBuilder: (context, index) {
+                            final item = _packages[index];
+                            return _buildPackageItemCard(item);
+                          },
+                        ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildProfileHeaderCard() {
+    final avatarText = _displayName.isNotEmpty ? _displayName[0].toUpperCase() : 'S';
+    final hasLogo = widget.merchantLogo.isNotEmpty;
+
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: Colors.black.withValues(alpha: 0.04)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.02),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          // Avatar image or initials
+          Container(
+            width: 72,
+            height: 72,
+            decoration: BoxDecoration(
+              color: hasLogo ? Colors.grey.shade100 : _merchantAvatarColor(_displayName),
+              shape: BoxShape.circle,
+              image: hasLogo
+                  ? DecorationImage(
+                      image: NetworkImage(widget.merchantLogo),
+                      fit: BoxFit.cover,
+                    )
+                  : null,
+            ),
+            alignment: Alignment.center,
+            child: !hasLogo
+                ? Text(
+                    avatarText,
+                    style: const TextStyle(
+                      fontSize: 26,
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  )
+                : null,
+          ),
+          const SizedBox(width: 18),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  _displayName,
+                  style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: AppColors.primary,
+                    fontFamily: 'Recoleta Alt',
+                  ),
+                ),
+                const SizedBox(height: 6),
+                // Badge verified
+                (() {
+                  final bool isMerchantSeller = (widget.merchantId != null && widget.merchantId! > 0) ||
+                      (_packages.isNotEmpty && (_packages.first['is_merchant'] == true || _packages.first['owner_type'] == 'merchant'));
+                  return Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: isMerchantSeller ? const Color(0xFFE8EFFF) : const Color(0xFFE8F5E9),
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          isMerchantSeller ? Icons.verified_rounded : Icons.star_rounded,
+                          size: 12,
+                          color: isMerchantSeller ? const Color(0xFF273DB7) : const Color(0xFF2E7D32),
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          isMerchantSeller ? 'Verified Merchant' : 'Verified Seller',
+                          style: TextStyle(
+                            fontSize: 10,
+                            color: isMerchantSeller ? const Color(0xFF273DB7) : const Color(0xFF2E7D32),
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                })(),
+                const SizedBox(height: 6),
+                Text(
+                  'Published Packages: ${_packages.length}   •   No reviews yet',
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: Colors.black.withValues(alpha: 0.5),
+                    fontWeight: FontWeight.w400,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildEmptyState() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(40.0),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                color: Colors.black.withValues(alpha: 0.02),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(
+                Icons.local_offer_outlined,
+                size: 48,
+                color: AppColors.primary,
+              ),
+            ),
+            const SizedBox(height: 16),
+            const Text(
+              'No Active Listings',
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+                color: AppColors.primary,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'This seller does not have any active packages for sale at the moment.',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 13,
+                color: Colors.black.withValues(alpha: 0.5),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPackageItemCard(Map<String, dynamic> item) {
+    return MarketplacePackageCard(
+      package: item,
+      isFavorite: item['hasHeart'] == true,
+      onTap: () {
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (context) => PackageDetailScreen(package: item),
+          ),
+        );
+      },
+    );
+  }
+
+  Color _merchantAvatarColor(String? name) {
+    final displayName = (name != null && name.trim().isNotEmpty) ? name.trim() : 'Twicely';
+    if (displayName.toLowerCase() == 'twicely') return const Color(0xFF273DB7);
+    const colors = [
+      Color(0xFF4A6FA5),
+      Color(0xFF3D8B5E),
+      Color(0xFF7B5EA7),
+      Color(0xFF5B8DB8),
+      Color(0xFF8B6E3C),
+      Color(0xFF4A7C59),
+    ];
+    return colors[displayName.hashCode.abs() % colors.length];
+  }
+}

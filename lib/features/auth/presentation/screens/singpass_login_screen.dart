@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
-import '../../../../core/constants/app_colors.dart';
 import '../../../home/presentation/screens/home_screen.dart';
 import '../../../../core/services/api_service.dart';
+import '../../../../core/widgets/custom_snackbar.dart';
 import '../../../../core/utils/session_manager.dart';
 import 'singpass_webview_screen.dart';
 
@@ -43,11 +43,10 @@ class _SingPassLoginScreenState extends State<SingPassLoginScreen> {
         setState(() {
           _isLoading = false;
         });
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(initRes['message'] ?? 'Singpass initialization failed'),
-            backgroundColor: AppColors.danger,
-          ),
+        CustomSnackBar.show(
+          context,
+          message: initRes['message'] ?? 'Singpass initialization failed',
+          type: SnackBarType.error,
         );
         return;
       }
@@ -67,11 +66,10 @@ class _SingPassLoginScreenState extends State<SingPassLoginScreen> {
         setState(() {
           _isLoading = false;
         });
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Singpass authentication cancelled'),
-            backgroundColor: Colors.orange,
-          ),
+        CustomSnackBar.show(
+          context,
+          message: 'Singpass authentication cancelled',
+          type: SnackBarType.warning,
         );
         return;
       }
@@ -92,11 +90,10 @@ class _SingPassLoginScreenState extends State<SingPassLoginScreen> {
       });
 
       if (callbackRes['success'] == true) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Authenticated successfully via Singpass'),
-            backgroundColor: AppColors.success,
-          ),
+        CustomSnackBar.show(
+          context,
+          message: 'Authenticated successfully via Singpass',
+          type: SnackBarType.success,
         );
 
         // Route to Home
@@ -105,11 +102,10 @@ class _SingPassLoginScreenState extends State<SingPassLoginScreen> {
           (route) => false,
         );
       } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(callbackRes['message'] ?? 'Singpass login failed'),
-            backgroundColor: AppColors.danger,
-          ),
+        CustomSnackBar.show(
+          context,
+          message: callbackRes['message'] ?? 'Singpass login failed',
+          type: SnackBarType.error,
         );
       }
     } catch (e) {
@@ -117,11 +113,10 @@ class _SingPassLoginScreenState extends State<SingPassLoginScreen> {
         setState(() {
           _isLoading = false;
         });
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('An error occurred during Singpass login: $e'),
-            backgroundColor: AppColors.danger,
-          ),
+        CustomSnackBar.show(
+          context,
+          message: 'An error occurred during Singpass login: $e',
+          type: SnackBarType.error,
         );
       }
     }
@@ -130,11 +125,10 @@ class _SingPassLoginScreenState extends State<SingPassLoginScreen> {
   void _handleMockSingPassLogin() async {
     // Security check: Disable mock login in production release builds
     if (kReleaseMode && !ApiService.baseUrl.contains('staging')) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Manual Singpass ID login is disabled in production.'),
-          backgroundColor: AppColors.danger,
-        ),
+      CustomSnackBar.show(
+        context,
+        message: 'Manual Singpass ID login is disabled in production.',
+        type: SnackBarType.error,
       );
       return;
     }
@@ -142,11 +136,10 @@ class _SingPassLoginScreenState extends State<SingPassLoginScreen> {
     final nric = _singpassIdController.text.trim();
 
     if (nric.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Please enter Singpass ID (NRIC or FIN)'),
-          backgroundColor: AppColors.danger,
-        ),
+      CustomSnackBar.show(
+        context,
+        message: 'Please enter Singpass ID (NRIC or FIN)',
+        type: SnackBarType.warning,
       );
       return;
     }
@@ -178,11 +171,10 @@ class _SingPassLoginScreenState extends State<SingPassLoginScreen> {
     );
 
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Logged in successfully (Demo Mode)'),
-        backgroundColor: AppColors.success,
-      ),
+    CustomSnackBar.show(
+      context,
+      message: 'Logged in successfully (Demo Mode)',
+      type: SnackBarType.success,
     );
 
     // Route to Home

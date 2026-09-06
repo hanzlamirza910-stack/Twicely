@@ -5,6 +5,8 @@ import '../../../home/presentation/screens/home_screen.dart';
 import '../../../../core/utils/session_manager.dart';
 import '../../../home/presentation/screens/merchant_dashboard.dart';
 
+import 'package:package_info_plus/package_info_plus.dart';
+
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
 
@@ -15,10 +17,23 @@ class SplashScreen extends StatefulWidget {
 class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderStateMixin {
   late AnimationController _controller;
   late Animation<double> _animation;
+  String _appVersion = '1.0.2+4';
+
+  Future<void> _loadVersion() async {
+    try {
+      final packageInfo = await PackageInfo.fromPlatform();
+      setState(() {
+        _appVersion = '${packageInfo.version}+${packageInfo.buildNumber}';
+      });
+    } catch (e) {
+      debugPrint('[Splash] Error loading version: $e');
+    }
+  }
 
   @override
   void initState() {
     super.initState();
+    _loadVersion();
     _controller = AnimationController(
       vsync: this,
       duration: const Duration(seconds: 2),
@@ -91,22 +106,17 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
               ),
             ),
 
-            // Bottom loading dots (matching the "..." at the bottom of splash screen)
+            // App version display
             Align(
-              alignment: const Alignment(0, 0.8),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: List.generate(3, (index) {
-                  return Container(
-                    margin: const EdgeInsets.symmetric(horizontal: 4),
-                    width: 8,
-                    height: 8,
-                    decoration: const BoxDecoration(
-                      color: Color(0xFFE08D64), // Orange/yellow dots as shown in Figma
-                      shape: BoxShape.circle,
-                    ),
-                  );
-                }),
+              alignment: const Alignment(0, 0.85),
+              child: Text(
+                'version: $_appVersion',
+                style: const TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.bold,
+                  color: AppColors.primary,
+                  letterSpacing: 0.2,
+                ),
               ),
             ),
           ],

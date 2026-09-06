@@ -1,0 +1,53 @@
+{
+    "success": true,
+    "data": [
+        {
+            "id": 12,
+            "business_name": "Rolys",
+            "merchant_tier": "biz_plus",
+            "email": "synvolv3@gmail.com",
+            "logo_url": ""
+        },
+        {
+            "id": 3,
+            "business_name": "Synvolv",
+            "merchant_tier": null,
+            "email": "synvolv@gmail.com",
+            "logo_url": ""
+        },
+        {
+            "id": 13,
+            "business_name": "Tagpools",
+            "merchant_tier": "0",
+            "email": "tagpools@gmail.com",
+            "logo_url": ""
+        },
+        {
+            "id": 21,
+            "business_name": "Test Business Ltd",
+            "merchant_tier": "biz_plus",
+            "email": "testmerchant_15821@example.com",
+            "logo_url": ""
+        },
+        {
+            "id": 23,
+            "business_name": "Test Business Ltd",
+            "merchant_tier": "biz_plus",
+            "email": "testmerchant_50411@example.com",
+            "logo_url": ""
+        },
+        {
+            "id": 14,
+            "business_name": "test test dfrnt",
+            "merchant_tier": "0",
+            "email": "dfrnt@gmail.com",
+            "logo_url": ""
+        }
+    ],
+    "meta": {
+        "total": 6,
+        "page": 1,
+        "per_page": 20,
+        "total_pages": 1
+    }
+}

@@ -1,0 +1,23 @@
+{
+  "success": true,
+  "data": [
+    {
+      "id": 1396,
+      "title": "Glow Up Facial Bundle",
+      "status": "published",
+      "price": 80
+    },
+    {
+      "id": 1379,
+      "title": "d",
+      "status": "published",
+      "price": 238
+    }
+  ],
+  "meta": {
+    "total": 2,
+    "page": 1,
+    "per_page": 20,
+    "total_pages": 1
+  }
+}
