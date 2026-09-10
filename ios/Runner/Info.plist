@@ -45,5 +45,23 @@
 	<true/>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
+	<!-- Camera & Photo Library Permissions -->
+	<key>NSCameraUsageDescription</key>
+	<string>Twicely requires camera access so you can take and upload photos for your profile, listings, and messages.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Twicely requires photo library access so you can select and upload photos for your profile, listings, and messages.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Twicely requires microphone access when capturing media.</string>
+	<!-- App Store Connect / TestFlight Export Compliance -->
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
+	<!-- URL Schemes for External Links & Singpass -->
+	<key>LSApplicationQueriesSchemes</key>
+	<array>
+		<string>https</string>
+		<string>http</string>
+		<string>singpassmobile</string>
+		<string>sg.gov.singpass</string>
+	</array>
 </dict>
 </plist>
